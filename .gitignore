@@ -1,0 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Blender's automatic backups
+*.blend1
+# The grass source scene is ~400 MB, over GitHub's 100 MB file limit.
+# blender/scripts/field_grass.py rebuilds it.
+blender/source/field_grass.blend
+# Python caches from the Blender scripts
+__pycache__/

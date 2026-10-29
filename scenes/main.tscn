@@ -1,0 +1,41 @@
+[gd_scene format=3 uid="uid://ctfa6cy8tjes5"]
+
+[ext_resource type="Texture2D" uid="uid://c53qicadne4gm" path="res://assets/textures/field_grass_tile.png" id="1_grass"]
+[ext_resource type="Script" uid="uid://ctx0c7nnko1g8" path="res://scripts/field.gd" id="2_field"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
+[ext_resource type="Script" uid="uid://drn0xmttnvq8y" path="res://scripts/game_camera.gd" id="4_camera"]
+[ext_resource type="Script" uid="uid://b855wxv55g82y" path="res://scripts/command.gd" id="6_command"]
+[ext_resource type="Script" path="res://scripts/arena_edge.gd" id="7_edge"]
+
+[node name="Main" type="Node2D" unique_id=79091743]
+
+[node name="Field" type="Sprite2D" parent="." unique_id=658196379]
+z_index = -100
+texture_repeat = 2
+position = Vector2(-8.999999, -3)
+scale = Vector2(0.9895833, 1.0027778)
+texture = ExtResource("1_grass")
+centered = false
+region_enabled = true
+region_rect = Rect2(0, 0, 1920, 1080)
+script = ExtResource("2_field")
+
+[node name="Edge" type="Node2D" parent="."]
+script = ExtResource("7_edge")
+
+[node name="Player" parent="." unique_id=571398669 instance=ExtResource("3_player")]
+position = Vector2(1137, 555)
+voice_range_m = 8.0
+voice_half_angle_deg = 40.0
+aura_radius_m = 2.475
+deployables = {
+"radio_station": 1
+}
+formation_turn_dps = 90.0
+
+[node name="Camera" type="Camera2D" parent="." unique_id=1993857809]
+position = Vector2(960, 540)
+script = ExtResource("4_camera")
+
+[node name="Command" type="Node2D" parent="." unique_id=586087931]
+script = ExtResource("6_command")

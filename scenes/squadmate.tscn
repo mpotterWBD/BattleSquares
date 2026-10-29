@@ -1,0 +1,8 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/soldier.tscn" id="1_soldier"]
+[ext_resource type="Script" path="res://scripts/squadmate.gd" id="2_squadmate"]
+
+[node name="Squadmate" instance=ExtResource("1_soldier")]
+script = ExtResource("2_squadmate")
+turn_speed_dps = 300.0
