@@ -42,6 +42,7 @@ extends CharacterBody2D
 ##   _aim_point()       the world point to look and aim at
 ##   _wants_to_fire()   whether to pull the trigger this tick
 ##   _shot_spread_deg() how far a shot may stray either side of the aim
+##   _shot_distance_m() how far off it's aiming (for ground hits)
 ## scripts/player.gd reads the keyboard and mouse; scripts/squadmate.gd is AI.
 ##
 ## Sizes and speeds are in metres, so they stay right if the zoom changes.
@@ -66,6 +67,19 @@ const TURN_FRAMES := 30
 const SHADOW_ALPHA := 0.71
 const SIGHT_GAP_M := 0.05      ## space between the front face and the triangle
 const SIGHT_DEPTH_M := 0.16    ## how far the triangle points out
+## Climbing over cover (sandbags.gd climb_at(), the "deployed_sandbags"
+## group): on top it goes at CLIMB_SPEED of its pace (75% slower), lifted
+## CLIMB_LIFT_M (drawn bigger and its shadow further off, as for a hop), and
+## while it moves it lurches about: a random jolt every CLIMB_JOLT_S, up to
+## CLIMB_JOLT_M aside and CLIMB_JOLT_DEG of twist, played out on the same
+## spring as an anchored square's rocking.
+const CLIMB_SPEED := 0.25
+const CLIMB_LIFT_M := 0.18
+const CLIMB_LIFT_SPEED := 1.2      ## metres a second it rises onto / drops off the top
+const CLIMB_JOLT_S := Vector2(0.09, 0.2)
+const CLIMB_JOLT_M := 0.035
+const CLIMB_JOLT_DEG := 8.0
+const CLIMB_NEAR_PX := 80.0        ## walls further than this from its centre aren't checked
 
 @export var speed_mps := 1.6          ## walking speed, metres per second
 @export var acceleration_mps2 := 10.0
@@ -110,11 +124,14 @@ var _speed_scale := 1.0
 
 var _hop_phase := 0.0
 var _height_m := 0.0
+var _climb := 0.0       ## how far up cover it is (0..1)
+var _climb_m := 0.0     ## how far it's lifted by climbing, easing toward _climb x CLIMB_LIFT_M
+var _jolt_in := 0.0     ## time to the next lurch while climbing
 var _knock := Vector2.ZERO        ## knockback still to play out (px per second)
 var _knock_decel := 0.0           ## how fast it dies away (px per second squared)
-var _jostle := Vector2.ZERO       ## anchored: the sprites' offset from home (px)
+var _jostle := Vector2.ZERO       ## anchored or climbing: the sprites' offset from home (px)
 var _jostle_vel := Vector2.ZERO
-var _jostle_turn := 0.0           ## anchored: extra turn shown (radians)
+var _jostle_turn := 0.0           ## anchored or climbing: extra turn shown (radians)
 var _jostle_turn_vel := 0.0
 
 @onready var _body: Sprite2D = $Body
@@ -148,9 +165,14 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	var intent := Vector2.ZERO if dead else _move_intent().limit_length(1.0)
 	var px := World.PX_PER_M
+	_climb = 0.0 if dead else _cover_under()
+	var climb_scale := lerpf(1.0, CLIMB_SPEED, smoothstep(0.0, 0.3, _climb))
 	if intent != Vector2.ZERO:
-		velocity = velocity.move_toward(intent * speed_mps * _speed_scale * px,
+		velocity = velocity.move_toward(intent * speed_mps * _speed_scale * climb_scale * px,
 				acceleration_mps2 * px * delta)
+		# Can't be carried over the top any faster either (it came on at speed).
+		velocity = velocity.limit_length(maxf(speed_mps * _speed_scale * climb_scale * px,
+				velocity.length() - acceleration_mps2 * 3.0 * px * delta))
 	else:
 		velocity = velocity.move_toward(Vector2.ZERO, friction_mps2 * px * delta)
 	move_and_slide()
@@ -166,10 +188,12 @@ func _physics_process(delta: float) -> void:
 	var target := _aim_point()
 	_turn_toward(target, delta)
 	_update_hop(delta)
+	_update_climb(delta)
 	_update_visuals()
-	_rifle.update_aim(facing, _height_m, target, delta)
+	_rifle.update_steadiness(velocity.length(), delta)   # standing still steadies the aim
+	_rifle.update_aim(facing, _height_m + _climb_m, target, delta)
 	if _wants_to_fire():
-		_rifle.fire(_shot_spread_deg())
+		_rifle.fire(_shot_spread_deg(), _shot_distance_m())
 
 
 ## Which way to walk this tick. Length 0..1 is the fraction of full speed.
@@ -189,6 +213,13 @@ func _wants_to_fire() -> bool:
 
 ## How far either side of the aim a shot may stray. The player's are dead on.
 func _shot_spread_deg() -> float:
+	return 0.0
+
+
+## How far from the muzzle it's aiming, in metres: past the rifle's solid
+## line a shot may go into the ground (rifle.gd ground_hit_chance_at()).
+## 0 = never.
+func _shot_distance_m() -> float:
 	return 0.0
 
 
@@ -326,9 +357,34 @@ func _update_hop(delta: float) -> void:
 			_hop_phase = 0.0
 
 
+## How far up any cover it's on (0 = on the ground), from the nearby walls.
+func _cover_under() -> float:
+	var most := 0.0
+	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
+		if wall.global_position.distance_to(global_position) < CLIMB_NEAR_PX:
+			most = maxf(most, wall.climb_at(global_position))
+	return most
+
+
+## Lifts it onto cover and back down, and jolts it about while it clambers.
+func _update_climb(delta: float) -> void:
+	_climb_m = move_toward(_climb_m, _climb * CLIMB_LIFT_M, CLIMB_LIFT_SPEED * delta)
+	if _climb <= 0.05 or velocity.length() < 0.1 * World.PX_PER_M:
+		_jolt_in = 0.0
+		return
+	_jolt_in -= delta
+	if _jolt_in > 0.0:
+		return
+	_jolt_in = randf_range(CLIMB_JOLT_S.x, CLIMB_JOLT_S.y)
+	var kick := 1.0 / _spring_first_peak() * _climb
+	_jostle_vel += Vector2.from_angle(randf() * TAU) * CLIMB_JOLT_M * randf_range(0.5, 1.0) * kick * World.PX_PER_M
+	_jostle_turn_vel += deg_to_rad(CLIMB_JOLT_DEG) * randf_range(-1.0, 1.0) * kick
+
+
 func _update_visuals() -> void:
-	_body.scale = Vector2.ONE * (1.0 + _height_m)
-	_shadow.position = (World.SUN_DIR * _height_m * tan(deg_to_rad(World.SUN_TILT_DEG))
+	var lift := _height_m + _climb_m
+	_body.scale = Vector2.ONE * (1.0 + lift)
+	_shadow.position = (World.SUN_DIR * lift * tan(deg_to_rad(World.SUN_TILT_DEG))
 			* World.PX_PER_M)
 	_shadows.self_modulate.a = SHADOW_ALPHA * (1.0 - _height_m * 2.5)
 	# A slight side-to-side waddle, one sway every two hops.

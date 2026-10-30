@@ -30,7 +30,8 @@ extends "res://scripts/ai_soldier.gd"
 ## of whatever else it's doing: it still stands, walks or keeps formation,
 ## but aims at the target (even while listening) and fires every
 ## SHOT_GAP_S whenever its rifle is lined up, each shot straying up to
-## SHOT_SPREAD_DEG, holding fire while anyone is in the way (ai_soldier.gd).
+## SHOT_SPREAD_DEG plus the rifle's own spread at that range (rifle.gd
+## spread_at(); far shots may also go into the ground), holding fire while anyone is in the way (ai_soldier.gd).
 ##
 ## It also returns fire on its own: with nothing to shoot, it picks the
 ## alerted enemy (scripts/enemy.gd) that last hit it, or else the nearest
@@ -245,7 +246,7 @@ func _aim_point() -> Vector2:
 
 
 func _shot_spread_deg() -> float:
-	return SHOT_SPREAD_DEG
+	return SHOT_SPREAD_DEG + _rifle.spread_at(_shot_distance_m())
 
 
 func _arrive() -> void:
@@ -292,7 +293,7 @@ func _look_for_return_fire() -> void:
 		if not enemy.alerted:
 			continue
 		var d := global_position.distance_to(enemy.global_position)
-		if d < best_d and _clear_view(global_position, enemy.global_position):
+		if d < best_d and _clear_view(global_position, enemy.global_position, true):   # over sandbags too
 			best_d = d
 			best = enemy
 	if best:

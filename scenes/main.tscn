@@ -8,12 +8,22 @@
 [ext_resource type="Script" uid="uid://es3uswkipqpt" path="res://scripts/arena_edge.gd" id="7_edge"]
 [ext_resource type="Script" uid="uid://cv0kyjeypajvj" path="res://scripts/arrival.gd" id="8_arrival"]
 [ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="9_enemy"]
+[ext_resource type="PackedScene" path="res://scenes/road.tscn" id="10_road"]
+
+[sub_resource type="Curve2D" id="Curve2D_85g3d"]
+resource_local_to_scene = true
+bake_interval = 8.0
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, -311, -54, 0, 0, 0, 0, 4167, -26)
+}
+point_count = 2
 
 [node name="Main" type="Node2D" unique_id=79091743]
 
 [node name="Field" type="Sprite2D" parent="." unique_id=658196379]
 z_index = -100
 texture_repeat = 2
+scale = Vector2(1, 1.0019054)
 texture = ExtResource("1_grass")
 centered = false
 region_enabled = true
@@ -25,7 +35,9 @@ z_index = -50
 script = ExtResource("7_edge")
 
 [node name="Player" parent="." unique_id=571398669 instance=ExtResource("3_player")]
-position = Vector2(1137, 555)
+position = Vector2(790, 1000)
+radio_aura_multiplier = 2.0
+max_health = 2.0
 
 [node name="Camera" type="Camera2D" parent="." unique_id=1993857809]
 position = Vector2(960, 540)
@@ -55,6 +67,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy2" parent="." unique_id=1112692212 instance=ExtResource("9_enemy")]
 position = Vector2(3287, 853)
@@ -74,6 +87,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy3" parent="." unique_id=85293024 instance=ExtResource("9_enemy")]
 position = Vector2(3383, 239)
@@ -93,6 +107,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy4" parent="." unique_id=1990365351 instance=ExtResource("9_enemy")]
 position = Vector2(3477, 184)
@@ -112,6 +127,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy5" parent="." unique_id=2033915866 instance=ExtResource("9_enemy")]
 position = Vector2(3297, 930)
@@ -131,6 +147,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy6" parent="." unique_id=1468471294 instance=ExtResource("9_enemy")]
 position = Vector2(3399, 322)
@@ -150,6 +167,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy7" parent="." unique_id=171328018 instance=ExtResource("9_enemy")]
 position = Vector2(3371, 948)
@@ -169,6 +187,7 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
 
 [node name="Enemy8" parent="." unique_id=1571943128 instance=ExtResource("9_enemy")]
 position = Vector2(3358, 870)
@@ -188,3 +207,169 @@ spacing_m = 2.5
 flank_weight = 3.0
 dodge_m = 1.2
 start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy9" parent="." unique_id=979475362 instance=ExtResource("9_enemy")]
+position = Vector2(3301, 1348)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy10" parent="." unique_id=1643538831 instance=ExtResource("9_enemy")]
+position = Vector2(3311, 1425)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy11" parent="." unique_id=1442699085 instance=ExtResource("9_enemy")]
+position = Vector2(3385, 1443)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy12" parent="." unique_id=1033336260 instance=ExtResource("9_enemy")]
+position = Vector2(3372, 1365)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy13" parent="." unique_id=308092221 instance=ExtResource("9_enemy")]
+position = Vector2(3318, 1822)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy14" parent="." unique_id=2120006663 instance=ExtResource("9_enemy")]
+position = Vector2(3328, 1899)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy15" parent="." unique_id=1311683609 instance=ExtResource("9_enemy")]
+position = Vector2(3402, 1917)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Enemy16" parent="." unique_id=45264246 instance=ExtResource("9_enemy")]
+position = Vector2(3389, 1839)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+max_health = 2.0
+
+[node name="Road" parent="." unique_id=1296387015 instance=ExtResource("10_road")]
+position = Vector2(-39, 1053)
+curve = SubResource("Curve2D_85g3d")
+centre_line = false

@@ -16,7 +16,8 @@ extends "res://scripts/soldier.gd"
 ## squadmates inside the circle hear it: they turn to listen and can be
 ## selected and given orders, which can send them anywhere.
 ##
-## Over the radio (radio command mode at a station's terminal) orders also
+## Over the radio (radio command mode at a station's terminal) its own
+## command circle is bigger (`radio_aura_multiplier`), and orders also
 ## go through the radio net: radio operators (soldier `kit` "radio") inside
 ## that station's dish beam are linked, and they pass orders on to anyone
 ## within their own command circle (`radio_circle_radius_m`).
@@ -27,6 +28,9 @@ const AimLine = preload("res://scripts/aim_line.gd")
 ## The command circle: how far its voice carries, all round. (Until
 ## 2026-10-29 this was 2.475 m plus an 8 m voice cone out of its front face.)
 @export var aura_radius_m := 8.0
+## In radio command mode the player's own command circle grows to this many
+## times `aura_radius_m` (2 = 100% bigger, twice the radius).
+@export_range(1.0, 5.0, 0.05, "suffix:x") var radio_aura_multiplier := 2.0
 ## A radio operator's command circle radius. Its own setting: it used to be
 ## twice the player's old 2.475 m circle.
 @export var radio_circle_radius_m := 4.95
@@ -34,7 +38,7 @@ const AimLine = preload("res://scripts/aim_line.gd")
 @export var deploy_reach_m := 2.475
 ## Equipment carried, to deploy from command mode: deployable id -> count.
 ## Ids match DEPLOYABLES in scripts/command.gd.
-@export var deployables := {"radio_station": 1}
+@export var deployables := {"radio_station": 1, "sandbags": 6}
 ## How fast the squad's formation swings round to match the way this square
 ## faces, so sweeping the aim doesn't send followers running in circles.
 @export var formation_turn_dps := 90.0
@@ -98,7 +102,13 @@ func _turn_toward(target: Vector2, delta: float) -> void:
 ## How far the shot may stray: none within the rifle's accurate range of
 ## the point clicked, more the further past it.
 func _shot_spread_deg() -> float:
-	return _rifle.spread_at(_rifle.muzzle_position().distance_to(_last_aim) / World.PX_PER_M)
+	return _rifle.spread_at(_shot_distance_m())
+
+
+## The point clicked: the further past the solid line, the likelier the
+## shot goes into the ground short of it.
+func _shot_distance_m() -> float:
+	return _rifle.muzzle_position().distance_to(_last_aim) / World.PX_PER_M
 
 
 func _wants_to_fire() -> bool:
@@ -109,6 +119,12 @@ func _wants_to_fire() -> bool:
 ## voice, or (in radio command mode) the radio net reaches it.
 func can_hear(point: Vector2) -> bool:
 	return hears_voice(point) or (World.radio_commanding and radio_reaches(point))
+
+
+## The player's command circle radius right now, in metres: `aura_radius_m`,
+## times `radio_aura_multiplier` in radio command mode.
+func command_circle_m() -> float:
+	return aura_radius_m * (radio_aura_multiplier if World.radio_commanding else 1.0)
 
 
 ## A radio operator's command circle radius, in metres.
@@ -138,4 +154,4 @@ func radio_reaches(point: Vector2) -> bool:
 ## Whether a point is within earshot of the player's voice: inside its
 ## command circle.
 func hears_voice(point: Vector2) -> bool:
-	return global_position.distance_to(point) <= aura_radius_m * World.PX_PER_M
+	return global_position.distance_to(point) <= command_circle_m() * World.PX_PER_M

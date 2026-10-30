@@ -40,6 +40,7 @@ const SPOT_KEEP_BONUS := 0.6    ## sticks with its current spot unless another i
 const DODGE_COOLDOWN_S := Vector2(1.5, 2.5)
 const SEARCH_LOOK_S := 1.2      ## how often it looks somewhere new while searching
 const SPACING_WEIGHT := 6.0     ## how much bunching up with another enemy counts against a spot
+const COVER_WEIGHT := 2.5       ## how much a spot that only sees its target over sandbags counts against it
 const ARC_STEP_DEG := 35.0      ## swinging round the target, it aims this far further round at a time
 const JOG_FROM_M := 3.0         ## further than this from its spot, it jogs
 const JOG_SPEED := 1.35
@@ -206,12 +207,15 @@ func _check_shots() -> void:
 
 ## Awake: who can it see? Its threat if visible, otherwise the nearest
 ## player or squadmate in sight. Nobody for `lose_contact_s` and it searches.
+## Someone behind sandbags still counts (it sees over them): it keeps firing,
+## and some shots get over (sandbags.gd `through_chance`). Calm, it doesn't
+## notice anyone hidden behind them (_check_intruders()).
 func _look_for_targets() -> void:
 	var best: Node2D = null
 	var best_d := sight_m * World.PX_PER_M
 	for hostile: Node2D in _hostiles():
 		var d := global_position.distance_to(hostile.global_position)
-		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position):
+		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position, true):
 			continue
 		if hostile == threat:
 			d *= 0.7   # sticks with whoever it was fighting
@@ -378,9 +382,13 @@ func _score_spot(spot: Vector2, focus: Vector2, target_facing: float, friends: A
 		var rel: Vector2 = p - focus
 		if rel.length() < max_range_m * 1.5 * px and absf(angle_difference(target_facing, rel.angle())) < deg_to_rad(25.0):
 			score -= 2.0
-	# Able to see and shoot it from there (the costly checks, last).
-	if not _clear_view(spot, focus):
+	# Able to see and shoot it from there (the costly checks, last). Over
+	# sandbags it can still shoot, but most shots stop in them: better to
+	# get round the side for a clean shot.
+	if not _clear_view(spot, focus, true):
 		score -= 5.0
+	elif not _clear_view(spot, focus):
+		score -= COVER_WEIGHT
 	elif _blocks_line(spot, focus, [self, attack_target]):
 		score -= 2.0
 	return score
@@ -445,7 +453,7 @@ func _next_shot_gap() -> float:
 func _shot_spread_deg() -> float:
 	var spread := 0.0
 	if is_attacking():
-		spread = _rifle.spread_at(_rifle.muzzle_position().distance_to(attack_target.global_position) / World.PX_PER_M)
+		spread = _rifle.spread_at(_shot_distance_m())
 	if velocity.length() > 0.3 * World.PX_PER_M:
 		spread += moving_spread_deg
 	return spread

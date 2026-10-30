@@ -1,45 +1,47 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene format=3 uid="uid://djo8xc7pviuh4"]
 
-[ext_resource type="Script" path="res://scripts/soldier.gd" id="1_soldier"]
-[ext_resource type="Texture2D" path="res://assets/characters/red_square_shadow_sheet.png" id="2_shadow"]
-[ext_resource type="Texture2D" path="res://assets/characters/red_square_sheet.png" id="3_body"]
-[ext_resource type="Script" path="res://scripts/rifle.gd" id="4_rifle"]
-[ext_resource type="Texture2D" path="res://assets/characters/rifle.png" id="5_rifle_tex"]
+[ext_resource type="Script" uid="uid://dvo0vahnptruf" path="res://scripts/soldier.gd" id="1_soldier"]
+[ext_resource type="Texture2D" uid="uid://drqj2mcfqnv4d" path="res://assets/characters/red_square_shadow_sheet.png" id="2_shadow"]
+[ext_resource type="Texture2D" uid="uid://v5otc2dmnqqh" path="res://assets/characters/red_square_sheet.png" id="3_body"]
+[ext_resource type="Script" uid="uid://dknh7siqurrgx" path="res://scripts/rifle.gd" id="4_rifle"]
+[ext_resource type="Texture2D" uid="uid://b2nruukyqlhjp" path="res://assets/characters/rifle.png" id="5_rifle_tex"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(34, 34)
 
-[node name="Soldier" type="CharacterBody2D"]
+[node name="Soldier" type="CharacterBody2D" unique_id=1112096667]
 motion_mode = 1
 script = ExtResource("1_soldier")
+max_health = 4.0
 
-[node name="Shadows" type="CanvasGroup" parent="."]
+[node name="Shadows" type="CanvasGroup" parent="." unique_id=744980874]
 
-[node name="Shadow" type="Sprite2D" parent="Shadows"]
+[node name="Shadow" type="Sprite2D" parent="Shadows" unique_id=75170625]
 texture = ExtResource("2_shadow")
 hframes = 30
 
-[node name="RifleShadow" type="Sprite2D" parent="Shadows"]
+[node name="RifleShadow" type="Sprite2D" parent="Shadows" unique_id=2073072972]
 modulate = Color(0, 0, 0, 1)
 texture = ExtResource("5_rifle_tex")
 
-[node name="Rifle" type="Node2D" parent="."]
+[node name="Rifle" type="Node2D" parent="." unique_id=961541923]
 script = ExtResource("4_rifle")
+damage = 2.0
 
-[node name="Gun" type="Sprite2D" parent="Rifle"]
+[node name="Gun" type="Sprite2D" parent="Rifle" unique_id=237669702]
 texture = ExtResource("5_rifle_tex")
 
-[node name="Flash" type="Polygon2D" parent="Rifle"]
+[node name="Flash" type="Polygon2D" parent="Rifle" unique_id=1067972589]
 visible = false
 color = Color(1, 0.85, 0.4, 0.95)
 
-[node name="Body" type="Sprite2D" parent="."]
+[node name="Body" type="Sprite2D" parent="." unique_id=2096047570]
 texture = ExtResource("3_body")
 hframes = 30
 
-[node name="Sight" type="Polygon2D" parent="."]
+[node name="Sight" type="Polygon2D" parent="." unique_id=477859028]
 z_index = -1
 color = Color(1, 1, 1, 0.35)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1014077955]
 shape = SubResource("RectangleShape2D_body")

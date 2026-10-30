@@ -39,7 +39,7 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 | WASD / arrows | Walk (screen directions; you can strafe) |
 | Mouse | Aim: the square turns loosely toward the cursor, and the rifle aims within its sweep |
 | Left click | Fire (one shot per click). Dead-on within the rifle's accurate range (6 m) of the click; strays more the further past it you click |
-| **Right mouse** (hold) | Aim: shows the aiming line (solid = accurate range, then a red-shading spread wedge out to the mouse) |
+| **Right mouse** (hold) | Aim: shows the aiming line (solid = accurate range, then a red-shading spread wedge out to the mouse, labelled with the chance the shot goes into the ground) |
 | Scroll wheel | Zoom 0.5×–3× (while placing an Attention formation: turn it 15° a notch) |
 | **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left), DEPLOY menu (right), selection and move orders |
 | **F** | Interact: at a station's desk (platform box), open/close the RADIO menu or hang up radio command; in the dish box, open/close the dish tuning wheel |
@@ -128,6 +128,7 @@ BattleSquares/
 ├── scripts/             ← GDScript code (.gd)
 │   ├── world.gd         ← shared constants: PX_PER_M, ARENA, sun, COMMAND_COLOR, controls
 │   ├── field.gd         ← tiles the grass across whatever the camera sees
+│   ├── road.gd          ← a road drawn as a Path2D: the asphalt strip tiled along its curve
 │   ├── game_camera.gd   ← scroll-wheel zoom, follows the player within the arena
 │   ├── soldier.gd       ← every square: movement, facing, hop, shadows, rifle
 │   ├── player.gd        ← keyboard/mouse control of a soldier
@@ -141,11 +142,14 @@ BattleSquares/
 │   ├── hold_popout.gd   ← press-hold-slide-release pop-out used by every menu
 │   ├── rifle.gd         ← mouse aim within a sweep, recoil, muzzle flash, firing
 │   ├── radio_pack.gd    ← radio operator's backpack + antenna (soldier `kit = "radio"`)
-│   └── bullet.gd        ← tracer projectile
+│   ├── bullet.gd        ← tracer projectile
+│   └── sandbags.gd      ← deployable sandbag wall: solid cover, sand puffs, swept shadow
 ├── blender/             ← ignored by Godot
 │   ├── scripts/         ← Python generators (source of truth for assets)
 │   │   ├── bs_common.py ← shared sun, sky, camera and pixel scale; all scripts use it
 │   │   ├── field_grass.py
+│   │   ├── road_asphalt.py
+│   │   ├── sandbags.py
 │   │   ├── character_square.py
 │   │   ├── rifle.py
 │   │   ├── radio_pack.py
@@ -196,6 +200,8 @@ BattleSquares/
 | Asset | Status | Script | Notes |
 |-------|--------|--------|-------|
 | Grass field tile (1024×1024, seamless) | Done (v3, 12× original distance) | `blender/scripts/field_grass.py` | Output `assets/textures/field_grass_tile.png`. The tile covers 12 × 12 m, with 2.52 M blades at 2× size, lush and dry patches, soil, about 3,400 daisies and buttercups, and pebbles; lit from the top-left. Takes about 57 s in total (mostly building the mesh). Older versions are in `assets/previews/` (`…closeup_v1`, `…3x_v2`). |
+| Asphalt road strips, 4 conditions (1024×512 each, tile end to end) | Done (v3: clean, ok, medium, bad), **in the game** (`scenes/road.tscn`, Condition) | `blender/scripts/road_asphalt.py` (`-- clean ok medium bad` to render only some) | `assets/textures/road_asphalt.png` (clean), `road_asphalt_ok.png`, `road_asphalt_medium.png` and `road_asphalt_bad.png`: each 12 m along the road × 6 m across, RGBA, all the same size so they swap freely. **Clean**, after Mike's reference picture: 5 m of even dark asphalt, straight crisp edges, solid white edge lines (0.12 m wide, 0.15 m in) and yellow centre dashes (1 m dash, 1 m gap). **Ok:** slightly faded paint, faint wheel tracks, a few hairline cracks at the edges, one repair patch with a sealed seam, oil stains, edges barely wavy. **Medium:** paint worn through in places, a broken crack down the middle and four across, a patch of crazed cracking, two patches, a small pothole, ragged edges with some gravel and dirt, and grass in a few cracks. **Bad:** paint mostly gone and flaking, cracks everywhere (7 across, a web along the edges, 3 crazed patches), 5 potholes with broken stone in them, crumbling edges with a gravel-and-dirt verge, broken asphalt chunks, and grass in the cracks. Damage is set per condition in `CONDITIONS`. Field grass (same colours, size and density as `field_grass.py`, whose `main()` is guarded so it can be imported) grows over each verge, then the strip is transparent so the real field shows through, and its outermost 10 px are faded to nothing. No shadow catcher: the field's grass already has its shadows, and doubling them left a dark band. All four render in about 40 s. Previews: `assets/previews/road_conditions_preview.png` (all four over the grass, clean at the top), `road_asphalt{,_ok,_medium,_bad}_preview.png`, `road_conditions_ingame.png` (all four in the game, Clean to Bad from left to right) and `road_ingame_preview.png`. |
+| Sandbag wall (deployable), 6 tiles | Done (v2: tiles that join into one wall), **in the game via DEPLOY** | `blender/scripts/sandbags.py` | `assets/props/sandbags_{single,start,end,mid_0,mid_1,mid_2}.png` (256 × 128 px = 0.75 × 0.375 m, **rendered at 4× density**, shown at 0.25 with mipmaps; each has a `.import` with mipmaps on). After Mike's reference photo: one stack of 5 courses, a single bag deep (the two-deep base of v1 is gone), 0.357 m high, 0.192 m wide at the foot, the courses stepping in 5% each as they rise. Boxy, lumpy tan burlap bags (0.25 × 0.16 × 0.085 m) in a running bond: even courses three bags a tile, odd ones offset half a bag, so one bag straddles each join. Tiles are 0.75 m (64 game px) and join end to end seamlessly: each is rendered with the neighbours' bags that reach into it, and the bags at a join are keyed by position (`bag_rng()`) so every tile builds them the same, then cropped to the tile. **single:** both ends finished with half bags. **start / end:** finished at −x / +x. **mid_0–2:** joined at both ends, with different middle bags so long rows don't repeat. Lit by the standard sun; the game draws the shadow. Review: `assets/previews/sandbags_preview.png` (an angled run of five), `sandbags_tiles_preview.png` (the tiles laid edge to edge), `sandbags_rows_preview.png` and `sandbags_join_closeup.png` (in the game). All six render in about 15 s. |
 | Rifle | Done (v2, detailed) | `blender/scripts/rifle.py` | `assets/characters/rifle.png` (384 px, **rendered at 4× density**, shown at 0.25 scale with mipmaps so it stays sharp when zoomed in). 0.48 m from pivot to muzzle (0.28 m beyond the front face). Parts: gunmetal receiver, red-dot sight with a red lens, polymer handguard, front sight post, barrel, muzzle brake, and a forward-raked magazine. **Canted 30°** so the magazine shows from above (it pokes out to the gun's right). Lit from straight overhead so it can rotate; its shadow is drawn in Godot. v1 (plain bar) is in `assets/previews/rifle_v1_plain.png`. |
 | Radio pack (radio operator) | Done (v1) | `blender/scripts/radio_pack.py` | `assets/characters/radio_pack.png` (614 px = 1.8 m, **rendered at 4× density**, shown at 0.25 scale with mipmaps), centred on the square's centre, square facing +x. Brown canvas pack on the square's back (0.16 m deep, 0.3 m wide, top at 0.44 m, just above the square), darker top flap and side pouches, shoulder straps over the square's top, the radio's top with two knobs, and a 0.6 m whip antenna raked 32° back with a tip cap. Lit from straight overhead so it turns with the square; its shadow is drawn in Godot (`radio_pack.gd`). |
 | Helicopter (UH-60-style transport) | Done (v3, 0.55 scale, cockpit, flies insertions) | `blender/scripts/helicopter.py` | Modelled at real size, then shrunk by `SCALE` = 0.55 (`helicopter.gd SCALE` must match): fuselage 8.4 m, rotor 9 m. Cockpit (laid out for scale 0.5 and grown with `SCALE`): two red pilot squares, 0.44 m, corners rounded like the player's (upright edges only, top edges sharp), under dark tinted glass (alpha 0.85); an instrument panel with screens, switch strips and a centre console with lamps. `assets/vehicles/helicopter_body.png` (939 px = 11 m, nose to +x; cockpit interior without pilots or glass), `helicopter_pilot.png` (one pilot, lit as in the cockpit; the game draws two and animates them), `helicopter_glass.png` (glass only, drawn over the pilots) and `helicopter_rotor.png` (centred on the mast), both lit from straight overhead so they can face any heading. Plus 4 half-res shadow outlines `helicopter_shadow_{body,stabilator,fin,tailrotor}.png` (padded for sweeping). Olive drab, matte, no markings; black blades with yellow tip bands. Renders in about 15 s. |
@@ -1201,3 +1207,260 @@ Major choices and the reasons behind them.
 - Mike: when the player steps onto the platform, drop the big white F, and put a small "[F] Interact" under the box, like the dish's "[F] Tune dish".
 - `radio_terminal.gd`: `_pad_key` (`UiStyle.pad_key()`) is replaced by `_pad_prompt` (`_make_pad_prompt()`): "[F] Interact" in the dish prompt's style (16 px, light green, dark outline), centred 3 px under the StandBox. It shows at the same times the F did: on the box, menu closed, not on the radio. The troop timer above the box is unchanged. The dish box still shows its big F along with "[F] Tune dish"; that wasn't asked.
 - Checked with a windowed screenshot of the player on the platform: no big F, and "[F] Interact" sits under the box.
+
+### 2026-10-30 — Ground hits past the aiming line
+- Mike: when the player shoots past the accurate (solid) part of the aiming line, the further past, the likelier the shot goes into the ground; a ground hit kicks up a small dust cloud. The falloff and ground hits apply to squadmates and enemies too.
+- `rifle.gd` (Aim group, with Inspector tooltips):
+  - `aim_max_ground_hit_pct` (40%) and `aim_ground_hit_curve` (1) shape the chance like the spread: 0 within the solid line, growing to the max at `aim_falloff_m` past it.
+  - `ground_hit_chance_at(distance_m)`; `spread_at()` and it share `_past_solid()`.
+  - `fire(spread_deg, distance_m)`: a ground hit gives the bullet a `ground_at_m`, picked at random between the end of the solid line and the aim point.
+- `bullet.gd`: if nothing stops it first, it goes into the ground at `ground_at_m` (the last tick's step is cut short there) and spawns the dust.
+- `hit_dust.gd`: `setup(..., ground := true)` throws a smaller puff (`GROUND_STRENGTH` 0.85) forward and out to the sides along the round's path, and leaves a `Scuff`: a light dirt splash round a dark furrow, under the squares (z −40), lasting 4 s and fading over the last 1.5.
+- Shooters: `soldier.gd` has a new hook, `_shot_distance_m()` (0 = no ground hits), passed to `fire()`.
+  - Player: the distance to the click.
+  - AI (`ai_soldier.gd`): the distance to `attack_target`. Enemies already used the rifle's spread at range; squadmates now get it too, on top of their own `SHOT_SPREAD_DEG` 1.5°, so they're much less accurate far off.
+- `aim_line.gd`: shows "NN% ground" beside the arc at the mouse while the chance is above 0.
+- The player's rifle overrides in `player.tscn` (solid line 3 m, falloff 3.1 m, 18° max spread, curve 0.1) are Mike's; the new ground settings use the defaults, so the player hits 40% ground from about 6 m out. Tune them on the player's Rifle node.
+- Tested (`test_ground.gd`): 26% at 5 m and 40% from 6.1 m (player rifle). 200 shots aimed 18 m away: 90 went into the ground (80 expected), landing 3.2–18 m out. Each puff has a scuff, and all are gone after 5 s. A squadmate shooting at 16 m: 4.7° spread and 6 ground hits in 5 s. The enemy regression tests still pass. Checked with a windowed screenshot: scuffs and puffs inside the spread wedge, and the label at the mouse.
+
+### 2026-10-30 — Standing still steadies the aim
+- Mike: moving, the aiming line stays as it is; standing still, it grows 200%.
+- `rifle.gd` (Aim group, with tooltips):
+  - `aim_still_multiplier` (2.0, so twice as long) scales both the solid line and the falloff while standing still.
+  - `aim_steady_s` (0.5 s): how long after stopping it takes to grow fully (smoothstep).
+  - `aim_still_below_mps` (0.3 m/s): slower than this counts as still, so a hit's shove or a nudge doesn't spoil it.
+  - Moving drops it straight back to normal.
+  - `update_steadiness(speed, delta)` keeps `steady` (0..1); `accurate_m()` and `falloff_m()` are the current lengths, used by `spread_at()`, `ground_hit_chance_at()`, the ground-hit landing range and `aim_line.gd`.
+- `soldier.gd` calls `update_steadiness(velocity.length(), delta)` every tick, so it applies to squadmates and enemies too: those standing still to shoot are more accurate. The enemies' `moving_spread_deg` penalty is still added on top when they move.
+- If "200%" was meant as 3x, set `aim_still_multiplier` to 3.
+- Tested (`test_still.gd`, player rifle):
+  - Walking: solid line 3.0 m, and a shot at 6 m spreads 17.9° with a 39% ground-hit chance.
+  - 0.5 s after letting go of the key: 5.5 m.
+  - After 1 s still: 6.0 m, and the same 6 m shot is dead on with 0% ground.
+  - Three ticks of walking: back to 3.0 m.
+
+### 2026-10-30 — Asphalt road
+- Mike: a road texture that blends seamlessly into the grass. His choices: paved asphalt, drawn as a path in the editor.
+- `blender/scripts/road_asphalt.py` renders the strip (see the Asset List).
+  - Everything random is periodic along the road (`StripNoise`), and cracks, blades and stones near either end are copied to the other end, so it tiles end to end. Across the road it doesn't need to tile: the verges fade to transparent and the real field shows through.
+  - First render: the overgrown verge read as a lighter band and the patches as black boxes. So the blades now cover only about 0.75 m past the asphalt, the patches are near the asphalt's tone, and the edge lines are fainter.
+- `scripts/road.gd` and `scenes/road.tscn`:
+  - A Path2D (`@tool`) that keeps an internal Line2D on the curve's baked points (every 8 px). The strip tiles along it at real size: width 640 px, `LINE_TEXTURE_TILE`, repeat on, round joints. It redraws as the curve is edited.
+  - Its z is −60: over the grass (−100), under the arena edge (−50), the scuffs (−40) and everything else.
+  - The scene's default curve is a straight 12 m piece, and `resource_local_to_scene` gives each instance its own curve.
+- **To add a road:** instance `scenes/road.tscn` in `main.tscn`, then edit its path with the Path2D toolbar. Keep bends wider than about 4 m radius, or the inside edge folds over. The baked lighting turns with the road; the relief is low, so this doesn't show.
+- `main.tscn` has one example Road: a gentle S-bend across the south of the field, from off the west edge to off the east edge.
+- Checked with screenshots in the game, wide and close: the curve follows smoothly, there are no seams between repeats, and the verges blend into the field.
+
+### 2026-10-30 — Bigger command circle over the radio
+- Mike: when using Command from the radio, increase his command circle by 100%.
+- `player.gd`:
+  - New export `radio_aura_multiplier` (2.0, with a tooltip).
+  - `command_circle_m()` returns `aura_radius_m`, times the multiplier while `World.radio_commanding`: 8 m normally, 16 m over the radio.
+  - `hears_voice()` uses it, so squadmates up to 16 m from the player can be commanded directly over the radio, on top of anyone the linked radio operators reach.
+- `command.gd`: the player's circle is drawn at `command_circle_m()`, so it shows doubled in radio command mode. The radio operators' own circles (`radio_circle_radius_m`, 4.95 m) are unchanged.
+- Tested (`test_radio_circle.gd`):
+  - At 12 m and 15.5 m: not heard normally, heard over the radio.
+  - At 16.5 m: heard by neither.
+  - At 7.5 m: heard in both.
+
+### 2026-10-30 — Road v2: clean, after Mike's reference
+- Mike sent a picture of a clean cartoon road (crisp edges, solid white edge lines, short frequent yellow dashes, grass right up to the road) and asked for the road to look more like it, in our art style.
+- `road_asphalt.py` is rewritten for the clean version:
+  - **Removed:** cracks, repair patches, crumbling edges, the gravel and dirt verge, stones, worn wheel tracks and faded paint.
+  - **Asphalt:** straight edges, an even tone, and fine grain only.
+  - **Paint:** crisp white edge lines and yellow centre dashes, 1 m on and 1 m off, so 6 per 12 m strip. `main()` asserts that the dash pattern divides the strip's length.
+  - **Verge:** the grass blades run from the edge to 0.45 m out, over undergrowth that fades out within 0.2 m.
+  - The strip is now 6 m across (512 px, was 7.5 m), so the curves can be tighter: about 3 m radius before the inside edge folds.
+- `road.gd` takes the width from the texture, so nothing else changed. Its comments are updated.
+- Checked over the grass tile and in the game (wide and close).
+
+### 2026-10-30 — Roads in four conditions: clean, ok, medium, bad
+- Mike: three more roads with different levels of damage, from ok to medium to bad.
+- `road_asphalt.py`:
+  - Now renders all four from one base, with the damage set in `CONDITIONS` (see the Asset List).
+  - Each condition has its own seed, so re-renders come out the same. `-- <names>` renders only those.
+  - Brought back from v1, scaled by condition: cracks, patches, ragged edges, gravel and dirt verges, stones and asphalt chunks, and grass in the cracks.
+  - New: oil stains, flaking paint, crazed "alligator" cracking, potholes (sunk into the surface with broken stone in the bottom), and a sealed seam round each patch.
+- **Fixed on the way:** a thin dark line ran along the outside of each verge. It was the blades' shadows on the shadow catcher, on top of the field's own baked-in shadows, so the catcher is gone. Separately, the strip's outermost 10 px now fade to fully transparent.
+- `road.gd`: a new `condition` export (enum Clean / Ok / Medium / Bad) picks the texture and updates at once in the editor. The width comes from the texture.
+- Tested in the game: four roads side by side, one per condition, curving a little. Each shows its own texture at 512 px wide, with no dark lines at the verges. Screenshot: `assets/previews/road_conditions_ingame.png`.
+- Mike's `main.tscn` currently uses two `Sprite2D`s of `road_asphalt.png` at z 0, which draw over the squares. Either set their Z Index to −60 or switch to `road.tscn` (explained to Mike).
+
+### 2026-10-30 — Roads click together in the editor
+- Mike: a way for a new road to click into the old road in the editor.
+- Godot's own smart snapping only moves whole nodes, not a path's points, so `road.gd` (already a `@tool` script) does it. Roads join the `"roads"` group.
+- **Snap** (`_snap_ends()`, every editor frame):
+  - A road's first or last point within `SNAP_M` (1 m) of another road's first or last point is moved exactly onto it, in world space, so either road's node can be moved too.
+  - Its handle there is turned to the way the other road comes out of the join (`end_outward()`), so it carries straight on. The handle keeps its length, or gets a third of the way to the next point if it had none.
+  - Pulling the point more than 1 m away lets go.
+  - The snap edits the curve directly, so it isn't a separate undo step.
+- **Pattern carry-on:** the road's Line2D now has a small canvas shader (`u_offset`) that shifts the texture along the road.
+  - `pattern_start()` follows the chain back through roads whose last point is on this road's first: the previous road's start plus its length in strips (baked length ÷ 1024 px), wrapped to 0..1, guarded against loops.
+  - So the centre dashes keep their rhythm across a join, even between different conditions (the condition itself changes with a hard cut at the join).
+  - It's worked out at start-up (deferred, once every road exists) and every editor frame.
+- Joins are end to end only; there are no T-junctions or crossroads yet. To just make a road longer, add points to the end of the same Road.
+- Tested (`test_road_join.gd`):
+  - B (a medium road, its node moved, its start 0.6 m off A's end) snaps onto A's end and leaves at 0°, A's heading.
+  - C, 2 m away, is left alone.
+  - B's pattern starts at 0.171875 strips (A is 1.171875 long), and the shader offset matches.
+  - A screenshot (`assets/previews/road_join_preview.png`) shows the clean road running into the medium one with no kink, and the dash at the join continuing across.
+
+### 2026-10-30 — Roads without the centre line
+- Mike: a road without the centre lines.
+- Done as an option on every condition rather than one more road.
+- `road_asphalt.py`:
+  - Renders each condition twice: with the yellow centre dashes, and without them (`*_no_centre.png`: `road_asphalt_no_centre.png`, `road_asphalt_ok_no_centre.png`, `_medium_no_centre`, `_bad_no_centre`).
+  - The two versions share their seed and damage, and differ only in the dashes. The white edge lines stay.
+  - Only the dashed version saves a .blend and its own preview. The new comparison preview is `assets/previews/road_conditions_no_centre_preview.png`. All eight render in about 65 s.
+- `road.gd`: a new `centre_line` export (a checkbox, on by default) picks between the two sets of textures and updates at once. Since the strips are otherwise identical, a dashed road joined to one without dashes lines up.
+- Checked in the game: four roads with the Centre Line off show the four `_no_centre` textures at 512 px, with no dashes. Screenshot: `assets/previews/road_conditions_no_centre_ingame.png`.
+
+### 2026-10-30 — Attention rotation snaps to the world's axes
+- Mike: when turning an Attention formation with the scroll wheel, it could never line up exactly with the world's horizontal and vertical edges; the closest he could get was slightly off vertical.
+- **Cause:** the wheel added 15° per notch to wherever the formation first faced (toward the player, any angle), so the steps never landed on 0° or 90°.
+- **Fix:** `command.gd` has a new `_turned_attention(facing, notch)` (static, testable).
+  - It steps on a fixed grid of `ATTENTION_TURN_DEG` in world angles: 0°, 15°, 30° and so on.
+  - From off the grid, the first notch goes to the next grid angle in that direction; after that, each notch is exactly 15°.
+  - So 0°, 90°, 180° and 270° are always reachable. Until the wheel is touched, the formation still faces the player.
+- Tested (`test_attention_grid.gd`):
+  - From 81.3°: one notch down lands on exactly 90°, then 105° and 120°. One notch up instead goes to 75°.
+  - From −97.4° and 179° the steps also land on the grid.
+  - 24 notches from 90° come back to exactly 90°.
+- `test_attention.gd` still passes: line and column form up within 0.03 m of their spots, facing the player.
+
+### 2026-10-30 — Turning equipment while deploying
+- Mike: let deployed equipment be rotated the same way as Attention.
+- `command.gd`: while placing, the scroll wheel turns the ghost with `_turned_attention()`, in 15° steps on the fixed world grid, so it can square up with the world's edges.
+  - The turn (`_placing_turn`) is kept between placings, so several can face the same way.
+  - The placed equipment gets the same rotation.
+  - The wheel doesn't zoom while placing.
+- `radio_station.gd` handles being turned:
+  - **`dish_heading` is now a world heading.** The dish sprite, its swept shadow (position and sweep) and the beam are worked out against the node's turn, and `beam_covers()` no longer adds the node's rotation.
+  - **The dish turns with the station:** a new station's dish faces the station's own south. `_apply_turn()` runs on `NOTIFICATION_TRANSFORM_CHANGED`, so the placement ghost's dish turns along with it even with processing off.
+  - **The station's shadow:** the image is moved by `R(−turn)·d − d` (d = the sun's offset at `SHADOW_HEIGHT_M` 0.6 m), so it still falls bottom-right. This is exact at no turn and close otherwise.
+  - **The baked lighting** turns with the station. That's a known compromise; it shows little on its flat parts.
+  - **Labels stay upright:** `keep_upright(label, anchor)` keeps them on the same side of their box on screen. This covers the dish's "[F] Tune dish" and big F, and the terminal's "[F] Interact" and troop timer.
+  - Boxes, zones and collisions just turn with the node.
+- Tested (`test_station_turn.gd`), with stations at 0°, 90° and 45°:
+  - The operator and dish boxes work.
+  - The dish starts at the station's south (90°, −180°, 135°), and the beam covers 20 m ahead.
+  - The shadow is corrected, and the prompts are at 0° in the world.
+  - A ghost (processing off) turned 30° after it's in: its dish heading goes from 90° to 120°.
+  - Screenshot: `assets/previews/radio_station_turned_preview.png`.
+
+### 2026-10-30 — Deployable sandbag wall
+- Mike sent a photo of a sandbag wall and asked for one as a deployable, twice the width of the characters.
+- **Art:** `blender/scripts/sandbags.py` (see the Asset List).
+  - The first render's bags looked like rounded loaves with gaps.
+  - They were reshaped into boxy, lumpy pillows packed tight (rounded-box footprint, flat bottoms, slumped and pinched ends, noise lumps) and lightened to match the photo.
+- **Game:** `scenes/sandbags.tscn` (a StaticBody2D root) and `scripts/sandbags.gd`.
+  - It's solid: a 73 × 30 px collision box, about the bottom footprint.
+  - Bullets stop in it. `bullet.gd` now calls `bullet_hit(point, direction)` on colliders that have one and aren't squares, and the wall puffs `HitDust` back toward the shooter.
+  - It has no `take_hit()`, so enemies can't see through it (`ai_soldier.gd _clear_view()`): squares behind it are hidden.
+  - **Shadow:** its own image's outline swept from the ground to `WALL_HEIGHT_M` (0.357 m) along the sun (`shadow_sweep.gdshader`), worked out against the node's turn, so it's correct at any angle. It's updated on `NOTIFICATION_TRANSFORM_CHANGED`, so the turning ghost's shadow follows.
+- **Deploying:** `command.gd` `DEPLOYABLES` adds `sandbags` ("Sandbags", with a staggered-bags icon in the pop-out). It's placed and turned like the radio station.
+- **Carried:** the player carries 6 (`player.gd` `deployables` and the override in `player.tscn`).
+- Tested (`test_sandbags.gd`):
+  - Three walls deployed through the command code, at 0°, 90° (6 notches) and 45° (3 back); 3 of the 6 left.
+  - The player walking into one stops 0.38 m from its centre.
+  - A bullet stops in it with one dust puff.
+  - An enemy 2 m beyond can't see the player behind it, but can see past its end.
+  - The shadow sweeps turn with each wall.
+  - Screenshot: `assets/previews/sandbags_ingame_preview.png`.
+
+### 2026-10-30 — Sandbags snap together and can be laid in rows
+- Mike: let sandbags snap onto adjacent ones, and hold and drag to lay several at once.
+- **Row-laid items:** `command.gd` `DEPLOYABLES` entries with a `line_px` (sandbags: 66 px = 0.77 m centre to centre) can be laid in rows.
+  - The art is 0.855 m long with rounded bag ends. At 73 px the joins showed small gaps, so 66 px lets the bags butt up into one continuous wall.
+- **Snapping** (`_snap_slot()`):
+  - The ghost jumps onto the free end of a wall already down when the mouse is within `SNAP_M` (0.4 m) of it, turned to carry that wall straight on. Either end works.
+  - Ends with a wall already there (`_occupied()`, within 0.6 × `line_px`) don't count.
+  - Laid walls are in the `"deployed_sandbags"` group: `command.gd` adds them, and `sandbags.gd` adds itself unless it's a placing ghost, so hand-placed ones count too.
+- **Hold and drag** (`_layout()`):
+  - For row-laid items the left button now puts down on release.
+  - While it's held, a row runs from the press point toward the mouse: one wall every `line_px`, as many as the drag covers and as the player carries.
+  - The row is turned to the drag's direction on the 15° grid. A row started on a snapped free end carries that wall's line on.
+  - There's one ghost per wall, red if out of reach or on top of another. On release `_place()` puts down every good one, with a refusal ping on the rest.
+  - A plain click still lays one, and the next placing starts turned the same way.
+- **Ghosts:** one ghost became a set (`_ghosts`). `_make_ghost()` now also clears the ghost's own collision layers when its root is a body (the sandbags' root is a StaticBody2D), so a ghost can't block anything. The radio station is unchanged: one ghost, click to place.
+- Tested (`test_sandbag_rows.gd`, through real left press/release events):
+  - **Click:** one wall, no ghosts left over.
+  - **Snapping:** the ghost snaps to both ends of a wall (±66 px).
+  - **Row:** a drag at about 95° lays 4 walls turned exactly 90°.
+  - **From a free end:** a drag started on one, pulled 30 px off the line, lays 3 walls exactly on the line.
+  - **Carry limit:** with 3 left, a 10-wall drag shows 3 ghosts (2 red, out of reach) and lays the 1 good one.
+  - Screenshot: `assets/previews/sandbags_rows_preview.png`.
+
+### 2026-10-30 — Sandbags: squares on top, proximity box, shooting over cover
+- Mike: his character should draw over the sandbags, not under. Each sandbag wall gets a proximity box (his sketch: a rectangle round the wall). A character inside it can shoot through the wall; from outside, a bullet has a 10% chance to go through and a 90% chance to hit the wall.
+- **Draw order:** the wall's Body sprite goes from z 2 to −2. It's now under the squares (0), whose shadows fall across it, under the sight triangles (−1), and over its own shadow (−10) and the ground.
+- **Proximity box** (`sandbags.gd`):
+  - Exports with tooltips: `zone_length_m` 1.0 along the wall, `zone_depth_m` 0.8 out from its middle on each side, and `through_chance` 0.1.
+  - It's drawn faintly in the command colour on the ground (z −3): always on the placing ghost, and on placed walls in command mode.
+  - `in_zone(point)` checks it in the wall's own frame, so it turns with the wall.
+- **Shooting:** `bullet.gd` asks cover with `lets_bullet_through(bullet)` once per wall, when it reaches it.
+  - **Inside:** the sandbags say yes if the shot was fired (`origin`) inside their box.
+  - **Outside:** they say yes `through_chance` of the time.
+  - **Going over:** the wall goes on the bullet's `_passed` list and is excluded from its ray from then on (up to 4 walls a tick).
+  - **Stopped:** otherwise the bullet stops with a sand puff as before.
+- **Sight:** `ai_soldier.gd _clear_view()` looks over cover whose `in_zone()` holds the viewer, so a square at a wall sees over it. From outside, the wall still hides whoever's behind it.
+- Tested (`test_sandbag_cover.gd`):
+  - 200 shots fired 0.5 m behind a wall: all 200 went over.
+  - 1,000 shots from 3 m away: 112 went over (about 100 expected).
+  - An enemy at the wall sees over it; 3 m back, the view is blocked.
+  - Screenshot (command mode: the box, the player drawn over the bags): `assets/previews/sandbags_cover_preview.png`.
+
+### 2026-10-30 — Climbing over sandbags
+- Mike: any unit, enemy or the player can move over a sandbag wall by walking into it. The movement is jostly, the character is raised a little (for the top-down view), and it moves 75% slower.
+- **Collision:** `sandbags.tscn` is now on collision layer 3 only (`collision_layer = 4`, mask 0). Squares' mask is layer 1, so they walk through it. Bullet rays and `_clear_view()` rays check every layer, so shots and sight lines still meet it.
+- **`sandbags.gd climb_at(point)`:** 0..1 for how far up the wall a square centred there is. It's measured from the footprint (`FOOT_PX` 73 × 30): it starts as the square's edge touches (`CLIMB_MARGIN_PX` 14) and is fully on top a little inside.
+- **`soldier.gd`:** each tick `_cover_under()` takes the most from walls within 80 px.
+  - **Speed:** `CLIMB_SPEED` 0.25 times its speed (smoothed over the first 30% of the climb). Its velocity is capped too, so it can't coast over on its run-up.
+  - **Lift:** `_climb_m` eases toward `climb × CLIMB_LIFT_M` (0.18 m) at 1.2 m/s. It adds to the hop height for the body's scale, the shadow's offset and the rifle.
+  - **Jostle:** while it moves on cover, a random jolt every 0.09–0.2 s kicks the existing jostle spring: up to 3.5 cm aside and 8° of twist, scaled by the climb. That spring was only used by anchored squares before.
+  - All of this is shared, so the player, squadmates and enemies all climb the same way.
+- Tested (`test_climb.gd`):
+  - **Player walking north across a wall:** 1.60 m/s, then 0.40 m/s on top with the lift rising to 0.180 m, then 1.60 m/s again past it. Crossing from 1 m south to 1 m north took 2.35 s (1.25 s on open ground), and it jolted.
+  - **Squadmate:** ordered across a turned wall, it ended 1.13 m past it, lifted up to 0.180 m.
+  - **Bullets:** 45 of 50 from 3 m still stopped.
+  - Screenshot mid-climb: `assets/previews/sandbags_climb_preview.png`.
+  - The earlier `test_sandbags.gd` check "player walking into the wall is blocked" no longer applies.
+
+### 2026-10-30 — Enemies shoot at squares behind sandbags
+- Mike: because about 10% of bullets get over sandbags, enemies should still shoot at anyone behind them.
+- **Before:** enemies only targeted squares they had a clear line of sight to, and a sandbag wall blocked that, so a square behind one was never shot at.
+- `ai_soldier.gd _clear_view(from, to, past_cover := false)`: with `past_cover`, cover that bullets can sometimes get over (`lets_bullet_through()`) doesn't block the view.
+- **Uses of it:**
+  - **Targeting (`enemy.gd _look_for_targets()`):** uses it, so an alerted enemy keeps shooting at someone behind sandbags, and some shots get over.
+  - **Positioning (`enemy.gd _score_spot()`):** a spot that sees its target only over sandbags scores `COVER_WEIGHT` (2.5) lower than a clean view, so enemies still fire but prefer to work round the side.
+  - **Noticing (`enemy.gd _check_intruders()`):** unchanged, so a calm enemy still doesn't notice someone hidden behind sandbags.
+  - **Squadmates (`squadmate.gd` return fire):** they shoot back at alerted enemies behind sandbags the same way.
+- Tested (`test_cover_ai.gd`), with a row of 3 walls and the player 0.45 m behind the middle one:
+  - **Calm:** an enemy 6 m away stayed calm for 2 s.
+  - **Alerted:** it targeted the player, fired 16 shots in 10 s and hit 11 times. It worked 3.7 m round the side, with a clean view 6.6 s of the 10.
+  - **Squadmate:** one behind the wall returned fire at the alerted enemy.
+- `test_enemy.gd` and `test_intrude.gd` still pass. With Mike's 16 enemies, one hadn't finished walking back to its post when the 40 s search-and-return window ended. That test has no sandbags, where the new code behaves exactly as before.
+
+### 2026-10-30 — Sandbags v2: one coherent wall, single stack
+- Mike: the tiling looked janky, like copies laid over each other instead of one wall. He also asked to drop the top strip of bags (in his screenshot, the upper single-bag courses sitting on the two-deep base) and keep just the horizontal stack.
+- **Art:** `sandbags.py` is rewritten to render joinable tiles (see the Asset List).
+  - It's a single stack now, with a slight step-in as it rises.
+  - The running bond carries across the joins.
+  - Finished ends use half bags.
+  - There are three middle variants.
+  - The first render's finished-end bags were placed half a bag too far out (cut at the image edge); fixed.
+  - The old `sandbags.png` is deleted.
+- **Game:** `sandbags.gd`.
+  - **Picking tiles:** `joined(side)` finds a wall `TILE_PX` (64) along this one's length, turned the same way (or end for end). `_update_tile()` picks single, start, end or a middle tile; the middle variant is fixed by grid cell, so it doesn't flicker.
+  - **Updating:** a new wall tells its neighbours to update (`_update_neighbours()`), and a leaving wall tells them once it's out of the group (`_on_leaving()`). The placing ghost picks its tile from the walls already down, so it shows as joining on when snapped.
+  - **Shadow:** drawn by the script, no longer the sweep shader. The footprint is swept along the sun (convex hull, in the turned frame). At a join the footprint carries on past the join and the shadow is clipped there, so adjacent tiles draw one unbroken band without overlapping.
+  - **Collision:** `FOOT_PX` and the collision box are now 64 × 16.4 px.
+- **Laying:** `command.gd` sandbags `line_px` is now 64, the tile length.
+- Tested (`test_sandbag_tiles.gd`, through real press/release events):
+  - **Row:** a dragged row of 5 came out start, mid_1, mid_2, mid_0, end. A lone wall is single.
+  - **Ghost:** snapped onto a row's end, it shows end.
+  - **Removing:** taking the middle wall away turns its neighbours into end and start. Snapping it back restores the row.
+  - **Turned:** a 30° dragged row joins the same way.
+  - **Still passing:** the climb, cover and cover-AI tests (crossing now takes 2.1 s, with the thinner wall).
+

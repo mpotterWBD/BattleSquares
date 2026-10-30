@@ -9,7 +9,9 @@ extends Node2D
 ##     click anywhere within it and the shot goes exactly there
 ##   - past it, out to the mouse, a wedge as wide as a shot at each distance
 ##     could stray, shading from white to red as it opens up, with an arc
-##     across it at the mouse marking how far either side the shot may land
+##     across it at the mouse marking how far either side the shot may land,
+##     and beside it the chance the shot goes into the ground short of the
+##     mouse (rifle.gd ground_hit_chance_at())
 ## Drawn in the world (top_level), over the squares.
 
 const World = preload("res://scripts/world.gd")
@@ -19,6 +21,8 @@ const WILD_COLOR := Color(1.0, 0.3, 0.2, 0.9)     ## the wedge at its widest spr
 const WEDGE_FILL_ALPHA := 0.18
 const TICK_M := 0.15          ## half-length of the tick at the end of the accurate range
 const WEDGE_STEPS := 24
+const LABEL_SIZE := 20
+const LABEL_GAP_PX := 14.0    ## from the arc's end to the ground-hit label
 
 ## The weapon whose accuracy to show (rifle.gd) and the world point being
 ## aimed at. Set by the player.
@@ -43,7 +47,7 @@ func _draw() -> void:
 	var muzzle: Vector2 = weapon.muzzle_position()
 	var dir := Vector2.from_angle(weapon.aim)
 	var side := dir.orthogonal()
-	var accurate: float = weapon.aim_accurate_m
+	var accurate: float = weapon.accurate_m()   # longer while standing still
 	var reach := muzzle.distance_to(target) / px
 	var edge := muzzle + dir * accurate * px
 
@@ -78,6 +82,14 @@ func _draw() -> void:
 		if far_spread > 0.0:
 			draw_arc(muzzle, reach * px, weapon.aim - deg_to_rad(far_spread),
 					weapon.aim + deg_to_rad(far_spread), 16, far_color, 2.5, true)
+		var ground: float = weapon.ground_hit_chance_at(reach)
+		if ground > 0.0:
+			var at := muzzle + Vector2.from_angle(weapon.aim + deg_to_rad(far_spread)) * reach * px
+			at += Vector2.from_angle(weapon.aim + PI / 2) * LABEL_GAP_PX
+			var text := "%d%% ground" % roundi(ground * 100.0)
+			var font := ThemeDB.fallback_font
+			draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_SIZE, 4, Color(0, 0, 0, 0.6))
+			draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_SIZE, far_color)
 
 	# The accurate range: solid, with a tick across its end.
 	draw_line(muzzle, edge, SOLID_COLOR, 2.0, true)

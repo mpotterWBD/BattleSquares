@@ -21,7 +21,9 @@ extends Node2D
 ##     up behind or in front of the player, keeping station as it moves
 ##     (scripts/squadmate.gd); Attention (held, then a shape) calls them to
 ##     fall in: the next left click picks where (a preview of their spots
-##     follows the mouse; the scroll wheel turns it, 15 degrees a notch;
+##     follows the mouse; the scroll wheel turns it, 15 degrees a notch on a
+##     fixed grid (0, 15, 30 ... degrees), so it can face exactly along the
+##     world's edges;
 ##     right click cancels), and they form up there in a line or a column,
 ##     facing the player unless turned, and stand still; Disperse breaks
 ##     them out of formation.
@@ -35,7 +37,13 @@ extends Node2D
 ##     Equipment, choose an item from the pop-out, and a see-through ghost
 ##     follows the mouse. Click to place it; it must go within the player's
 ##     deploy reach (player.gd `deploy_reach_m`, a brighter ring while
-##     placing; the ghost turns red outside it). Right click cancels. The
+##     placing; the ghost turns red outside it). The scroll wheel turns it,
+##     15 degrees a notch on the same fixed grid as Attention, so it can
+##     line up with the world's edges. Items laid in rows (sandbags, with a
+##     `line_px`) snap onto the free end of one already down, and holding
+##     the button and dragging lays a row of them, one ghost each, put down
+##     on release (as many as fit and as are carried; red ones out of reach
+##     or on top of another are skipped). Right click cancels. The
 ##     player carries a limited number of each (player.gd `deployables`).
 ## The circle limits who hears and can be selected, not where they can go.
 ## Anyone who leaves the circle drops out of the selection (they can't hear
@@ -84,16 +92,20 @@ const DEFAULT_SHAPE := "column"
 ## the player has is in player.gd `deployables`, by the same id.
 const DEPLOYABLES := [
 	{id = "radio_station", text = "Radio station", scene = preload("res://scenes/radio_station.tscn")},
+	# `line_px`: laid end to end this far apart (centre to centre): it snaps
+	# onto the open ends of ones already down, and a held drag lays a row.
+	{id = "sandbags", text = "Sandbags", scene = preload("res://scenes/sandbags.tscn"), line_px = 64.0},
 ]
 const DISPERSE_STEP_M := 0.9     ## how far Disperse sends each squadmate out from the player
 const DISPERSE_JITTER_DEG := 30.0   ## randomness in each one's direction, so they fan out
 ## Attention: rows and files are spaced as in Follow me / Lead (squadmate.gd).
 ## A spot picked closer to the player than this faces the way the player does.
 const ATTENTION_MIN_M := 0.5
-const ATTENTION_TURN_DEG := 15.0   ## how far one scroll-wheel notch turns the formation
+const ATTENTION_TURN_DEG := 15.0   ## how far one scroll-wheel notch turns the formation (or equipment being placed)
 const FORMATIONS := ["follow", "lead"]   ## orders that put squadmates in a formation
 const MENU_GAP_PX := 36.0   ## screen gap between the player's square and the menus
 const MENU_PICKING_ALPHA := 0.35   ## the menus while a click on the field is wanted
+const SNAP_M := 0.4   ## a row-laid item's ghost snaps onto a free end within this of the mouse
 const GHOST_OK := Color(0.7, 1.0, 0.7, 0.7)       ## placement ghost within deploy reach
 const GHOST_BAD := Color(1.0, 0.45, 0.45, 0.6)    ## ...and outside it
 
@@ -135,10 +147,18 @@ var _shape_popout: HoldPopout
 var _shape_order := ""
 var _deploy_popout: HoldPopout
 
-## Equipment placement: the deployable being placed ("" = none), its ghost,
-## and where the mouse is in the world.
+## Equipment placement: the deployable being placed ("" = none), its ghosts
+## (one per spot it would go down, several while dragging out a row), and
+## where the mouse is in the world.
 var _placing := ""
-var _ghost: Node2D
+## Which way the equipment being placed is turned (radians, 0 = as built).
+## Kept between placings, so a run of them can all face the same way.
+var _placing_turn := 0.0
+var _ghosts: Array[Node2D] = []
+## Row-laid items: where the left button went down (INF = not held), and the
+## free end it snapped onto there ({} if none; see _snap_slot()).
+var _drag_from := Vector2.INF
+var _drag_slot := {}
 var _mouse_world := Vector2.ZERO
 
 ## Fire order waiting for its target: the squadmates it went to (empty =
@@ -174,12 +194,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		_mouse_world = _to_world(mouse.position)
 	var button := event as InputEventMouseButton
 	if _placing != "":
-		# Placing equipment: left click puts it down, right click cancels.
+		# Placing equipment: left click puts it down (row-laid items: on
+		# release, after maybe dragging out a row), right click cancels, the
+		# scroll wheel turns it (instead of zooming).
 		if button and button.pressed:
 			if button.button_index == MOUSE_BUTTON_LEFT:
-				_try_place()
+				if _item().has("line_px"):
+					_drag_from = _mouse_world
+					_drag_slot = _snap_slot(_mouse_world)
+				else:
+					_place(_layout())
 			elif button.button_index == MOUSE_BUTTON_RIGHT:
 				_stop_placing()
+			elif button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+				_placing_turn = _turned_attention(_placing_turn,
+						-1 if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
+			get_viewport().set_input_as_handled()
+		elif button and button.button_index == MOUSE_BUTTON_LEFT and _drag_from != Vector2.INF:
+			_place(_layout())
+			_drag_from = Vector2.INF
 			get_viewport().set_input_as_handled()
 		return
 	if not _arming.is_empty():
@@ -202,8 +235,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			elif button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 				if is_nan(_attention_facing):
 					_attention_facing = _attention_layout(_mouse_world)[2]   # from where it faces now
-				var notch := -1.0 if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0
-				_attention_facing = wrapf(_attention_facing + notch * deg_to_rad(ATTENTION_TURN_DEG), -PI, PI)
+				_attention_facing = _turned_attention(_attention_facing,
+						-1 if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
 			get_viewport().set_input_as_handled()
 		return
 	var motion := event as InputEventMouseMotion
@@ -269,8 +302,7 @@ func _process(delta: float) -> void:
 		if _placing != "":
 			_stop_placing()
 	if _placing != "":
-		_ghost.position = _mouse_world
-		_ghost.modulate = GHOST_OK if _can_place_at(_mouse_world) else GHOST_BAD
+		_update_ghosts()
 
 	for ping in _pings:
 		ping.age += delta
@@ -350,7 +382,7 @@ func _draw_circles() -> void:
 	if World.radio_commanding:
 		_draw_radio_circles(speaker)
 	var origin: Vector2 = speaker.global_position
-	var radius: float = speaker.aura_radius_m * World.PX_PER_M
+	var radius: float = speaker.command_circle_m() * World.PX_PER_M   # bigger over the radio
 	_ground_layer.draw_circle(origin, radius, Color(COLOR, AURA_FILL_ALPHA))
 	_ground_layer.draw_arc(origin, radius, 0.0, TAU, 96, Color(COLOR, CONE_EDGE_ALPHA), 1.5, true)
 	if _placing != "":
@@ -534,6 +566,22 @@ func _give_order(id: String, shape := DEFAULT_SHAPE) -> void:
 		_pings.append({pos = unit.global_position, age = 0.0})
 
 
+## The Attention formation's facing (radians) after one scroll-wheel notch
+## (`notch` 1 or -1) from `facing`; also turns equipment being placed. It steps on a fixed grid of
+## ATTENTION_TURN_DEG in world angles (0, 15, 30 ... degrees), so the
+## formation can line up exactly with the world's edges: from off the grid,
+## the first notch goes to the next grid angle that way.
+static func _turned_attention(facing: float, notch: int) -> float:
+	var step := deg_to_rad(ATTENTION_TURN_DEG)
+	var nearest := roundi(facing / step)
+	var steps: int
+	if absf(facing - nearest * step) < 0.001:
+		steps = nearest + notch
+	else:
+		steps = floori(facing / step) + (1 if notch > 0 else 0)
+	return wrapf(steps * step, -PI, PI)
+
+
 ## Attention: where each of _attention_units stands if they fall in with
 ## the front of the formation at `front`, as [units, spots, facing]. They
 ## face the player, unless the scroll wheel has turned the formation
@@ -672,22 +720,115 @@ func _start_placing(id: String) -> void:
 	if _carried(id) <= 0:
 		return
 	_placing = id
-	var item: Dictionary = DEPLOYABLES[DEPLOYABLES.find_custom(func(d): return d.id == id)]
-	_ghost = item.scene.instantiate()
-	# Just a picture: no collisions, nothing running.
-	_ghost.process_mode = Node.PROCESS_MODE_DISABLED
-	for body in _ghost.find_children("*", "CollisionObject2D"):
-		body.collision_layer = 0
-		body.collision_mask = 0
-	_ghost.position = _mouse_world
-	add_child(_ghost)
+	_drag_from = Vector2.INF
+	_update_ghosts()
 
 
 func _stop_placing() -> void:
 	_placing = ""
-	if _ghost:
-		_ghost.queue_free()
-		_ghost = null
+	_drag_from = Vector2.INF
+	for ghost in _ghosts:
+		ghost.queue_free()
+	_ghosts.clear()
+
+
+## The DEPLOYABLES entry being placed.
+func _item() -> Dictionary:
+	return DEPLOYABLES[DEPLOYABLES.find_custom(func(d): return d.id == _placing)]
+
+
+## A see-through copy of the item being placed: just a picture, with no
+## collisions (its own body included) and nothing running.
+func _make_ghost() -> Node2D:
+	var ghost: Node2D = _item().scene.instantiate()
+	ghost.process_mode = Node.PROCESS_MODE_DISABLED
+	var bodies := ghost.find_children("*", "CollisionObject2D")
+	if ghost is CollisionObject2D:
+		bodies.append(ghost)
+	for body in bodies:
+		body.collision_layer = 0
+		body.collision_mask = 0
+	add_child(ghost)
+	return ghost
+
+
+## One ghost per spot the item would go down at now, red where it can't.
+func _update_ghosts() -> void:
+	var spots := _layout()
+	while _ghosts.size() < spots.size():
+		_ghosts.append(_make_ghost())
+	while _ghosts.size() > spots.size():
+		_ghosts.pop_back().queue_free()
+	for i in spots.size():
+		_ghosts[i].position = spots[i].pos
+		_ghosts[i].rotation = spots[i].turn
+		_ghosts[i].modulate = GHOST_OK if _spot_ok(spots[i].pos) else GHOST_BAD
+
+
+## Where the item being placed would go down, as [{pos, turn}]. One spot at
+## the mouse (or the free end it snaps onto), unless the left button is
+## held on a row-laid item: then a row from where it went down toward the
+## mouse, one every `line_px`, as many as fit and as the player carries.
+## A row started on a free end carries that wall on; otherwise it runs
+## along the drag, turned on the same 15-degree grid as the scroll wheel.
+func _layout() -> Array:
+	var item := _item()
+	var single := {pos = _mouse_world, turn = _placing_turn}
+	if not item.has("line_px"):
+		return [single]
+	if _drag_from == Vector2.INF:
+		var snap := _snap_slot(_mouse_world)
+		return [snap if not snap.is_empty() else single]
+	var step: float = item.line_px
+	var start: Vector2 = _drag_slot.pos if not _drag_slot.is_empty() else _drag_from
+	var drag := _mouse_world - start
+	var dir: Vector2
+	var turn: float
+	if not _drag_slot.is_empty():
+		dir = _drag_slot.dir
+		turn = _drag_slot.turn
+	elif drag.length() < step / 2.0:
+		return [{pos = start, turn = _placing_turn}]
+	else:
+		var grid := deg_to_rad(ATTENTION_TURN_DEG)
+		turn = wrapf(roundi(drag.angle() / grid) * grid, -PI, PI)
+		dir = Vector2.from_angle(turn)
+	var count := mini(floori(maxf(drag.dot(dir), 0.0) / step + 0.5) + 1, maxi(_carried(_placing), 1))
+	var spots := []
+	for i in count:
+		spots.append({pos = start + dir * step * i, turn = turn})
+	return spots
+
+
+## The free end of a row-laid item already down nearest `at` (within
+## SNAP_M), as {pos, turn, dir}: where the next one goes to carry that wall
+## on, its turn, and the way the wall would carry on from there. {} if none.
+func _snap_slot(at: Vector2) -> Dictionary:
+	var item := _item()
+	if not item.has("line_px"):
+		return {}
+	var best := {}
+	var reach := SNAP_M * World.PX_PER_M
+	for laid: Node2D in get_tree().get_nodes_in_group("deployed_" + _placing):
+		var axis := Vector2.from_angle(laid.global_rotation)
+		for side in [-1.0, 1.0]:
+			var slot: Vector2 = laid.global_position + axis * side * item.line_px
+			var d := at.distance_to(slot)
+			if d < reach and not _occupied(slot):
+				reach = d
+				best = {pos = slot, turn = laid.global_rotation, dir = axis * side}
+	return best
+
+
+## Whether one of the item being placed is already down at `point`.
+func _occupied(point: Vector2) -> bool:
+	var item := _item()
+	if not item.has("line_px"):
+		return false
+	for laid: Node2D in get_tree().get_nodes_in_group("deployed_" + _placing):
+		if laid.global_position.distance_to(point) < item.line_px * 0.6:
+			return true
+	return false
 
 
 ## Equipment has to go down within the player's deploy reach.
@@ -696,17 +837,33 @@ func _can_place_at(point: Vector2) -> bool:
 	return speaker != null and speaker.global_position.distance_to(point) <= speaker.deploy_reach_m * World.PX_PER_M
 
 
-func _try_place() -> void:
-	if not _can_place_at(_mouse_world):
-		_pings.append({pos = _mouse_world, age = 0.0, color = REFUSE_COLOR})
-		return
-	var item: Dictionary = DEPLOYABLES[DEPLOYABLES.find_custom(func(d): return d.id == _placing)]
-	var placed: Node2D = item.scene.instantiate()
-	placed.position = _mouse_world
-	get_parent().add_child(placed)   # into the world, beside the squares
-	_speaker().deployables[_placing] = _carried(_placing) - 1
-	_pings.append({pos = _mouse_world, age = 0.0})
-	_stop_placing()
+func _spot_ok(point: Vector2) -> bool:
+	return _can_place_at(point) and not _occupied(point)
+
+
+## Puts the item down at each spot it can go (within reach, not on top of
+## another), while the player has any left; a refusal ping where it can't.
+## Placing ends once anything went down.
+func _place(spots: Array) -> void:
+	var item := _item()
+	var placed_any := false
+	for spot in spots:
+		if _carried(_placing) <= 0:
+			break
+		if not _spot_ok(spot.pos):
+			_pings.append({pos = spot.pos, age = 0.0, color = REFUSE_COLOR})
+			continue
+		var placed: Node2D = item.scene.instantiate()
+		placed.position = spot.pos
+		placed.rotation = spot.turn
+		placed.add_to_group("deployed_" + _placing)   # for snapping onto it
+		get_parent().add_child(placed)   # into the world, beside the squares
+		_speaker().deployables[_placing] = _carried(_placing) - 1
+		_pings.append({pos = spot.pos, age = 0.0})
+		placed_any = true
+	if placed_any:
+		_placing_turn = spots[0].turn   # the next one starts turned the same way
+		_stop_placing()
 
 
 # ------------------------------------------------------------------- menus --
@@ -816,8 +973,18 @@ func _draw_shape_icon(icon: Control, shape: Dictionary) -> void:
 
 ## A deployable's icon. The radio station: a guyed mast on a tripod with
 ## radio waves coming off the top.
-func _draw_deploy_icon(icon: Control, _item: Dictionary) -> void:
+func _draw_deploy_icon(icon: Control, item: Dictionary) -> void:
 	var c := icon.size / 2.0
+	if item.id == "sandbags":   # three courses of bags, staggered
+		for row in 3:
+			var y := c.y + 6.0 - row * 7.0
+			var xs := [-9.0, 0.0, 9.0] if row % 2 == 0 else [-4.5, 4.5]
+			if row == 2:
+				xs = [-4.5, 4.5]
+			for x in xs:
+				icon.draw_rect(Rect2(c.x + x - 4.5, y - 3.0, 9.0, 6.0), Color(COLOR, 0.35))
+				icon.draw_rect(Rect2(c.x + x - 4.5, y - 3.0, 9.0, 6.0), COLOR, false, 1.5)
+		return
 	var top := c + Vector2(-4, -12)
 	var foot := c + Vector2(-4, 12)
 	icon.draw_line(foot, top, COLOR, 2.0, true)                            # mast

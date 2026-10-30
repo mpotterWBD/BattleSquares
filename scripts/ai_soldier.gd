@@ -136,6 +136,14 @@ func _wants_to_fire() -> bool:
 	return true
 
 
+## How far off its target is: past the rifle's solid line its shots stray
+## more (subclasses' _shot_spread_deg()) and may go into the ground.
+func _shot_distance_m() -> float:
+	if not is_attacking():
+		return 0.0
+	return _rifle.muzzle_position().distance_to(attack_target.global_position) / World.PX_PER_M
+
+
 ## Extra say over firing this tick (e.g. an enemy still reacting). Yes by default.
 func _ready_to_fire() -> bool:
 	return true
@@ -155,7 +163,11 @@ func _line_blocked() -> bool:
 
 ## Whether nothing solid but squares lies between `from` and `to`: squares
 ## don't block the view (they're seen past), stations and helicopters do.
-func _clear_view(from: Vector2, to: Vector2) -> bool:
+## Low cover (sandbags) blocks it unless the viewer is at the cover (its
+## proximity box), or `past_cover`: looking for someone to shoot, it's
+## enough to see over cover a bullet can sometimes get over
+## (lets_bullet_through()), so whoever's behind it still gets shot at.
+func _clear_view(from: Vector2, to: Vector2, past_cover := false) -> bool:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(from, to)
 	var skip: Array[RID] = []
@@ -164,7 +176,11 @@ func _clear_view(from: Vector2, to: Vector2) -> bool:
 		var hit := space.intersect_ray(query)
 		if hit.is_empty():
 			return true
-		if not hit.collider.has_method("take_hit"):
+		# Squares don't block the view, nor does cover it's standing at
+		# (sandbags.gd in_zone(): it looks over the top).
+		var over_cover: bool = hit.collider.has_method("in_zone") and (past_cover
+				or hit.collider.in_zone(from))
+		if not hit.collider.has_method("take_hit") and not over_cover:
 			return false
 		skip.append(hit.rid)
 	return true

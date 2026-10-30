@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/road.gd" id="1_road"]
+
+[sub_resource type="Curve2D" id="Curve2D_road"]
+resource_local_to_scene = true
+bake_interval = 8.0
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1024, 0),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[node name="Road" type="Path2D"]
+curve = SubResource("Curve2D_road")
+script = ExtResource("1_road")

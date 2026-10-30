@@ -322,4 +322,5 @@ def main():
     print("Saved", OUT_PREVIEW)
 
 
-main()
+if __name__ == "__main__":   # road_asphalt.py imports this module for its grass colours
+    main()

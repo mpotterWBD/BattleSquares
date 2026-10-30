@@ -93,6 +93,11 @@ func _ready() -> void:
 	get_node(pad_path).add_child(_pad_prompt)
 	_pad_timer = _make_pad_timer()
 	get_node(pad_path).add_child(_pad_timer)
+	# Upright and above/below the box however the station is turned.
+	var station := get_parent()
+	if station.has_method("keep_upright"):
+		station.keep_upright(_pad_prompt, get_node(pad_path))
+		station.keep_upright(_pad_timer, get_node(pad_path))
 
 
 func _unhandled_input(event: InputEvent) -> void:

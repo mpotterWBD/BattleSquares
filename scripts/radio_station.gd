@@ -24,6 +24,18 @@ extends Node2D
 ## The dish is its own sprite, lit from straight overhead so it can turn to
 ## any heading; its shadow is its outline swept across the dish's height
 ## range (shaders/shadow_sweep.gdshader).
+##
+## The station can be deployed turned (command.gd: the scroll wheel while
+## placing, in 15 degree steps). Everything turns with the node: platform,
+## desk, boxes, zones and collisions. `dish_heading` is a world heading, so
+## the dish, its shadow and the beam are worked out against the node's
+## turn; the dish turns along with the station while it's being placed
+## (_apply_turn()). The station's baked lighting turns with it (it was
+## rendered under the fixed top-left sun), which shows little on its flat
+## parts. Its shadow image is moved so the shadow still falls to the
+## bottom-right: as if everything stood SHADOW_HEIGHT_M up. The labels on
+## the boxes stay upright and on the same side of their box on screen
+## (keep_upright()).
 
 signal dish_tuned(heading: float)
 
@@ -34,6 +46,9 @@ const DISH_AT := Vector2(0, 93.9)         ## the dish's post; matches DISH_AT in
 const DISH_LOW_M := 0.78                  ## the turning parts' lowest and highest points (head to top of the rim), for their shadow
 const DISH_HIGH_M := 1.72
 const DISH_TEXEL_PX := 0.5                ## the dish image is rendered at 2x the game's pixel density
+## Turned, the station's shadow image is moved as if it were all cast from
+## this height: about the desk's. Exact at no turn.
+const SHADOW_HEIGHT_M := 0.6
 const BEAM_LENGTH_M := 60.0
 const BEAM_HALF_DEG := 18.0
 const BEAM_COLOR := World.COMMAND_COLOR    ## same green as the command circles and menus
@@ -43,8 +58,9 @@ const TURN_DEG_PER_S := 12.0    ## the dish's top turning speed: half a turn tak
 const TURN_ACCEL_DEG := 10.0    ## per second per second, winding up to that speed
 const TURN_EASE_PER_S := 1.2    ## slows down over the last stretch: speed <= this x degrees left
 
-## Where the dish points, in radians (0 = right, PI/2 = down). It's built
-## facing south (down).
+## Where the dish points, in world radians (0 = right, PI/2 = down). It's
+## built facing south (down) from the station, so a turned station's dish
+## starts turned with it.
 @export var dish_heading := PI / 2
 
 ## Where the dish has been told to point; it turns toward this.
@@ -63,6 +79,10 @@ var _free_player_on_release := false
 var _wheel_layer: CanvasLayer
 var _wheel: Control
 var _pad_key: Label
+## Labels kept upright on the turned station: [label, anchor node, its
+## centre from the anchor's position on screen] (keep_upright()).
+var _upright: Array = []
+var _turned_by := 0.0   ## the turn the dish heading has been carried along for
 
 @onready var _dish: Sprite2D = $Dish
 @onready var _dish_shadow: Sprite2D = $DishShadow
@@ -76,6 +96,8 @@ func _ready() -> void:
 	_beam.draw.connect(_draw_beam)
 	_pad_key = UiStyle.pad_key()
 	$DishStandBox.add_child(_pad_key)
+	keep_upright(_pad_key, $DishStandBox)
+	keep_upright(_prompt, $DishStandBox)
 	_wheel_layer = CanvasLayer.new()
 	_wheel_layer.visible = false
 	add_child(_wheel_layer)
@@ -84,7 +106,57 @@ func _ready() -> void:
 	_wheel.draw.connect(_draw_wheel)
 	_wheel_layer.add_child(_wheel)
 	target_heading = dish_heading
+	set_notify_transform(true)
+	_apply_turn()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSFORM_CHANGED and is_node_ready():
+		_apply_turn()
+
+
+## Brings everything that's worked out in world terms up to date with the
+## node's turn: the dish (carried round with the station), its shadow,
+## the station's shadow and the upright labels.
+func _apply_turn() -> void:
+	var turn := global_rotation - _turned_by
+	if absf(turn) > 0.0001:
+		dish_heading = wrapf(dish_heading + turn, -PI, PI)
+		target_heading = wrapf(target_heading + turn, -PI, PI)
+		_pick = wrapf(_pick + turn, -PI, PI)
+		_turned_by = global_rotation
 	_update_dish()
+	# Keep the shadow falling bottom-right: the image is the shadow of the
+	# unturned station, so undo its offset in the station's frame and redo
+	# it in the world's (q = R(-turn) d - d, d = the sun's offset).
+	var d := World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * SHADOW_HEIGHT_M * World.PX_PER_M
+	$Shadow.position = d.rotated(-global_rotation) - d
+	_place_upright()
+
+
+## Keeps `label` (a child of this station or of one of its nodes) upright
+## however the station is turned, its centre where it is now relative to
+## `anchor` on screen (e.g. just under a box stays just under it).
+func keep_upright(label: Control, anchor: Node2D) -> void:
+	var holder := label.get_parent() as Node2D
+	var centre := label.position + label.size / 2.0   # in holder's frame, unturned
+	if holder != anchor:
+		centre = anchor.transform.affine_inverse() * centre
+	_upright.append([label, anchor, centre])
+	_place_upright()
+
+
+func _place_upright() -> void:
+	for entry in _upright:
+		var label: Control = entry[0]
+		var anchor: Node2D = entry[1]
+		if not is_instance_valid(label):
+			continue
+		var holder := label.get_parent() as Node2D
+		var at: Vector2 = anchor.global_position + entry[2]
+		label.pivot_offset = label.size / 2.0
+		label.rotation = -holder.global_rotation
+		label.position = holder.get_global_transform().affine_inverse() * at - label.size / 2.0
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -114,6 +186,7 @@ func _process(delta: float) -> void:
 		var player = _player()
 		if player and not tuning:
 			player.busy = false
+	_place_upright()   # labels can change size as their text changes
 	var at_dish := _player_at_dish()
 	_prompt.visible = at_dish and not tuning
 	_pad_key.visible = _prompt.visible
@@ -141,7 +214,7 @@ func beam_covers(point: Vector2) -> bool:
 	var to := point - to_global(DISH_AT)
 	if to.length() > BEAM_LENGTH_M * World.PX_PER_M:
 		return false
-	return absf(angle_difference(dish_heading + global_rotation, to.angle())) <= deg_to_rad(BEAM_HALF_DEG)
+	return absf(angle_difference(dish_heading, to.angle())) <= deg_to_rad(BEAM_HALF_DEG)
 
 
 func _player_at_dish() -> bool:
@@ -199,14 +272,16 @@ func _turn(delta: float) -> void:
 
 
 func _update_dish() -> void:
-	# The image shows the dish facing down (PI/2).
-	_dish.rotation = dish_heading - PI / 2
+	# The image shows the dish facing down (PI/2). The sprites are in the
+	# station's (maybe turned) frame; the heading and the sun are the world's.
+	_dish.rotation = dish_heading - PI / 2 - global_rotation
 	_dish_shadow.rotation = _dish.rotation
 	var sun := World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * World.PX_PER_M
-	_dish_shadow.position = DISH_AT + sun * DISH_LOW_M
+	_dish_shadow.position = DISH_AT + (sun * DISH_LOW_M).rotated(-global_rotation)
 	# How far the shadow stretches from the dish's lowest to highest point,
 	# in the dish image's own (rotated, half-size) pixels.
-	var sweep: Vector2 = (sun * (DISH_HIGH_M - DISH_LOW_M)).rotated(-_dish_shadow.rotation) / DISH_TEXEL_PX
+	var sweep: Vector2 = ((sun * (DISH_HIGH_M - DISH_LOW_M)).rotated(-(global_rotation + _dish_shadow.rotation))
+			/ DISH_TEXEL_PX)
 	(_dish_shadow.material as ShaderMaterial).set_shader_parameter("sweep", sweep)
 
 
@@ -218,9 +293,10 @@ func _draw_beam() -> void:
 	var half := deg_to_rad(BEAM_HALF_DEG)
 	var near := Color(BEAM_COLOR, World.CONE_NEAR_ALPHA)
 	var far := Color(BEAM_COLOR, World.CONE_FAR_ALPHA)
+	var heading := dish_heading - global_rotation   # in the station's frame, where the beam is drawn
 	var rim := PackedVector2Array()
 	for i in 25:
-		rim.append(DISH_AT + Vector2.from_angle(dish_heading - half + 2.0 * half * i / 24.0) * reach)
+		rim.append(DISH_AT + Vector2.from_angle(heading - half + 2.0 * half * i / 24.0) * reach)
 	for i in rim.size() - 1:
 		_beam.draw_polygon(PackedVector2Array([DISH_AT, rim[i], rim[i + 1]]),
 				PackedColorArray([near, far, far]))

@@ -9,7 +9,8 @@ aura_radius_m = 8.0
 radio_circle_radius_m = 4.95
 deploy_reach_m = 2.475
 deployables = {
-"radio_station": 1
+"radio_station": 1,
+"sandbags": 6
 }
 formation_turn_dps = 90.0
 
@@ -18,3 +19,5 @@ aim_accurate_m = 3.0
 aim_falloff_m = 3.1
 aim_max_spread_deg = 18.0
 aim_spread_curve = 0.1
+aim_max_ground_hit_pct = 60.0
+aim_still_multiplier = 2.8

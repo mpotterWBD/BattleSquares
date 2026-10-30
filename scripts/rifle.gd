@@ -68,6 +68,25 @@ const FLASH_TIME_S := 0.05
 ## 1 = steadily; above 1 = barely at first, then quickly near the end;
 ## below 1 = quickly at first, then levelling off.
 @export_range(0.1, 4.0, 0.1) var aim_spread_curve := 1.0
+## The chance, once you're Aim Falloff M past the solid line, that a shot
+## goes into the ground short of where you aimed (kicking up a puff of dust)
+## instead of carrying on. None within the solid line; it grows past it
+## like the spread does.
+@export_range(0.0, 100.0, 1.0, "suffix:%") var aim_max_ground_hit_pct := 40.0
+## How the ground-hit chance grows between the end of the solid line and its
+## worst: 1 = steadily; above 1 = barely at first, then quickly near the end;
+## below 1 = quickly at first, then levelling off.
+@export_range(0.1, 4.0, 0.1) var aim_ground_hit_curve := 1.0
+## Standing still steadies the aim: the solid line and the falloff both
+## grow to this many times their length (2 = 200%, twice as long). Moving
+## puts them straight back to normal.
+@export_range(1.0, 5.0, 0.05, "suffix:x") var aim_still_multiplier := 2.0
+## How long after stopping the aim takes to steady fully (the line grows
+## smoothly over this time).
+@export_range(0.0, 3.0, 0.05, "suffix:s") var aim_steady_s := 0.5
+## Moving slower than this still counts as standing still (so a nudge or a
+## hit doesn't spoil the aim), in metres per second.
+@export_range(0.0, 2.0, 0.05, "suffix:m/s") var aim_still_below_mps := 0.3
 
 @export_group("")
 ## The rifle's shadow sprite, darkened and offset by the sun. Leave as is
@@ -76,6 +95,10 @@ const FLASH_TIME_S := 0.05
 
 ## Where the rifle points, in radians (0 = right, -PI/2 = up).
 var aim := -PI / 2
+
+## How steady the aim is: 0 moving, rising to 1 after standing still for
+## `aim_steady_s` (update_steadiness()).
+var steady := 0.0
 
 var _cooldown := 0.0
 var _recoil_m := 0.0
@@ -139,20 +162,61 @@ func muzzle_position() -> Vector2:
 	return global_position + Vector2.from_angle(aim) * LENGTH_M * World.PX_PER_M * scale.x
 
 
+## Called every tick with how fast the holder is moving (px/s): standing
+## still steadies the aim over `aim_steady_s`; moving loses it at once.
+func update_steadiness(speed: float, delta: float) -> void:
+	if speed > aim_still_below_mps * World.PX_PER_M:
+		steady = 0.0
+	elif aim_steady_s <= 0.0:
+		steady = 1.0
+	else:
+		steady = minf(steady + delta / aim_steady_s, 1.0)
+
+
+## The solid line's length right now, in metres: `aim_accurate_m`, longer
+## while standing still (`aim_still_multiplier`).
+func accurate_m() -> float:
+	return aim_accurate_m * _steady_scale()
+
+
+## How far past the solid line the spread takes to reach its worst right
+## now, in metres (`aim_falloff_m`, longer while standing still).
+func falloff_m() -> float:
+	return aim_falloff_m * _steady_scale()
+
+
+func _steady_scale() -> float:
+	return lerpf(1.0, aim_still_multiplier, smoothstep(0.0, 1.0, steady))
+
+
 ## How far either side of the aim (degrees) a shot at a point `distance_m`
 ## from the muzzle may stray. See `aim_accurate_m`.
 func spread_at(distance_m: float) -> float:
-	var past := distance_m - aim_accurate_m
+	return aim_max_spread_deg * pow(_past_solid(distance_m), aim_spread_curve)
+
+
+## The chance (0..1) that a shot at a point `distance_m` from the muzzle
+## goes into the ground short of it. See `aim_max_ground_hit_pct`.
+func ground_hit_chance_at(distance_m: float) -> float:
+	return aim_max_ground_hit_pct / 100.0 * pow(_past_solid(distance_m), aim_ground_hit_curve)
+
+
+## How far past the solid line `distance_m` is, as a fraction (0..1) of
+## the falloff, both as they are right now (accurate_m(), falloff_m()).
+func _past_solid(distance_m: float) -> float:
+	var past := distance_m - accurate_m()
 	if past <= 0.0:
 		return 0.0
-	var t := clampf(past / maxf(aim_falloff_m, 0.001), 0.0, 1.0)
-	return aim_max_spread_deg * pow(t, aim_spread_curve)
+	return clampf(past / maxf(falloff_m(), 0.001), 0.0, 1.0)
 
 
 ## Fires one shot if the rifle is ready. Bullets are added to the player's
 ## parent, so they fly on their own instead of following the player.
 ## `spread_deg` throws the shot up to that far either side of the aim.
-func fire(spread_deg := 0.0) -> void:
+## `distance_m` is how far from the muzzle the shooter is aiming: past the
+## solid line, the shot may go into the ground (ground_hit_chance_at()),
+## landing somewhere between the end of the solid line and that point.
+func fire(spread_deg := 0.0, distance_m := 0.0) -> void:
 	if _cooldown > 0.0:
 		return
 	_cooldown = fire_interval_s
@@ -164,5 +228,7 @@ func fire(spread_deg := 0.0) -> void:
 	var bullet := Bullet.new()
 	var angle := aim + deg_to_rad(randf_range(-spread_deg, spread_deg))
 	bullet.setup(muzzle, angle, bullet_speed_mps, owner, damage)
+	if randf() < ground_hit_chance_at(distance_m):
+		bullet.ground_at_m = randf_range(minf(accurate_m(), distance_m), distance_m)
 	owner.get_parent().add_child(bullet)
 	fired.emit()
