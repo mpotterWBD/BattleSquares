@@ -1,4 +1,4 @@
-"""Render the player's rifle as a single top-down sprite.
+"""Render the player's rifle as a top-down sprite, plus the pieces for reloading.
 
 Run headless:
     blender --background --python rifle.py
@@ -19,6 +19,12 @@ the sun (scripts/rifle.gd).
 
 It renders at RENDER_SCALE x the game's pixel density so the small parts stay
 crisp when zoomed in; Godot shrinks it back (with mipmaps).
+
+For the reload (scripts/rifle.gd) it also renders, the same way:
+  rifle_no_mag.png  the rifle with its magazine out (same frame as rifle.png)
+  magazine.png      the magazine alone, seen from above as it's carried and
+                    as it lies on the ground: long axis along +x, centred,
+                    in a MAG_FRAME_M square
 """
 
 import math
@@ -34,12 +40,16 @@ import bs_common as bs  # noqa: E402
 
 ROOT = bs.ROOT
 OUT_RIFLE = os.path.join(ROOT, "assets", "characters", "rifle.png")
+OUT_NO_MAG = os.path.join(ROOT, "assets", "characters", "rifle_no_mag.png")
+OUT_MAG = os.path.join(ROOT, "assets", "characters", "magazine.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "rifle.blend")
 
 LENGTH_M = 0.48      # pivot (square's centre) to muzzle; scripts/rifle.gd must match
 CANT_DEG = 30        # roll onto its side so the magazine shows from above
 RENDER_SCALE = 4     # scripts/rifle.gd must match
 FRAME_M = 1.125      # centred on the pivot -> 384 px at 4x density
+MAG_FRAME_M = 0.1875 # the lone magazine's image -> 64 px at 4x density
+MAG_SIZE = (0.036, 0.024, 0.13)   # across the gun, side to side, length: the box below
 SAMPLES = 128
 
 
@@ -123,6 +133,14 @@ def build_rifle():
     return root
 
 
+def build_lone_magazine():
+    """The magazine on its own, lying on its side: its length along +x, its
+    wide face up, centred on the origin."""
+    polymer = material("PolymerMag", (0.15, 0.15, 0.14), roughness=0.7)
+    w, d, length = MAG_SIZE
+    add_part("LoneMagazine", box(-length / 2, length / 2, w, -d / 2, d / 2), polymer, None, bevel=0.004)
+
+
 def main():
     for path in (OUT_RIFLE, OUT_BLEND):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -133,6 +151,20 @@ def main():
     build_rifle()
     bs.render_to(scene, OUT_RIFLE)
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
+    # Magazine out.
+    bpy.data.objects["Magazine"].hide_render = True
+    bs.render_to(scene, OUT_NO_MAG)
+    # The magazine alone, in its own small frame.
+    for obj in list(bpy.data.objects):
+        if obj.type == "MESH" or obj.name == "RifleRoot":
+            bpy.data.objects.remove(obj)
+    build_lone_magazine()
+    px = round(MAG_FRAME_M * bs.PX_PER_M * RENDER_SCALE)
+    scene.render.resolution_x = px
+    scene.render.resolution_y = px
+    cam = scene.camera
+    cam.data.ortho_scale = MAG_FRAME_M
+    bs.render_to(scene, OUT_MAG)
 
 
 main()

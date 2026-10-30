@@ -7,14 +7,16 @@
 script = ExtResource("2_player")
 aura_radius_m = 8.0
 radio_circle_radius_m = 4.95
-deploy_reach_m = 2.475
+deploy_reach_m = 4.95
 deployables = {
 "radio_station": 1,
-"sandbags": 6
+"sandbags": -1
 }
 formation_turn_dps = 90.0
 
 [node name="Rifle" parent="." index="1"]
+spare_mags = 6
+auto_reload = false
 aim_accurate_m = 3.0
 aim_falloff_m = 3.1
 aim_max_spread_deg = 18.0

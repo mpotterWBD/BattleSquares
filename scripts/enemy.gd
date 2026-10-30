@@ -2,13 +2,19 @@ extends "res://scripts/ai_soldier.gd"
 ## A blue enemy square (scenes/enemy.tscn): the same square and rifle as
 ## everyone else, run by tactical AI. It's in the "enemies" group.
 ##
-## CALM   It stands at its post, glancing about, and leaves you alone. It
-##        wakes (alert()) when the player or a squadmate walks into its
-##        detection circle (`detection_radius_m`, drawn faintly on the
-##        ground) where it can see them, or when someone shoots within it:
-##        a bullet fired from inside it or flying through it, or a hit. An alerted
-##        enemy wakes every calm enemy inside its own circle, which can
-##        chain through a group.
+## CALM   It stands at its post, glancing about, and leaves you alone
+##        while it can't see you. It wakes (alert()):
+##          - seeing the player or a squadmate: a clear line of sight (nothing
+##            solid in between: a station, a landed helicopter, sandbags),
+##            in any direction, within `sight_m`. Out in the open, that's
+##            it: it fights.
+##          - hearing a shot: one fired within `hearing_m` of it, a bullet
+##            passing within its detection circle (`detection_radius_m`,
+##            drawn faintly on the ground), or a hit. If it can't see the
+##            shooter it goes to look where the shot came from (and calms
+##            down again after its search if it finds nobody).
+##        An alerted enemy wakes every calm enemy inside its own detection
+##        circle, which can chain through a group.
 ## ENGAGE It fights the player and the squad. Every `rethink_s` it picks
 ##        where to stand by scoring spots around its target (_best_spot()):
 ##        inside its fighting range, round the target's side or back
@@ -24,10 +30,31 @@ extends "res://scripts/ai_soldier.gd"
 ##        react, as accurately as the rifle allows at that range
 ##        (rifle.gd spread_at()), worse on the move, and never through
 ##        another enemy.
+## DIG IN Calm (at its post or on patrol), an open defensive spot inside
+##        its detection circle with a wall between it and the way it's
+##        facing draws it in (_dig_in_calm()): it leaves its patrol, goes
+##        there and digs in, facing out over the wall, still calm. It stays
+##        until it's flanked in a fight or the wall goes, as below.
+## COVER  Fighting within `cover_seek_m` of a sandbag wall, it takes a
+##        defensive spot behind it (_take_cover()): one of the two spots a
+##        wall has, one each side just behind it inside its proximity box
+##        (so it shoots over it, sandbags.gd), on the far side from the
+##        fight, free (nobody standing there or heading for it), and with
+##        a wall actually between it and the fight. There it holds and fires:
+##        no moving round, no dodging, and it doesn't go searching when it
+##        loses sight of everyone. It leaves only when flanked (no wall
+##        between it and its target for FLANK_GRACE_S; then it takes another
+##        spot that covers it if there's one near, or fights in the open) or
+##        when its wall is gone (sandbag destruction is to come).
 ## SEARCH Out of sight of anyone for `lose_contact_s`, it goes to where it
 ##        last saw them and looks around for `search_s`...
 ## RETURN ...then walks back to its post and goes CALM again. Any shot in
 ##        its circle or sight of someone on the way puts it back in ENGAGE.
+##
+## On patrol (`patrol`, a scripts/patrol.gd; spawned by the testing
+## spawner), CALM means keeping its slot in the patrol's formation as it
+## walks across the field, and after SEARCH it goes straight back to CALM
+## and rejoins the patrol instead of heading for a post.
 
 enum Mode { CALM, ENGAGE, SEARCH, RETURN }
 
@@ -44,14 +71,21 @@ const COVER_WEIGHT := 2.5       ## how much a spot that only sees its target ove
 const ARC_STEP_DEG := 35.0      ## swinging round the target, it aims this far further round at a time
 const JOG_FROM_M := 3.0         ## further than this from its spot, it jogs
 const JOG_SPEED := 1.35
+const COVER_SPOT_M := 0.42      ## a defensive spot is this far behind a wall's middle (inside its box)
+const COVER_REACH_M := 1.5      ## a wall this close along the line of fire counts as cover
+const FLANK_GRACE_S := 0.8      ## out of cover this long and it's been flanked
+const SANDBAG_LAYER := 4        ## sandbags.tscn collision_layer
 
 ## How far round it a shot wakes it: fired from inside this circle or
 ## flying through it.
 @export_range(1.0, 40.0, 0.5, "suffix:m") var detection_radius_m := 10.0
 ## Draw the detection circle on the ground (a testing aid).
 @export var show_detection := true
-## How far it can see once it's awake (solid things like stations block the view).
-@export_range(1.0, 60.0, 0.5, "suffix:m") var sight_m := 22.0
+## How far it can see, in any direction, where nothing solid is in the way
+## (stations, a landed helicopter, sandbags while it's calm).
+@export_range(1.0, 60.0, 0.5, "suffix:m") var sight_m := 35.0
+## A shot fired this close wakes it, seen or not.
+@export_range(0.0, 100.0, 0.5, "suffix:m") var hearing_m := 40.0
 ## The closest it likes to fight from.
 @export_range(1.0, 30.0, 0.5, "suffix:m") var min_range_m := 5.0
 ## The furthest it likes to fight from. Keep near the rifle's accurate range
@@ -76,6 +110,8 @@ const JOG_SPEED := 1.35
 @export_range(0.0, 10.0, 0.5) var flank_weight := 3.0
 ## Sidesteps this far when its target aims straight at it close up.
 @export_range(0.0, 3.0, 0.1, "suffix:m") var dodge_m := 1.2
+## Fighting this close to a sandbag wall, it takes a defensive spot behind it.
+@export_range(0.0, 20.0, 0.5, "suffix:m") var cover_seek_m := 6.0
 ## Which way it faces at its post, in degrees (0 = right/east, 90 = down/south).
 @export_range(-180.0, 180.0, 1.0, "suffix:°") var start_facing_deg := 180.0
 
@@ -104,6 +140,12 @@ var _dodge_in := 0.0
 var _dodge_spot := Vector2.INF
 var _next_glance_s := 0.0
 var _ring: Node2D
+## The patrol it walks with (patrol.gd), or null for one standing at a post.
+var patrol: Node = null
+## The sandbag wall it's defending from (null = none), and its spot there.
+var cover_wall: Node2D = null
+var cover_spot := Vector2.ZERO
+var _flanked_s := 0.0
 
 
 func _ready() -> void:
@@ -165,6 +207,8 @@ func _move_intent() -> Vector2:
 	if _think_in <= 0.0 and mode == Mode.CALM:
 		_think_in = THINK_S
 		_check_intruders()
+		if mode == Mode.CALM and not _in_cover():
+			_dig_in_calm()
 	if _think_in <= 0.0 and mode != Mode.CALM:
 		_think_in = THINK_S
 		_look_for_targets()
@@ -176,30 +220,55 @@ func _move_intent() -> Vector2:
 		Mode.RETURN:
 			return _walk_to(_post, 1.0)
 	_idle(delta)
+	if _in_cover():
+		return _hold_cover(Vector2.INF, delta)   # dug in: nobody to be flanked by yet
+	if _patrolling():
+		return _keep_patrol_slot()
 	return Vector2.ZERO
 
 
-## The player or a squadmate inside its circle, where it can see them
-## (not behind a station), wakes it.
+func is_calm() -> bool:
+	return mode == Mode.CALM
+
+
+func _patrolling() -> bool:
+	return patrol != null and is_instance_valid(patrol)
+
+
+## On patrol: heads for its slot in the formation, jogging if it's well
+## behind, easing in as it gets close.
+func _keep_patrol_slot() -> Vector2:
+	var px := World.PX_PER_M
+	var to: Vector2 = patrol.slot_for(self) - global_position
+	var dist := to.length() / px
+	if dist < 0.05:
+		return Vector2.ZERO
+	if dist > JOG_FROM_M / 2.0:
+		_speed_scale = JOG_SPEED
+	return _steer(to.normalized()) * clampf(dist / SLOW_DOWN_M, 0.0, 1.0)
+
+
+## The player or a squadmate it can see wakes it: within `sight_m`, any
+## direction, with nothing solid in the way (a station, a landed
+## helicopter, sandbags).
 func _check_intruders() -> void:
-	var reach := detection_radius_m * World.PX_PER_M
 	for hostile: Node2D in _hostiles():
-		if (hostile.global_position.distance_to(global_position) <= reach
+		if (hostile.global_position.distance_to(global_position) <= sight_m * World.PX_PER_M
 				and _clear_view(global_position, hostile.global_position)):
 			alert(hostile)
 			return
 
 
-## Any shot fired from inside its circle or flying through it, by someone
-## not on its side, wakes it.
+## Any shot by someone not on its side wakes it: fired within `hearing_m`
+## of it, or flying past within its detection circle.
 func _check_shots() -> void:
-	var reach := detection_radius_m * World.PX_PER_M
+	var px := World.PX_PER_M
 	for bullet: Node2D in get_tree().get_nodes_in_group("bullets"):
 		var shooter = bullet.shooter
 		if shooter != null and is_instance_valid(shooter) and shooter.is_in_group("enemies"):
 			continue
-		if (bullet.origin.distance_to(global_position) <= reach
-				or bullet.global_position.distance_to(global_position) <= reach):
+		if (bullet.origin.distance_to(global_position) <= hearing_m * px
+				or bullet.global_position.distance_to(global_position) <= detection_radius_m * px):
 			if mode == Mode.CALM or not _alive(threat):
 				alert(shooter if shooter != null and is_instance_valid(shooter) else null, bullet.origin)
 			return
@@ -235,7 +304,7 @@ func _look_for_targets() -> void:
 	else:
 		attack_target = null
 		_unseen_s += THINK_S
-		if mode == Mode.ENGAGE and _unseen_s >= lose_contact_s:
+		if mode == Mode.ENGAGE and _unseen_s >= lose_contact_s and not _in_cover():
 			mode = Mode.SEARCH
 			_search_left = search_s
 			_reset_progress()
@@ -262,9 +331,13 @@ func _engage() -> void:
 ## straight at it, and walk (or jog) to its spot.
 func _fight(delta: float) -> Vector2:
 	var focus := attack_target.global_position if is_attacking() else last_seen
+	if _in_cover():
+		return _hold_cover(focus, delta)
 	_rethink_in -= delta
 	if _rethink_in <= 0.0:
 		_rethink_in = rethink_s * randf_range(0.8, 1.25)   # out of step with the others
+		if _take_cover(focus):
+			return _hold_cover(focus, delta)
 		var spot := _best_spot(focus)
 		if spot.distance_to(tactical_spot) > 0.3 * World.PX_PER_M:
 			_reset_progress()
@@ -282,6 +355,111 @@ func _fight(delta: float) -> Vector2:
 	if goal.distance_to(global_position) > JOG_FROM_M * World.PX_PER_M or _dodge_spot != Vector2.INF:
 		_speed_scale = JOG_SPEED
 	return _walk_to(goal, 1.0)
+
+
+# ---------------------------------------------------------------- cover --
+
+func _in_cover() -> bool:
+	if cover_wall != null and (not is_instance_valid(cover_wall) or cover_wall.is_queued_for_deletion()):
+		_leave_cover()   # the wall's gone
+	return cover_wall != null
+
+
+func _leave_cover() -> void:
+	cover_wall = null
+	_flanked_s = 0.0
+	_rethink_in = 0.0   # pick somewhere new straight away
+	_reset_progress()
+
+
+## Calm: an open spot inside its detection circle, covered toward the way
+## it faces (for a patrol, the way it walks), and it goes and digs in there.
+## It leaves its patrol, and the spot becomes its post, facing out over the
+## wall.
+func _dig_in_calm() -> void:
+	var ahead := global_position + Vector2.from_angle(_post_facing) * sight_m * World.PX_PER_M
+	if not _take_cover(ahead, detection_radius_m):
+		return
+	if _patrolling():
+		patrol.release(self)
+	patrol = null
+	_post = cover_spot
+	var across := Vector2.from_angle(cover_wall.global_rotation + PI / 2)
+	_post_facing = (across if across.dot(cover_wall.global_position - cover_spot) > 0.0 else -across).angle()
+	_look_angle = _post_facing
+
+
+## Looks for a free defensive spot within `reach_m` (default `cover_seek_m`)
+## with a wall between it and `focus`; takes the nearest. Returns whether it
+## took one.
+func _take_cover(focus: Vector2, reach_m := -1.0) -> bool:
+	var px := World.PX_PER_M
+	var best: Node2D = null
+	var best_spot := Vector2.ZERO
+	var best_d := (cover_seek_m if reach_m < 0.0 else reach_m) * px
+	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
+		if wall.global_position.distance_to(global_position) > best_d + COVER_SPOT_M * px:
+			continue
+		var across := Vector2.from_angle(wall.global_rotation + PI / 2)
+		for side in [-1.0, 1.0]:
+			var spot: Vector2 = wall.global_position + across * side * COVER_SPOT_M * px
+			var d := spot.distance_to(global_position)
+			if (d < best_d and spot.distance_to(focus) <= sight_m * px
+					and _covered(spot, focus) and not _spot_taken(spot)):
+				best_d = d
+				best = wall
+				best_spot = spot
+	if best == null:
+		return false
+	cover_wall = best
+	cover_spot = best_spot
+	tactical_spot = best_spot
+	_flanked_s = 0.0
+	_dodge_spot = Vector2.INF
+	_reset_progress()
+	return true
+
+
+## Whether a sandbag wall stands between `spot` and `focus`, close in front
+## of the spot (within COVER_REACH_M).
+func _covered(spot: Vector2, focus: Vector2) -> bool:
+	var query := PhysicsRayQueryParameters2D.create(spot, focus, SANDBAG_LAYER)
+	var hit := get_world_2d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty() and spot.distance_to(hit.position) <= COVER_REACH_M * World.PX_PER_M
+
+
+## Whether someone else is standing on `spot`, or another enemy has claimed it.
+func _spot_taken(spot: Vector2) -> bool:
+	var near := 0.35 * World.PX_PER_M
+	for unit: Node2D in get_tree().get_nodes_in_group("units"):
+		if unit != self and not unit.dead and unit.global_position.distance_to(spot) < near:
+			return true
+	for other: Node2D in get_tree().get_nodes_in_group("enemies"):
+		if other != self and other.cover_wall != null and other.cover_spot.distance_to(spot) < near:
+			return true
+	return false
+
+
+## In cover: get to the spot and hold it, firing from there. Flanked (no
+## wall between it and the fight for FLANK_GRACE_S), it leaves, taking
+## another spot that covers it if there's one. `focus` INF: calm, nobody to
+## be flanked by.
+func _hold_cover(focus: Vector2, delta: float) -> Vector2:
+	if focus == Vector2.INF or _covered(cover_spot, focus):
+		_flanked_s = 0.0
+	else:
+		_flanked_s += delta
+		if _flanked_s >= FLANK_GRACE_S:
+			_leave_cover()
+			if not _take_cover(focus):
+				return Vector2.ZERO
+	var px := World.PX_PER_M
+	var to := cover_spot - global_position
+	if to.length() < ARRIVE_M * px:
+		return Vector2.ZERO
+	if to.length() > JOG_FROM_M * px:
+		_speed_scale = JOG_SPEED
+	return _steer(to.normalized()) * clampf(to.length() / (SLOW_DOWN_M * px), 0.3, 1.0)
 
 
 ## Swinging round: if the straight way to `goal` would take it closer to
@@ -318,11 +496,18 @@ func _arrive() -> void:
 	super()
 	_dodge_spot = Vector2.INF
 	if mode == Mode.RETURN:
-		mode = Mode.CALM
-		alerted = false
-		threat = null
-		attack_target = null
-		_look_angle = _post_facing
+		_go_calm()
+
+
+## The fight's over: calm again, looking the way it faces at its post (or
+## along the way a patrol walks).
+func _go_calm() -> void:
+	cover_wall = null
+	mode = Mode.CALM
+	alerted = false
+	threat = null
+	attack_target = null
+	_look_angle = _post_facing
 
 
 ## The best place to fight `focus` from, scored over rings of spots round it.
@@ -398,6 +583,9 @@ func _score_spot(spot: Vector2, focus: Vector2, target_facing: float, friends: A
 ## `search_s` and head back to its post.
 func _search(delta: float) -> Vector2:
 	_search_left -= delta
+	if _search_left <= 0.0 and _patrolling():
+		_go_calm()   # back to the patrol
+		return Vector2.ZERO
 	if _search_left <= 0.0:
 		mode = Mode.RETURN
 		_reset_progress()

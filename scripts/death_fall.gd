@@ -16,7 +16,9 @@ extends Node
 ##           when it falls on its front or side, flung out to the side and
 ##           spinning when it goes over backwards. It bounces and skids too.
 ##
-## Then it lies there, darkening, and finally fades away and is removed.
+## Then it lies there, darkening, and finally fades away and is removed
+## (unless `lingers`: the player stays down). `came_to_rest` fires once the
+## body and rifle have both stopped moving.
 ## An anchored square (the dummy) only topples and spins: it doesn't skid.
 ##
 ## The toppling block is pre-rendered (blender/scripts/fall_square.py): one
@@ -80,6 +82,12 @@ const GUN_REST_MPS := 0.5      ## landing slower than this, it stays down
 const GUN_SKID_MPS2 := 6.0
 const GUN_SPIN_DAMP := 6.0     ## spin dies away this fast on the ground
 
+## Fired once, when the body has settled and stopped skidding and the rifle is down.
+signal came_to_rest
+
+## Stays lying there (darkened) instead of fading away and being removed.
+var lingers := false
+
 var _square: CharacterBody2D
 var _body: Sprite2D
 var _shadow: Sprite2D
@@ -103,6 +111,7 @@ var _gun_vh := 0.0             ## m/s, up
 var _gun_turn := 0.0
 var _gun_spin := 0.0
 var _gun_down := false
+var _at_rest := false
 
 
 ## Called once, as the square dies, killed by a shot that struck `point`
@@ -112,6 +121,8 @@ func setup(square: CharacterBody2D, body_sheet: Texture2D, point: Vector2, direc
 	_body = square.get_node("Body")
 	_shadow = square.get_node("Shadows/Shadow")
 	_rifle = square.get_node("Rifle")
+	if _rifle.has_method("abandon_reload"):
+		_rifle.abandon_reload()
 	_rifle_shadow = square.get_node("Shadows/RifleShadow")
 	var px := World.PX_PER_M
 	var facing: float = square.facing
@@ -163,6 +174,9 @@ func _physics_process(delta: float) -> void:
 	_skid(delta)
 	_set_frame()
 	_update_gun(delta)
+	if not _at_rest and _settled and _gun_down and _vel == Vector2.ZERO:
+		_at_rest = true
+		came_to_rest.emit()
 
 
 ## Gravity pulls it over its edge; it bounces off the ground until it's
@@ -234,6 +248,8 @@ func _land() -> void:
 		_dust(centre + out * LAND_DUST_M * px, -out, 1.0)
 	var after := create_tween()
 	after.tween_property(_body, "modulate", DARKEN_TO, DARKEN_S)
+	if lingers:
+		return
 	after.tween_interval(LIE_S - DARKEN_S)
 	after.tween_property(_square, "modulate:a", 0.0, FADE_S)
 	after.tween_callback(_square.queue_free)

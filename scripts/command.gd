@@ -61,6 +61,11 @@ const DRAG_THRESHOLD_PX := 8.0   ## mouse travel (screen px) that makes a click 
 const PICK_RADIUS_M := 0.24      ## a click this close to a squadmate's centre picks it (about its body)
 const SPACING_M := 0.7           ## gap between squadmates sent to the same spot
 const RING_RADIUS_M := 0.34
+const COVER_SPOT_M := 0.42        ## a sandbag spot is this far behind a wall's middle (as enemy.gd)
+const OVERFLOW_BACK_M := 1.2      ## units left over once a sandbag row is manned line up this far behind it
+const UNLIMITED_COUNT := 1000000   ## what _carried() reports for a deployable count of -1
+const DEFEND_MARK_M := 0.42       ## a defending squadmate's bracket, just outside the selection ring
+const DEFEND_MARK_HALF := deg_to_rad(40.0)   ## ...this far either side of where it faces out
 const PING_TIME_S := 0.6
 const COLOR := World.COMMAND_COLOR
 const REFUSE_COLOR := Color(1.0, 0.4, 0.35)
@@ -94,7 +99,7 @@ const DEPLOYABLES := [
 	{id = "radio_station", text = "Radio station", scene = preload("res://scenes/radio_station.tscn")},
 	# `line_px`: laid end to end this far apart (centre to centre): it snaps
 	# onto the open ends of ones already down, and a held drag lays a row.
-	{id = "sandbags", text = "Sandbags", scene = preload("res://scenes/sandbags.tscn"), line_px = 64.0},
+	{id = "sandbags", text = "Sandbags", scene = preload("res://scenes/sandbags.tscn"), line_px = 68.0},
 ]
 const DISPERSE_STEP_M := 0.9     ## how far Disperse sends each squadmate out from the player
 const DISPERSE_JITTER_DEG := 30.0   ## randomness in each one's direction, so they fan out
@@ -325,6 +330,12 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var px := World.PX_PER_M
 	if World.commanding():
+		# Squadmates defending behind sandbags: a bracket on the side they're facing out of.
+		for unit in _squad():
+			if unit.is_defending():
+				var out: float = unit.defend_facing()
+				draw_arc(unit.global_position, DEFEND_MARK_M * px, out - DEFEND_MARK_HALF, out + DEFEND_MARK_HALF,
+						16, Color(COLOR, 0.85), 3.0, true)
 		for unit in _selected():
 			draw_arc(unit.global_position, RING_RADIUS_M * px, 0.0, TAU, 40, COLOR, 2.0, true)
 			if unit.is_moving():
@@ -487,10 +498,24 @@ func _box_select(a: Vector2, b: Vector2, shift: bool) -> void:
 ## Sends the selection to `point`, anywhere on the field, lined up side by
 ## side across the direction of travel (ordered so nobody has to cross over
 ## anyone else). The circle limits who hears the order, not where it sends them.
+## A point in a sandbag wall's proximity box mans that wall's row instead
+## (_man_sandbags()).
 func _order_move(point: Vector2) -> void:
 	var units := _selected()
 	if units.is_empty():
 		return
+	if _man_sandbags(point, units):
+		_pings.append({pos = point, age = 0.0})
+		_assign_formation_slots()
+		return
+	_send_in_line(units, point)
+	_pings.append({pos = point, age = 0.0})
+	_assign_formation_slots()   # anyone sent off leaves a gap to close up
+
+
+## Lines `units` up side by side at `point`, across the way they're going.
+## They take up the defensive if that's behind sandbags (squadmate.gd).
+func _send_in_line(units: Array, point: Vector2) -> void:
 	var center := Vector2.ZERO
 	for unit in units:
 		center += unit.global_position
@@ -504,9 +529,88 @@ func _order_move(point: Vector2) -> void:
 	var area := World.ARENA.grow(-0.3 * px)
 	for i in units.size():
 		var offset := (i - (units.size() - 1) / 2.0) * SPACING_M * px
-		units[i].order_move((point + side * offset).clamp(area.position, area.end))
-	_pings.append({pos = point, age = 0.0})
-	_assign_formation_slots()   # anyone sent off leaves a gap to close up
+		units[i].order_move((point + side * offset).clamp(area.position, area.end), true)   # behind sandbags: defend
+
+
+## Sent to a spot behind a sandbag wall: the units man that wall's row (the
+## walls joined end to end with it), one to a wall, all on the side clicked.
+## The wall clicked is filled first, then outward alternately each way;
+## spots someone else holds (standing there or on the way) are skipped.
+## Each spot gets the nearest unit still to place. Anyone left over once the
+## row is full lines up OVERFLOW_BACK_M behind it. False if `point` isn't
+## at a wall.
+func _man_sandbags(point: Vector2, units: Array) -> bool:
+	var clicked: Node2D = null
+	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
+		if wall.in_zone(point):
+			clicked = wall
+			break
+	if clicked == null:
+		return false
+	var px := World.PX_PER_M
+	var across := Vector2.from_angle(clicked.global_rotation + PI / 2)
+	var out := across if across.dot(point - clicked.global_position) >= 0.0 else -across   # toward the side clicked
+	var spots: Array[Vector2] = []
+	for wall in _sandbag_row(clicked):
+		var wall_across := Vector2.from_angle(wall.global_rotation + PI / 2)
+		var toward := wall_across if wall_across.dot(out) >= 0.0 else -wall_across
+		var spot: Vector2 = wall.global_position + toward * COVER_SPOT_M * px
+		if not _spot_held(spot, units):
+			spots.append(spot)
+	var left := units.duplicate()
+	for spot in spots:
+		if left.is_empty():
+			break
+		var nearest: Node2D = left[0]
+		for unit: Node2D in left:
+			if unit.global_position.distance_to(spot) < nearest.global_position.distance_to(spot):
+				nearest = unit
+		left.erase(nearest)
+		nearest.order_move(spot, true)
+	if not left.is_empty():
+		var behind := clicked.global_position + out * (COVER_SPOT_M + OVERFLOW_BACK_M) * px
+		var area := World.ARENA.grow(-0.3 * px)
+		_send_in_line(left, behind.clamp(area.position, area.end))
+	return true
+
+
+## The walls joined end to end with `wall` (sandbags.gd joined()), in the
+## order to fill them: `wall`, then the next one each way, then the next...
+func _sandbag_row(wall: Node2D) -> Array[Node2D]:
+	var ways: Array = []
+	for side in [-1, 1]:
+		var run: Array[Node2D] = []
+		var prev := wall
+		var next: Node2D = wall.joined(side)
+		while next != null and next != wall and not next in run and run.size() < 200:
+			run.append(next)
+			# Onward is whichever of its neighbours isn't the one we came from
+			# (a neighbour may be turned end for end).
+			var a: Node2D = next.joined(-1)
+			var b: Node2D = next.joined(1)
+			var onward := b if a == prev else a
+			prev = next
+			next = onward
+		ways.append(run)
+	var row: Array[Node2D] = [wall]
+	for i in maxi(ways[0].size(), ways[1].size()):
+		for run: Array in [ways[1], ways[0]]:
+			if i < run.size():
+				row.append(run[i])
+	return row
+
+
+## Whether someone other than `movers` is on `spot` or heading for it.
+func _spot_held(spot: Vector2, movers: Array) -> bool:
+	var near := 0.35 * World.PX_PER_M
+	for unit: Node2D in get_tree().get_nodes_in_group("units"):
+		if unit in movers or unit.dead:
+			continue
+		if unit.global_position.distance_to(spot) < near:
+			return true
+		if unit.has_method("is_moving") and unit.is_moving() and unit.destination.distance_to(spot) < near:
+			return true
+	return false
 
 
 ## Who a menu order goes to: the selection if there is one, otherwise
@@ -711,9 +815,12 @@ func _assign_formation_slots() -> void:
 # --------------------------------------------------------------- deploying --
 
 ## How many of a deployable the player has left.
+## How many of `id` the player carries; UNLIMITED_COUNT for a count of -1
+## (player.gd `deployables`), which never runs out.
 func _carried(id: String) -> int:
 	var speaker = _speaker()
-	return speaker.deployables.get(id, 0) if speaker else 0
+	var count: int = speaker.deployables.get(id, 0) if speaker else 0
+	return UNLIMITED_COUNT if count < 0 else count
 
 
 func _start_placing(id: String) -> void:
@@ -858,7 +965,8 @@ func _place(spots: Array) -> void:
 		placed.rotation = spot.turn
 		placed.add_to_group("deployed_" + _placing)   # for snapping onto it
 		get_parent().add_child(placed)   # into the world, beside the squares
-		_speaker().deployables[_placing] = _carried(_placing) - 1
+		if _speaker().deployables[_placing] >= 0:   # -1: unlimited
+			_speaker().deployables[_placing] = _carried(_placing) - 1
 		_pings.append({pos = spot.pos, age = 0.0})
 		placed_any = true
 	if placed_any:
@@ -902,7 +1010,8 @@ func _place_menus() -> void:
 func _open_deploy_popout() -> void:
 	for item in DEPLOYABLES:
 		var count := _carried(item.id)
-		_deploy_popout.set_option(item.id, "%s  x%d" % [item.text, count], count <= 0)
+		var shown := "∞" if count == UNLIMITED_COUNT else "x%d" % count
+		_deploy_popout.set_option(item.id, "%s  %s" % [item.text, shown], count <= 0)
 	_deploy_popout.open(_deploy_button)
 
 

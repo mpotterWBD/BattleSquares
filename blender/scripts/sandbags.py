@@ -7,9 +7,11 @@ A wall of burlap sandbags (after Mike's reference photo, 2026-10-30): one
 stack of COURSES layers, a single bag deep, laid in a running bond. It's
 built from tiles TILE_M long (about two squares) that join end to end into
 one continuous wall, the bond carrying on across each join:
-  - even courses have three bags per tile, butting at the tile's ends
+  - even courses have two bags per tile, butting at the tile's ends
   - odd courses are offset half a bag, so one bag straddles each join, half
-    in each tile
+    in each tile, with one whole bag between
+The bags are big (0.4 m long; 1.6x the first version's, 2026-10-30), so
+three courses make a knee-high wall.
 Every tile is rendered with the neighbouring bags that reach into it (the
 ones at a join use the same random shape in every tile, so neighbours
 agree), and cropped to exactly TILE_M, so tiles sit side by side seamlessly.
@@ -51,13 +53,13 @@ OUT_PREVIEW = os.path.join(ROOT, "assets", "previews", "sandbags_preview.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "sandbags.blend")
 
 RENDER_SCALE = 4                 # shown at 0.25 in the game
-TILE_M = 0.75                    # one tile: 64 game px (256 rendered), about two squares
+TILE_M = 68 / bs.PX_PER_M        # one tile: 68 game px (272 rendered, 0.797 m), two squares
 FRAME_H_M = 0.375                # the image's height (across the wall): 128 rendered px
 SAMPLES = 128
 
-BAG_L = TILE_M / 3               # three bags to a tile
-BAG_W, BAG_H = 0.16, 0.085       # a top-course bag's width and height
-COURSES = 5
+BAG_L = TILE_M / 2               # two bags to a tile
+BAG_W, BAG_H = 0.256, 0.136      # a top-course bag's width and height
+COURSES = 3
 SETTLE = 0.8                     # courses sink into each other this much
 BATTER = 0.05                    # each course down is this much wider (fraction)
 END_INSET = 0.03                 # a finished end stops this far inside the tile
@@ -142,7 +144,7 @@ def bag(name, x, course, length, width, key, mat):
         vz *= 1 - 0.35 * abs(vx) ** 6           # the ends slump down
         vy *= 1 - 0.18 * abs(vx) ** 8           # pinched where it's tied
         p = Vector((vx * length / 2 * sl, vy * width / 2 * sw, (vz + 0.35) / 1.35 * BAG_H * sh))
-        lump = noise.noise(p * 22 + seed) * 0.006 + noise.noise(p * 60 + seed) * 0.002
+        lump = noise.noise(p * 14 + seed) * 0.0095 + noise.noise(p * 38 + seed) * 0.0032
         v.co = p + Vector((0, 0, lump if vz > -0.2 else 0.0))
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
@@ -165,25 +167,24 @@ def course_bags(course, variant, capped_left, capped_right):
     L, half = BAG_L, TILE_M / 2
     bags = []
     if course % 2 == 0:
-        # Three bags; the outer two are shared with the joins.
-        bags.append((0.0, L, ("even", course, "middle", variant)))
+        # Two bags, each reaching a join.
         for side in (-1, 1):
             capped = capped_left if side < 0 else capped_right
-            if capped:   # finished end: the outer bag stops short of the edge
-                bags.append((side * (L / 2 + half - END_INSET) / 2, half - L / 2 - END_INSET,
+            if capped:   # finished end: the bag stops short of the edge
+                bags.append((side * (half - END_INSET) / 2, half - END_INSET,
                              ("even", course, "end", side)))
             else:
-                bags.append((side * L, L, ("even", course, "edge", side)))
-                # The neighbour's outer bag on this side, reaching over the join.
+                bags.append((side * L / 2, L, ("even", course, "edge", side)))
+                # The neighbour's bag on this side, reaching over the join.
                 bags.append((side * (half + L / 2), L, ("even", course, "edge", -side)))
     else:
-        # Two middle bags, and one straddling each join (the same bag both tiles draw).
+        # One middle bag, and one straddling each join (the same bag both tiles draw).
+        bags.append((0.0, L, ("odd", course, "middle", variant)))
         for side in (-1, 1):
-            bags.append((side * L / 2, L, ("odd", course, "middle", side, variant)))
             capped = capped_left if side < 0 else capped_right
             if capped:   # finished end: a half bag
-                length = half - L - END_INSET
-                bags.append((side * (L + length / 2), length, ("odd", course, "end", side)))
+                length = half - L / 2 - END_INSET
+                bags.append((side * (L / 2 + length / 2), length, ("odd", course, "end", side)))
             else:
                 bags.append((side * half, L, ("odd", course, "join")))
     return bags

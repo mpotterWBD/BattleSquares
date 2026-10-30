@@ -140,6 +140,7 @@ var _jostle_turn_vel := 0.0
 @onready var _sight: Polygon2D = $Sight
 @onready var _rifle = $Rifle
 var _radio_pack: Node2D
+var _fall: Node   ## the ragdoll (death_fall.gd), once it's dead
 
 
 func _ready() -> void:
@@ -278,9 +279,9 @@ func _die(point: Vector2, direction: Vector2) -> void:
 	_sight.visible = false
 	if _radio_pack:
 		_radio_pack.drop()
-	var fall := DeathFall.new()
-	add_child(fall)
-	fall.setup(self, fall_sheet, point, direction)
+	_fall = DeathFall.new()
+	add_child(_fall)
+	_fall.setup(self, fall_sheet, point, direction)
 
 
 ## Anchored squares: a damped spring pulls the sprites' offset and extra

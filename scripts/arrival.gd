@@ -31,3 +31,4 @@ func _fly_in() -> void:
 	World.player_aboard = true
 	run.passenger_out.connect(func(_unit: Node2D) -> void: World.player_aboard = false)
 	run.start(heli, player.position - Insertion.first_out_offset(), [], [player])
+

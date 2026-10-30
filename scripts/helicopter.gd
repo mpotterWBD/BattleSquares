@@ -63,6 +63,26 @@ const HULL_M := [
 
 @export var altitude_m := 0.0
 @export_range(0.0, 1.0) var rotor_spin := 0.35   ## 0 = stopped, 1 = flight speed
+
+## Its sound: three loops cut from assets/sfx/Helicopter.mp3 (see DEVLOG),
+## played from the rotor and mixed each frame (_mix_sound()):
+##   flight   full power, close overhead: in the air
+##   idle     the steadier whine on the ground (cross-fades in over the
+##            last GROUND_BLEND_M of height)
+##   distant  the far-off thump, fading in as it gets further than
+##            DISTANT_FROM_M from the camera (heard out to DISTANT_HEARING_M)
+## All scaled by `rotor_spin` (a stopped rotor is silent).
+const SOUND_FLIGHT := preload("res://assets/sfx/helicopter/heli_flight.wav")
+const SOUND_IDLE := preload("res://assets/sfx/helicopter/heli_idle.wav")
+const SOUND_DISTANT := preload("res://assets/sfx/helicopter/heli_distant.wav")
+const GROUND_BLEND_M := 3.0
+const DISTANT_FROM_M := 18.0
+const DISTANT_FULL_M := 45.0
+const NEAR_HEARING_M := 60.0
+const DISTANT_HEARING_M := 140.0
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var sound_volume_db := -2.0
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var idle_volume_db := -6.0   ## the idle loop, against flight
+@export_range(-40.0, 12.0, 0.5, "suffix:dB") var distant_volume_db := -4.0
 ## Shown blade speed at full spin. The real rotor turns ~4.3 times a second,
 ## which strobes at 60 frames a second, so the blades are shown slower and
 ## the blur disc carries the rest.
@@ -76,6 +96,9 @@ var _pilots: Array[Sprite2D] = []
 var _pilot_moods: Array[Dictionary] = []   ## per pilot: phases, glance state
 var _pilot_time := 0.0
 var _rng := RandomNumberGenerator.new()
+var _sound_flight: AudioStreamPlayer2D
+var _sound_idle: AudioStreamPlayer2D
+var _sound_distant: AudioStreamPlayer2D
 
 @onready var _shadows: CanvasGroup = $Shadows
 @onready var _body: Sprite2D = $Body
@@ -107,9 +130,49 @@ func _ready() -> void:
 	for point: Vector2 in HULL_M:
 		hull.append(point * SCALE * World.PX_PER_M)
 	$Hull/Outline.polygon = hull
+	_sound_flight = _add_loop(SOUND_FLIGHT, NEAR_HEARING_M, 1.0)
+	_sound_idle = _add_loop(SOUND_IDLE, NEAR_HEARING_M, 1.0)
+	_sound_distant = _add_loop(SOUND_DISTANT, DISTANT_HEARING_M, 0.5)
+	_mix_sound()
+
+
+## A looping sound on the helicopter, started straight away (its volume is
+## set each frame by _mix_sound()).
+func _add_loop(stream: AudioStreamWAV, hearing_m: float, falloff: float) -> AudioStreamPlayer2D:
+	var looped := stream.duplicate() as AudioStreamWAV
+	looped.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	looped.loop_begin = 0
+	looped.loop_end = int(stream.get_length() * stream.mix_rate)
+	var player := AudioStreamPlayer2D.new()
+	player.stream = looped
+	player.max_distance = hearing_m * World.PX_PER_M
+	player.attenuation = falloff
+	player.position = MAST_M * World.PX_PER_M   # from the rotor
+	add_child(player)
+	player.play(randf() * stream.get_length())   # helicopters start at different points in the loop
+	return player
+
+
+## Sets the three loops' volumes from height, rotor speed and how far it is
+## from the camera.
+func _mix_sound() -> void:
+	var on_ground := 1.0 - clampf(altitude_m / GROUND_BLEND_M, 0.0, 1.0)
+	var far := 0.0
+	var camera := get_viewport().get_camera_2d()
+	if camera:
+		var away := global_position.distance_to(camera.get_screen_center_position()) / World.PX_PER_M
+		far = clampf((away - DISTANT_FROM_M) / (DISTANT_FULL_M - DISTANT_FROM_M), 0.0, 1.0)
+	_set_level(_sound_flight, rotor_spin * (1.0 - on_ground), sound_volume_db)
+	_set_level(_sound_idle, rotor_spin * on_ground, sound_volume_db + idle_volume_db)
+	_set_level(_sound_distant, rotor_spin * far, sound_volume_db + distant_volume_db)
+
+
+func _set_level(player: AudioStreamPlayer2D, level: float, base_db: float) -> void:
+	player.volume_db = base_db + linear_to_db(maxf(level, 0.0001))
 
 
 func _process(delta: float) -> void:
+	_mix_sound()
 	_move_pilots(delta)
 	_rotor_angle = wrapf(_rotor_angle + rotor_spin * full_spin_rev_per_s * TAU * delta, 0.0, TAU)
 	var px := World.PX_PER_M

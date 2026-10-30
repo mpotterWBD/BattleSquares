@@ -1,12 +1,19 @@
+@tool
 extends StaticBody2D
 ## A deployable sandbag wall (scenes/sandbags.tscn; art from
-## blender/scripts/sandbags.py): a 0.75 m tile of stacked burlap sandbags,
-## one bag deep, about two squares wide and knee to waist high on a square.
+## blender/scripts/sandbags.py): a 0.8 m tile of three courses of big burlap
+## sandbags, one bag deep, two squares wide and about as high as a square.
 ## Squares can climb over it: it's on its own collision layer (3), which
 ## squares don't collide with, and a square on it (climb_at()) goes slowly,
 ## lifted and jostled (soldier.gd). Bullets and lines of sight still meet it
 ## (their rays check every layer). Squares draw over it (it's low; their
 ## shadows fall on it).
+##
+## Placed by hand in a scene, `extra_sandbags` lays that many more walls end
+## to end after it (along its +x, as it's turned), joining into one row: in
+## the editor it previews the whole row; in the game each extra is laid as a
+## wall of its own (_lay_extras()). (The script runs in the editor only for
+## that preview: everything else waits for the game.)
 ##
 ## Walls laid end to end (TILE_PX apart, turned the same way; command.gd
 ## snaps and lays rows like that) join into one wall: each picks the tile
@@ -36,6 +43,7 @@ extends StaticBody2D
 
 const World = preload("res://scripts/world.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
+const ImpactSound = preload("res://scripts/impact_sound.gd")
 
 const TILES := {
 	"single": preload("res://assets/props/sandbags_single.png"),
@@ -47,10 +55,10 @@ const MID_TILES := [
 	preload("res://assets/props/sandbags_mid_1.png"),
 	preload("res://assets/props/sandbags_mid_2.png"),
 ]
-const TILE_PX := 64.0          ## a tile's length; walls this far apart join (sandbags.py TILE_M)
+const TILE_PX := 68.0          ## a tile's length; walls this far apart join (sandbags.py TILE_M)
 const JOIN_SLACK_PX := 4.0     ## a neighbour this close to where one would join counts
-const WALL_HEIGHT_M := 0.357   ## the top of the wall; printed by sandbags.py
-const FOOT_PX := Vector2(64, 16.4)   ## the footprint (and collision box); matches sandbags.tscn
+const WALL_HEIGHT_M := 0.354   ## the top of the wall; printed by sandbags.py
+const FOOT_PX := Vector2(68, 24)   ## the footprint (and collision box); matches sandbags.tscn
 const END_INSET_PX := 2.6      ## a finished end stops this far inside the tile (sandbags.py END_INSET)
 const SHADOW_ALPHA := 0.71     ## an open-ground shadow (soldier.gd)
 ## A square starts climbing this far (px) before its centre reaches the
@@ -66,6 +74,15 @@ const ZONE_EDGE := Color(World.COMMAND_COLOR, 0.55)
 ## The chance a shot fired from outside the box goes over the wall instead of
 ## stopping in it (0.1 = 10%).
 @export_range(0.0, 1.0, 0.01) var through_chance := 0.1
+## More walls laid end to end after this one (along its length, the way it's
+## turned), joining into one row. Shown in the editor; laid in the game.
+@export_range(0, 60, 1) var extra_sandbags := 0:
+	set(value):
+		extra_sandbags = value
+		if _preview:
+			_preview.queue_redraw()
+
+var _preview: Node2D   ## editor only: draws the row extra_sandbags makes
 
 var _zone: Node2D
 var _joined_before := false   ## a wall joins on at -x
@@ -76,6 +93,12 @@ var _joined_after := false    ## ...and at +x
 
 
 func _ready() -> void:
+	if Engine.is_editor_hint():
+		_preview = Node2D.new()
+		_preview.z_index = 1   # over the wall's own (single) tile
+		_preview.draw.connect(_draw_preview)
+		add_child(_preview)   # not owned: never saved into the scene
+		return
 	var ghost := process_mode == Node.PROCESS_MODE_DISABLED   # a placing ghost (command.gd)
 	if not ghost:
 		add_to_group("deployed_sandbags")
@@ -92,15 +115,48 @@ func _ready() -> void:
 	_update_tile()
 	if not ghost:
 		_update_neighbours()
+		if extra_sandbags > 0:
+			_lay_extras.call_deferred()   # the parent is still busy adding its children
 
 
 func _process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
 	_zone.visible = World.commanding()
 
 
 func _notification(what: int) -> void:
+	if Engine.is_editor_hint():
+		return
 	if what == NOTIFICATION_TRANSFORM_CHANGED and is_node_ready():
 		_update_tile()   # a ghost being moved and turned: join up where it would go
+
+
+## Lays the `extra_sandbags` walls after this one, beside it in the level,
+## with its settings (but no extras of their own).
+func _lay_extras() -> void:
+	var scene: PackedScene = load(scene_file_path if scene_file_path != "" else "res://scenes/sandbags.tscn")
+	for i in range(1, extra_sandbags + 1):
+		var wall: Node2D = scene.instantiate()
+		wall.position = transform * Vector2(TILE_PX * i, 0)
+		wall.rotation = rotation
+		wall.zone_length_m = zone_length_m
+		wall.zone_depth_m = zone_depth_m
+		wall.through_chance = through_chance
+		get_parent().add_child(wall)
+
+
+## Editor preview of the row: this wall and its extras, each with the tile
+## it will have in the game (start, middles, end), drawn over its own.
+func _draw_preview() -> void:
+	if extra_sandbags <= 0:
+		return
+	var scale_to := _body.scale
+	for i in extra_sandbags + 1:
+		var tex: Texture2D = TILES.start if i == 0 else (TILES.end if i == extra_sandbags
+				else MID_TILES[posmod(i, MID_TILES.size())])
+		var size := tex.get_size() * scale_to
+		_preview.draw_texture_rect(tex, Rect2(Vector2(TILE_PX * i, 0) - size / 2.0, size), false)
 
 
 # ------------------------------------------------------------- joining --
@@ -121,6 +177,8 @@ func joined(side: int) -> Node2D:
 
 ## Picks the tile that matches the walls joined on, and redraws the shadow.
 func _update_tile() -> void:
+	if not is_inside_tree():   # gone too (the whole level unloading)
+		return
 	_joined_before = joined(-1) != null
 	_joined_after = joined(1) != null
 	if _joined_before and _joined_after:
@@ -204,12 +262,14 @@ func lets_bullet_through(bullet: Node2D) -> bool:
 	return in_zone(bullet.origin) or randf() < through_chance
 
 
-## A bullet stopped in the wall (bullet.gd): sand flies back out the way it came.
+## A bullet stopped in the wall (bullet.gd): sand flies back out the way it
+## came, with the thud of a round into sand.
 func bullet_hit(point: Vector2, direction: Vector2) -> void:
 	var dust := HitDust.new()
 	dust.setup(point, direction)
 	var level := get_tree().current_scene
 	(level if level else get_parent()).add_child(dust)
+	ImpactSound.play(level if level else get_parent(), point, "sand")
 
 
 func _draw_zone() -> void:

@@ -38,8 +38,22 @@ extends "res://scripts/ai_soldier.gd"
 ## alerted enemy it can see within RETURN_FIRE_M. Stop puts it on
 ## `hold_fire`: no returning fire until its next Fire order, or until it's
 ## hit itself.
+##
+## Sent to a spot inside a sandbag wall's proximity box (a move order from
+## command mode, order_move(point, true)), it takes up the defensive there
+## on arrival (DEFEND): it holds that spot (stepping back to it if knocked
+## off), faces out over the wall, scanning a little either side
+## (DEFEND_SCAN_DEG), and shoots alerted enemies out to DEFEND_FIRE_M
+## (further than RETURN_FIRE_M), over the wall. It stays until another
+## order (move, Follow me, Lead, Attention, Disperse or Stop) takes it out;
+## a Fire order just picks its target, and it stays in cover. It only digs
+## in if it got to its spot (within DEFEND_ARRIVE_M; not if it was stopped
+## short). While dug in it's on DEFEND_LAYER instead of the squares' layer,
+## so others can squeeze past a manned row (the spots are a hair under two
+## squares apart); bullets and sight lines still meet it (their rays check
+## every layer).
 
-enum State { IDLE, SHUFFLE, MOVE, FOLLOW, ATTENTION }
+enum State { IDLE, SHUFFLE, MOVE, FOLLOW, ATTENTION, DEFEND }
 
 const SHUFFLE_RADIUS_M := 0.25   ## how far idle shuffling strays from the post
 const SHUFFLE_SPEED := 0.35      ## fraction of walking speed when shuffling
@@ -57,6 +71,10 @@ const JOG_SPEED := 1.4           ## jogging speed, as a multiple of walking spee
 const SHOT_SPREAD_DEG := 1.5     ## how far a shot may stray either side of the aim
 const RETURN_FIRE_M := 20.0      ## shoots back at alerted enemies it can see this close
 const RETURN_FIRE_CHECK_S := 0.3 ## how often it looks for someone to shoot back at
+const DEFEND_FIRE_M := 30.0      ## defending behind sandbags, it engages alerted enemies this far out
+const DEFEND_SCAN_DEG := 35.0    ## defending, it scans this far either side of straight out
+const DEFEND_ARRIVE_M := 0.3     ## it digs in only if it got this close to its spot
+const DEFEND_LAYER := 16         ## collision layer 5 while dug in: squares (mask layer 1) pass it
 
 @export var idle_min_s := 1.5    ## shortest pause between idle glances/shuffles
 @export var idle_max_s := 5.0    ## longest pause
@@ -82,25 +100,35 @@ var _next_idle_s := 0.0
 var _listening := false
 var _return_fire_in := 0.0
 var _attention_facing := 0.0   ## which way it faces at Attention (radians)
+## The sandbag wall it's taking cover behind (on its way there, or in
+## DEFEND), and which way is out over it (radians).
+var _cover: Node2D = null
+var _defend_facing := 0.0
+var _body_layer := 0          ## its usual collision layer, while dug in
 
 
 func _ready() -> void:
 	super()
 	add_to_group("squad")
+	_body_layer = collision_layer
 	_post = global_position
 	_look_angle = facing
 	_next_idle_s = randf_range(idle_min_s, idle_max_s)
 
 
-## Walk to `point` and stand there.
-func order_move(point: Vector2) -> void:
+## Walk to `point` and stand there. With `take_cover`, a spot inside a
+## sandbag wall's proximity box means taking up the defensive there.
+func order_move(point: Vector2, take_cover := false) -> void:
 	_start_walk(point, State.MOVE)
 	follow_mode = ""
+	_cover = _cover_at(point) if take_cover else null
 
 
 ## Keep station behind ("follow") or in front of ("lead") the player, in a
 ## "column" or a "line".
 func order_follow(mode: String, shape := "column") -> void:
+	_cover = null
+	_dig_in(false)
 	state = State.FOLLOW
 	follow_mode = mode
 	follow_shape = shape
@@ -109,6 +137,7 @@ func order_follow(mode: String, shape := "column") -> void:
 ## Fall in at `spot` and stand at attention there, facing `face_angle`
 ## (radians), until the next order.
 func order_attention(spot: Vector2, face_angle: float) -> void:
+	_cover = null
 	_start_walk(spot, State.ATTENTION)
 	follow_mode = ""
 	_attention_facing = face_angle
@@ -122,10 +151,12 @@ func order_attack(target: Node2D) -> void:
 
 
 ## Cease fire, and don't return fire on its own until told to Fire again
-## (or it's hit).
+## (or it's hit). It also stops defending: it just stands there.
 func order_stop_firing() -> void:
 	attack_target = null
 	hold_fire = true
+	if state == State.DEFEND:
+		_stand_down()
 
 
 ## Hit by an enemy: that ends any Stop, and with nothing else to shoot it
@@ -143,7 +174,54 @@ func is_moving() -> bool:
 	return state == State.MOVE
 
 
+func is_defending() -> bool:
+	return state == State.DEFEND
+
+
+## Which way it looks out over its wall (radians), while defending.
+func defend_facing() -> float:
+	return _defend_facing
+
+
+## The sandbag wall whose proximity box `point` is in, or null.
+func _cover_at(point: Vector2) -> Node2D:
+	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
+		if wall.in_zone(point):
+			return wall
+	return null
+
+
+## Takes up the defensive behind `_cover`, here: faces out over it.
+func _take_cover() -> void:
+	state = State.DEFEND
+	_dig_in(true)
+	_post = global_position
+	var out := Vector2.from_angle(_cover.global_rotation + PI / 2)   # the wall's across axis
+	if out.dot(_cover.global_position - global_position) < 0.0:
+		out = -out   # from this side, out is across the wall
+	_defend_facing = out.angle()
+	_look_angle = _defend_facing
+	_next_idle_s = randf_range(idle_min_s, idle_max_s)
+
+
+## Stops defending, staying where it is.
+func _stand_down() -> void:
+	_cover = null
+	_dig_in(false)
+	state = State.IDLE
+	_post = global_position
+	_next_idle_s = randf_range(idle_min_s, idle_max_s)
+
+
+## Dug in (DEFEND), it's on DEFEND_LAYER so others can squeeze past; back
+## on its usual layer otherwise. (Never once it's dead: that clears it.)
+func _dig_in(on: bool) -> void:
+	if not dead:
+		collision_layer = DEFEND_LAYER if on else _body_layer
+
+
 func _start_walk(point: Vector2, walk_state: State) -> void:
+	_dig_in(false)
 	destination = point
 	state = walk_state
 	_reset_progress()
@@ -165,6 +243,12 @@ func _move_intent() -> Vector2:
 			return _head_for(_slot_position())
 		State.ATTENTION:
 			return _head_for(destination, AT_ATTENTION_M)
+		State.DEFEND:
+			if not is_instance_valid(_cover) or _cover.is_queued_for_deletion():
+				_stand_down()   # the wall's gone
+				return Vector2.ZERO
+			_tick_scan()
+			return _head_for(_post, AT_ATTENTION_M)
 	_tick_idle()
 	return Vector2.ZERO
 
@@ -251,6 +335,12 @@ func _shot_spread_deg() -> float:
 
 func _arrive() -> void:
 	super()
+	# Defends only if it got into the wall's box (not stuck short of it).
+	if (state == State.MOVE and is_instance_valid(_cover) and _cover.in_zone(global_position)
+			and global_position.distance_to(destination) <= DEFEND_ARRIVE_M * World.PX_PER_M):
+		_take_cover()
+		return
+	_cover = null
 	if state == State.MOVE:
 		_post = global_position
 		_look_angle = facing   # keep looking the way it came
@@ -274,21 +364,31 @@ func _tick_idle() -> void:
 		_look_angle = facing + randf_range(-1.0, 1.0) * (PI * 0.75 if randf() < 0.2 else PI / 3)
 
 
+## Defending: every so often it looks a little to one side or the other of
+## straight out over the wall, scanning the ground in front.
+func _tick_scan() -> void:
+	_next_idle_s -= get_physics_process_delta_time()
+	if _next_idle_s > 0.0:
+		return
+	_next_idle_s = randf_range(idle_min_s, idle_max_s)
+	_look_angle = _defend_facing + deg_to_rad(randf_range(-DEFEND_SCAN_DEG, DEFEND_SCAN_DEG))
+
+
 ## The enemy is fair game: they don't count as in the way of a shot.
 func _is_hostile(other: Node) -> bool:
 	return other.is_in_group("enemies")
 
 
 ## Returning fire: with nothing to shoot and not told to hold, it picks the
-## nearest alerted enemy it can see within RETURN_FIRE_M. Checked every
-## RETURN_FIRE_CHECK_S rather than every tick.
+## nearest alerted enemy it can see within RETURN_FIRE_M (DEFEND_FIRE_M
+## while defending). Checked every RETURN_FIRE_CHECK_S rather than every tick.
 func _look_for_return_fire() -> void:
 	_return_fire_in -= get_physics_process_delta_time()
 	if _return_fire_in > 0.0 or hold_fire or is_attacking():
 		return
 	_return_fire_in = RETURN_FIRE_CHECK_S
 	var best: Node2D = null
-	var best_d := RETURN_FIRE_M * World.PX_PER_M
+	var best_d := (DEFEND_FIRE_M if state == State.DEFEND else RETURN_FIRE_M) * World.PX_PER_M
 	for enemy: Node2D in get_tree().get_nodes_in_group("enemies"):
 		if not enemy.alerted:
 			continue

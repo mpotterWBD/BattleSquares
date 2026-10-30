@@ -13,12 +13,19 @@ extends Node2D
 ## Bullets in flight are in the "bullets" group, so enemies can notice shots
 ## (scripts/enemy.gd): `origin` is where it was fired from.
 ##
+## A shot that isn't the player's own, passing within the player's flyby
+## circle (player.gd `flyby_radius_m`), whizzes past: a flyby sound
+## (scripts/impact_sound.gd) at its closest point to the player, once.
+##
 ## A badly aimed shot (rifle.gd ground_hit_chance_at()) is given a
 ## `ground_at_m`: if nothing stops it first, it goes into the ground that far
-## from the muzzle and kicks up a small puff of dust (scripts/hit_dust.gd).
+## from the muzzle and kicks up a small puff of dust (scripts/hit_dust.gd),
+## with the thud of a round into the ground (scripts/impact_sound.gd):
+## concrete on a road's asphalt (road.gd covers()), dirt anywhere else.
 
 const World = preload("res://scripts/world.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
+const ImpactSound = preload("res://scripts/impact_sound.gd")
 const LIFETIME_S := 1.0
 const COLOR := Color(1.0, 0.95, 0.7, 0.9)
 
@@ -31,6 +38,7 @@ var ground_at_m := INF           ## goes into the ground this far from the muzzl
 var _age := 0.0
 var _travelled := 0.0
 var _passed: Array[RID] = []   ## cover this shot has gone over
+var _whizzed := false          ## has played its flyby
 
 
 func setup(from: Vector2, angle: float, speed_mps: float, shot_by: CollisionObject2D = null,
@@ -68,6 +76,7 @@ func _physics_process(delta: float) -> void:
 			hit.collider.bullet_hit(hit.position, velocity.normalized())
 		queue_free()
 		return
+	_check_flyby(step)
 	position += step
 	if lands:
 		_hit_ground()
@@ -79,11 +88,27 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 
-## Into the ground here: a puff of dust, and the bullet's gone.
+## Passing within the player's flyby circle this tick (along `step`): the
+## whizz, from the closest point of its path to the player.
+func _check_flyby(step: Vector2) -> void:
+	if _whizzed:
+		return
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null or player == shooter:
+		return
+	var near := Geometry2D.get_closest_point_to_segment(player.global_position, position, position + step)
+	if near.distance_to(player.global_position) <= player.flyby_radius_m * World.PX_PER_M:
+		_whizzed = true
+		ImpactSound.play(get_parent(), near, "flyby")
+
+
+## Into the ground here: a puff of dust and a thud, and the bullet's gone.
 func _hit_ground() -> void:
 	var dust := HitDust.new()
 	dust.setup(position, velocity.normalized(), HitDust.GROUND_STRENGTH, true)
 	get_parent().add_child(dust)
+	var on_road := get_tree().get_nodes_in_group("roads").any(func(road): return road.covers(position))
+	ImpactSound.play(get_parent(), position, "concrete" if on_road else "dirt")
 	queue_free()
 
 

@@ -52,7 +52,7 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 - The **player** (`player.tscn`, inheriting `soldier.tscn`). Mike's `main.tscn` holds Field, Edge, Player, Camera, Command and **Arrival**: **no squadmates or helicopters are placed**. The game opens with the player **flown in by helicopter** (`scripts/arrival.gd`): it lands so the player steps out of the front starboard door exactly where the Player node is placed, after about 6.6 s. Until then the player is hidden and switched off and command mode is shut (`World.player_aboard`). Troops arrive by helicopter from a radio station (below), and tests add their own squadmates.
 - **Helicopters** (`helicopter.tscn`) appear only when sent from a station's terminal (`scripts/insertion.gd` flies them in and out).
 - **Command system** (`scripts/command.gd`):
-  - a command circle all round the player (`aura_radius_m` 8 m; the voice cone was removed on 2026-10-29). Radio operators' circles are their own setting, `radio_circle_radius_m` 4.95 m, and equipment is placed within `deploy_reach_m` 2.475 m (a brighter ring while placing);
+  - a command circle all round the player (`aura_radius_m` 8 m; the voice cone was removed on 2026-10-29). Radio operators' circles are their own setting, `radio_circle_radius_m` 4.95 m, and equipment is placed within `deploy_reach_m` 4.95 m (a brighter ring while placing; 2.475 m until 2026-10-30);
   - selection by box or click;
   - move orders to anywhere;
   - an ORDERS menu: Follow me / Lead (hold for a Line/Column pop-out), **Attention** (hold for Line/Column, then click where they fall in: they form up there facing the player and stand still), Disperse, and the orange fighting orders **Fire** (arms everyone the order reaches; the next left click on a square picks the target, right click cancels; they shoot it until it dies, on top of whatever they were doing, holding fire while anyone is in the line of fire) and **Stop** (cease fire); with nothing selected, an order goes to everyone who can hear;
@@ -64,7 +64,7 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
     - **Deploy** (hold) → **Troops** / Vehicles (disabled, "soon"). Troops opens **10 slots** (2 rows of 5); fill as many as you want sent. Press a slot for the unit-type pop-out, which opens left of the panel: **Infantry** or **Radio** (a radio operator: infantry with a radio pack, `kit = "radio"`); a quick click = Infantry. **Clear** empties them.
     - Filled slots ready one after another, `seconds_per_troop` = **1 s each (testing value; it was 30 s)**. Then **Send helicopter** gives a ghost helicopter to mark the LZ (anywhere inside the play area). A click sends the real one: it flies in from the west at 25 m, lands, unloads the troopers (who join the squad and step about 1 m clear of the doors, spread over 3 m along each side), lifts off and flies away. The request survives walking away from the desk, and while the menu is closed a timer above the box shows "3 troopers  1:30" (total time left), then "3 troopers READY";
   - a satellite dish with its own green box. F there opens a tuning wheel. The mouse only picks a heading (white line; a green line shows where the dish points now). A left click or F locks the pick in (`target_heading`), and the dish turns to it slowly: at most 12°/s, easing in and out, so 180° takes about 15 s. A 60 m, ±18° beam shows where it actually points, in the same green and see-through as the command circles (the alphas are shared in `world.gd`). It shows while tuning and in command mode, not while the dish turns on its own. The current heading is in `dish_heading`, and `dish_tuned(heading)` is emitted when the dish arrives. **Nothing consumes it yet.**
-- **Bullets hit.** A bullet traces a ray along each tick's flight (`bullet.gd`), ignores its shooter, and stops at the first solid thing (squares, a landed helicopter's hull, a radio station). A square that's hit (`soldier.gd take_hit()`) is shoved back 0.3 m along the shot in 0.12 s (`hit_knockback_m`, `hit_knockback_s`), twists up to 20° (`hit_twist_deg`) when the hit lands off-centre, and dust bursts off the hit spot back toward the shooter (`scripts/hit_dust.gd`). **Anchored** squares (`anchored`, on for the dummy) don't move: they rock on a spring, up to 0.1 m and the same twist, and settle back where they stand. **Health:** every square has `max_health` 2 for testing (normally 100) and a rifle hit does 25 (`rifle.gd damage`), so one hit kills (4 at 100). A dead square leaves every group and the collision layers (bullets and squares pass over it) and goes down as a **ragdoll** (`scripts/death_fall.gd`): the killing shot sends it skidding ~0.3–0.45 m and spinning (if hit off-centre), it topples over whichever face was pushed (front, back or a side) under gravity, bounces and settles with dust, and bumps off anything solid it skids into. Its rifle flies free under gravity: dropped to the side, or flung and spinning when it goes over backwards. It darkens, lies 5 s, fades and is removed. The player takes hits but can't die yet (no game over). Friendly fire hits too. The dummy is `invincible` for now: it takes hits (rocks, dust) but never loses health.
+- **Bullets hit.** A bullet traces a ray along each tick's flight (`bullet.gd`), ignores its shooter, and stops at the first solid thing (squares, a landed helicopter's hull, a radio station). A square that's hit (`soldier.gd take_hit()`) is shoved back 0.3 m along the shot in 0.12 s (`hit_knockback_m`, `hit_knockback_s`), twists up to 20° (`hit_twist_deg`) when the hit lands off-centre, and dust bursts off the hit spot back toward the shooter (`scripts/hit_dust.gd`). **Anchored** squares (`anchored`, on for the dummy) don't move: they rock on a spring, up to 0.1 m and the same twist, and settle back where they stand. **Health:** every square has `max_health` 2 for testing (normally 100) and a rifle hit does 25 (`rifle.gd damage`), so one hit kills (4 at 100). A dead square leaves every group and the collision layers (bullets and squares pass over it) and goes down as a **ragdoll** (`scripts/death_fall.gd`): the killing shot sends it skidding ~0.3–0.45 m and spinning (if hit off-centre), it topples over whichever face was pushed (front, back or a side) under gravity, bounces and settles with dust, and bumps off anything solid it skids into. Its rifle flies free under gravity: dropped to the side, or flung and spinning when it goes over backwards. It darkens, lies 5 s, fades and is removed. The player (`max_health` 4 in `main.tscn`: two hits) dies too: it falls in slow motion with the camera closing in, stays down, and a Restart / Quit menu comes up (see 2026-10-30). Friendly fire hits too. The dummy is `invincible` for now: it takes hits (rocks, dust) but never loses health.
 - **Menu building blocks:** `scripts/ui_style.gd` (shared button and panel look) and `scripts/hold_popout.gd` (the reusable press-hold-slide-release pop-out), used by command mode and the terminal.
 
 ### Next steps (Mike's stated direction)
@@ -161,6 +161,7 @@ BattleSquares/
     ├── characters/      ← character sprites and their shadows
     ├── vehicles/        ← helicopter body, rotor and shadow outlines
     ├── props/           ← static props (comms station) and their shadows
+    ├── sfx/             ← sound effects (.wav / .ogg)
     └── previews/        ← review renders, ignored by Godot
 ```
 
@@ -201,7 +202,10 @@ BattleSquares/
 |-------|--------|--------|-------|
 | Grass field tile (1024×1024, seamless) | Done (v3, 12× original distance) | `blender/scripts/field_grass.py` | Output `assets/textures/field_grass_tile.png`. The tile covers 12 × 12 m, with 2.52 M blades at 2× size, lush and dry patches, soil, about 3,400 daisies and buttercups, and pebbles; lit from the top-left. Takes about 57 s in total (mostly building the mesh). Older versions are in `assets/previews/` (`…closeup_v1`, `…3x_v2`). |
 | Asphalt road strips, 4 conditions (1024×512 each, tile end to end) | Done (v3: clean, ok, medium, bad), **in the game** (`scenes/road.tscn`, Condition) | `blender/scripts/road_asphalt.py` (`-- clean ok medium bad` to render only some) | `assets/textures/road_asphalt.png` (clean), `road_asphalt_ok.png`, `road_asphalt_medium.png` and `road_asphalt_bad.png`: each 12 m along the road × 6 m across, RGBA, all the same size so they swap freely. **Clean**, after Mike's reference picture: 5 m of even dark asphalt, straight crisp edges, solid white edge lines (0.12 m wide, 0.15 m in) and yellow centre dashes (1 m dash, 1 m gap). **Ok:** slightly faded paint, faint wheel tracks, a few hairline cracks at the edges, one repair patch with a sealed seam, oil stains, edges barely wavy. **Medium:** paint worn through in places, a broken crack down the middle and four across, a patch of crazed cracking, two patches, a small pothole, ragged edges with some gravel and dirt, and grass in a few cracks. **Bad:** paint mostly gone and flaking, cracks everywhere (7 across, a web along the edges, 3 crazed patches), 5 potholes with broken stone in them, crumbling edges with a gravel-and-dirt verge, broken asphalt chunks, and grass in the cracks. Damage is set per condition in `CONDITIONS`. Field grass (same colours, size and density as `field_grass.py`, whose `main()` is guarded so it can be imported) grows over each verge, then the strip is transparent so the real field shows through, and its outermost 10 px are faded to nothing. No shadow catcher: the field's grass already has its shadows, and doubling them left a dark band. All four render in about 40 s. Previews: `assets/previews/road_conditions_preview.png` (all four over the grass, clean at the top), `road_asphalt{,_ok,_medium,_bad}_preview.png`, `road_conditions_ingame.png` (all four in the game, Clean to Bad from left to right) and `road_ingame_preview.png`. |
-| Sandbag wall (deployable), 6 tiles | Done (v2: tiles that join into one wall), **in the game via DEPLOY** | `blender/scripts/sandbags.py` | `assets/props/sandbags_{single,start,end,mid_0,mid_1,mid_2}.png` (256 × 128 px = 0.75 × 0.375 m, **rendered at 4× density**, shown at 0.25 with mipmaps; each has a `.import` with mipmaps on). After Mike's reference photo: one stack of 5 courses, a single bag deep (the two-deep base of v1 is gone), 0.357 m high, 0.192 m wide at the foot, the courses stepping in 5% each as they rise. Boxy, lumpy tan burlap bags (0.25 × 0.16 × 0.085 m) in a running bond: even courses three bags a tile, odd ones offset half a bag, so one bag straddles each join. Tiles are 0.75 m (64 game px) and join end to end seamlessly: each is rendered with the neighbours' bags that reach into it, and the bags at a join are keyed by position (`bag_rng()`) so every tile builds them the same, then cropped to the tile. **single:** both ends finished with half bags. **start / end:** finished at −x / +x. **mid_0–2:** joined at both ends, with different middle bags so long rows don't repeat. Lit by the standard sun; the game draws the shadow. Review: `assets/previews/sandbags_preview.png` (an angled run of five), `sandbags_tiles_preview.png` (the tiles laid edge to edge), `sandbags_rows_preview.png` and `sandbags_join_closeup.png` (in the game). All six render in about 15 s. |
+| Sandbag wall (deployable), 6 tiles | Done (v2: tiles that join into one wall), **in the game via DEPLOY** | `blender/scripts/sandbags.py` | `assets/props/sandbags_{single,start,end,mid_0,mid_1,mid_2}.png` (272 × 128 px = 0.797 × 0.375 m, **rendered at 4× density**, shown at 0.25 with mipmaps; each has a `.import` with mipmaps on). After Mike's reference photo: one stack of 3 courses, a single bag deep (the two-deep base of v1 is gone), 0.354 m high, 0.282 m wide at the foot, the courses stepping in 5% each as they rise. Big, boxy, lumpy tan burlap bags (0.4 × 0.256 × 0.136 m; 1.6× v2's) in a running bond: even courses two bags a tile, odd ones offset half a bag, so one bag straddles each join. Tiles are 0.797 m (68 game px, two squares) and join end to end seamlessly: each is rendered with the neighbours' bags that reach into it, and the bags at a join are keyed by position (`bag_rng()`) so every tile builds them the same, then cropped to the tile. **single:** both ends finished with half bags. **start / end:** finished at −x / +x. **mid_0–2:** joined at both ends, with different middle bags so long rows don't repeat. Lit by the standard sun; the game draws the shadow. Review: `assets/previews/sandbags_preview.png` (an angled run of five), `sandbags_tiles_preview.png` (the tiles laid edge to edge), `sandbags_rows_preview.png` and `sandbags_join_closeup.png` (in the game). All six render in about 15 s. |
+| Ammo crate (first of the supply crates) | Done, **scene ready to place** (`scenes/crate_ammo.tscn`) | `blender/scripts/crates.py` (`-- ammo`) | `assets/props/crate_ammo.png` (384 × 384 px = 1.125 m square, **rendered at 4× density**, shown at 0.25 with mipmaps; `.import` has mipmaps on). After Mike's reference photo (a tarped pallet), without the tarp: a 0.8 m square four-way wooden pallet (0.144 m high: bottom boards, nine blocks, stringers, seven deck boards, pine with grain) loaded with 24 olive-drab M2A1-size ammo cans in a square block (4 across × 2 deep × 3 high; each with a rimmed lid, folding handle, end latch and yellow stencil marks, a little out of true) under black ratchet straps both ways with buckles on top. Load 0.632 × 0.618 m, top at 0.732 m. Lit by the standard sun; the game draws the shadow (`scripts/crate.gd`). Review: `assets/previews/crate_ammo_preview.png` (angled). Other crate kinds will be added to `KINDS` in the same script. |
+| Sandbag crate | Done, **scene ready to place** (`scenes/crate_sandbags.tscn`) | `blender/scripts/crates.py` (`-- sandbags`) | `assets/props/crate_sandbags.png` (384 × 384 px = 1.125 m square, 4× density, mipmaps). The ammo crate's pallet and straps, loaded with 30 filled burlap sandbags (the wall's bag model and burlap from `sandbags.py`, a touch smaller: 0.37 × 0.235 m), 2 × 3 to a layer, 5 layers, each turned 90° from the one below. Straps as on the ammo crate. Load 0.768 × 0.772 m, top at 0.747 m. Review: `assets/previews/crate_sandbags_preview.png`. |
+| Ammo can (lone) | Done, **scene ready to place** (`scenes/ammo_can.tscn`) | `blender/scripts/crates.py` (`-- can`) | `assets/props/ammo_can.png` (128 × 128 px = 0.375 m square, 4× density, mipmaps). One of the ammo crate's cans on its own: olive drab, rimmed lid, folding handle, end latch, yellow stencils. 0.16 × 0.32 m, top at 0.207 m. Review: `assets/previews/ammo_can_preview.png`. |
 | Rifle | Done (v2, detailed) | `blender/scripts/rifle.py` | `assets/characters/rifle.png` (384 px, **rendered at 4× density**, shown at 0.25 scale with mipmaps so it stays sharp when zoomed in). 0.48 m from pivot to muzzle (0.28 m beyond the front face). Parts: gunmetal receiver, red-dot sight with a red lens, polymer handguard, front sight post, barrel, muzzle brake, and a forward-raked magazine. **Canted 30°** so the magazine shows from above (it pokes out to the gun's right). Lit from straight overhead so it can rotate; its shadow is drawn in Godot. v1 (plain bar) is in `assets/previews/rifle_v1_plain.png`. |
 | Radio pack (radio operator) | Done (v1) | `blender/scripts/radio_pack.py` | `assets/characters/radio_pack.png` (614 px = 1.8 m, **rendered at 4× density**, shown at 0.25 scale with mipmaps), centred on the square's centre, square facing +x. Brown canvas pack on the square's back (0.16 m deep, 0.3 m wide, top at 0.44 m, just above the square), darker top flap and side pouches, shoulder straps over the square's top, the radio's top with two knobs, and a 0.6 m whip antenna raked 32° back with a tip cap. Lit from straight overhead so it turns with the square; its shadow is drawn in Godot (`radio_pack.gd`). |
 | Helicopter (UH-60-style transport) | Done (v3, 0.55 scale, cockpit, flies insertions) | `blender/scripts/helicopter.py` | Modelled at real size, then shrunk by `SCALE` = 0.55 (`helicopter.gd SCALE` must match): fuselage 8.4 m, rotor 9 m. Cockpit (laid out for scale 0.5 and grown with `SCALE`): two red pilot squares, 0.44 m, corners rounded like the player's (upright edges only, top edges sharp), under dark tinted glass (alpha 0.85); an instrument panel with screens, switch strips and a centre console with lamps. `assets/vehicles/helicopter_body.png` (939 px = 11 m, nose to +x; cockpit interior without pilots or glass), `helicopter_pilot.png` (one pilot, lit as in the cockpit; the game draws two and animates them), `helicopter_glass.png` (glass only, drawn over the pilots) and `helicopter_rotor.png` (centred on the mast), both lit from straight overhead so they can face any heading. Plus 4 half-res shadow outlines `helicopter_shadow_{body,stabilator,fin,tailrotor}.png` (padded for sweeping). Olive drab, matte, no markings; black blades with yellow tip bands. Renders in about 15 s. |
@@ -1463,4 +1467,386 @@ Major choices and the reasons behind them.
   - **Removing:** taking the middle wall away turns its neighbours into end and start. Snapping it back restores the row.
   - **Turned:** a 30° dragged row joins the same way.
   - **Still passing:** the climb, cover and cover-AI tests (crossing now takes 2.1 s, with the thinner wall).
+
+### 2026-10-30 — Bigger deploy reach, bigger sandbags, the player can die
+- Mike: make the placement circle 2× bigger, make each sandbag 60% bigger, give the player 4 health, and when the player dies zoom in on them with some margin, play the ragdoll in slow motion, then show a small Restart / Quit menu.
+- **Deploy reach:** `player.gd deploy_reach_m` 2.475 → **4.95 m** (also in `player.tscn`).
+- **Sandbags 1.6×** (`sandbags.py`):
+  - Bags are 0.4 × 0.256 × 0.136 m (were 0.25 × 0.16 × 0.085), lumps scaled to match.
+  - Two bags per tile instead of three, so a tile is 0.797 m (68 game px): still two squares wide.
+  - 3 courses instead of 5, so the wall stays about as high as before (0.354 m); the foot is 0.282 m wide.
+  - Game side: `sandbags.gd` `TILE_PX` 68, `FOOT_PX` 68 × 24, `WALL_HEIGHT_M` 0.354; `sandbags.tscn` collision box 68 × 24; `command.gd` sandbags `line_px` 68.
+  - Fix: `_update_tile()` returns when the wall is no longer in the tree. Reloading the level (the new Restart) had walls re-tiling after they'd left, which errored.
+- **Player health:** `max_health` 4 on the Player in `main.tscn` (the rifle does 2 a hit: two hits).
+- **Player death** (`player.gd _die()`, replacing the top-up):
+  - It falls like any square (`death_fall.gd`), but `lingers`: it darkens and stays down instead of fading and being removed.
+  - `World.player_dead` shuts command mode (`World.commanding()`), and radio command is dropped.
+  - `Engine.time_scale` goes to `DEATH_TIME_SCALE` 0.3 while it falls.
+  - `death_fall.gd` fires a new `came_to_rest` signal once the body has settled and stopped skidding and the rifle is down. Then the time scale goes back to 1 and, `DEATH_MENU_DELAY_S` 0.6 s later, the menu comes up.
+  - **Camera** (`game_camera.gd _close_in()`): eases in on the body until `DEATH_VIEW_M` 3.5 m of ground shows top to bottom (past `max_zoom` if need be). It eases in real time, so it isn't slowed with the game. The wheel does nothing meanwhile.
+  - **Menu** (new `scripts/death_menu.gd`): a dimmed screen and a small panel in the command menus' style, low on the screen so it doesn't cover the body: "KILLED IN ACTION", **Restart** (reloads the level) and **Quit**.
+  - `player.gd _ready()` resets `World.player_dead`, radio command and the time scale, since statics outlive a scene reload.
+- Tested (`test_death.gd`, windowed):
+  - Health 4 → 2 after one hit, dead after the second.
+  - Time scale 0.3 and command mode blocked while falling.
+  - The menu came up 2.8 s (real) after death, at time scale 1 and zoom 3.6, with the body still there.
+  - Restart gave a fresh, live player with `player_dead` cleared.
+  - The sandbag tiling and cover-AI tests still pass at the new size.
+
+### 2026-10-30 — Squadmates defend from behind sandbags
+- Mike: moving a unit to a spot behind a sandbag wall should make it take up the defensive there, staying and fighting from the sandbags until another command cancels it.
+- **`squadmate.gd`, new `DEFEND` state:**
+  - **Triggered** by a command-mode move order (`order_move(point, true)` from `command.gd _order_move()`) whose spot is inside a wall's proximity box (`_cover_at()`). On arrival, if it actually got into the box, it takes cover (`_take_cover()`). A move that gets stuck short of the box just stands there. Disperse uses a plain move, so it never triggers this.
+  - **Holding:** it holds the spot it arrived at, stepping back to within 3 cm if knocked off. No idle shuffling.
+  - **Facing:** out over the wall (`defend_facing()`, across the wall from its side), scanning up to `DEFEND_SCAN_DEG` 35° either side every few seconds (`_tick_scan()`).
+  - **Fighting:** it engages alerted enemies it can see over the wall out to `DEFEND_FIRE_M` 30 m (normal return fire is 20 m), and goes on guard again when its target dies.
+  - **Ending it:** any other order (move, Follow me, Lead, Attention, Disperse, Stop) ends it. Stop leaves it standing where it is (`_stand_down()`). A Fire order only picks its target, so it stays in cover. If the wall disappears, it stands down.
+- **`command.gd`:** in command mode, a defending squadmate shows a green bracket just outside its ring, on the side it faces out of (`DEFEND_MARK_M`, `DEFEND_MARK_HALF`).
+- Tested (`test_defend.gd`):
+  - **Arrival:** a single unit sent behind a row of 3 walls arrived and defended, facing straight out (−90°).
+  - **On guard:** over 10 s it stayed within 0.07 m of the spot, looking at most 34° off straight out.
+  - **Engaging:** an alerted enemy 26 m out was engaged (8 shots in 4 s) without the unit moving. When the enemy went, the unit stayed on guard.
+  - **Knocked back:** 0.22 m off the spot, it stepped back.
+  - **Ending it:** Stop ended it. Ordered back in, it defended again; moved to open ground, it didn't. A plain (disperse-style) move into the box doesn't trigger it.
+  - Screenshot (command mode, the bracket): checked by eye, not kept.
+
+### 2026-10-30 — Unlimited sandbags (for now)
+- Mike asked for unlimited sandbags for the time being.
+- A deployable count of **-1** now means unlimited: `command.gd _carried()` reports `UNLIMITED_COUNT`, placing doesn't use one up, and the DEPLOY pop-out shows "Sandbags  ∞".
+- `player.gd` / `player.tscn` `deployables`: sandbags **-1** (was 6). Set it back to a number to limit them again.
+
+### 2026-10-30 — Scroll to zoom in the radio command overview
+- Mike: in command mode, let him scroll out. Holding Space already left the wheel zooming as normal; the radio command overview (`game_camera.gd`) ignored it, fitting the squad automatically.
+- Now the wheel works there too: it scales the overview's fit (`_overview_scale`, `zoom_step` a notch, out to `min_zoom` and in to `max_zoom`), still centred on the units. It starts at the plain fit each time radio command begins.
+- Placing equipment or turning an Attention formation still uses the wheel to turn things, as before.
+
+### 2026-10-30 — Enemy spawner HUD (testing)
+- Mike: a little HUD for summoning enemies, for testing only. Three regions on the far right (top, middle, bottom) they come out of, picked at random; inputs for how many and their formation. They patrol from right to left until they see us and fight, or just keep walking.
+- **`scripts/enemy_spawner.gd`** (new; an `EnemySpawner` Node2D in `main.tscn`):
+  - **Panel**, top right: "How many" (1–12), "Formation" (Column, Line, Wedge) and **Spawn**. A status line says what came from where.
+  - **Regions:** the right edge's top, middle and bottom thirds, 3 m deep, drawn faintly in enemy blue on the ground. The one used flashes for 2 s.
+  - **Spawning:** the formation's rearmost enemy starts 0.8 m in from the edge, at a random height within the region, kept inside the field. Members are `gap_m` (1.6 m) apart; the wedge is a leader then pairs further back each side. Spawned enemies get `enemy_health` 2, like the placed ones.
+  - **Rifle:** while the mouse is over the panel (or its list is open), the player is `busy`, so clicking it doesn't fire.
+- **`scripts/patrol.gd`** (new): moves the formation's anchor left at 0.8 of walking speed. It waits while any member is fighting or searching, then restarts from where they are, so they re-form. A member reaching the left edge walks off (is removed); the patrol goes when it has nobody left.
+- **`enemy.gd`:**
+  - On patrol, a calm enemy keeps its slot (`_keep_patrol_slot()`, jogging if well behind).
+  - It notices people exactly as before (detection circle, shots, hits), and a patrol alerts together.
+  - After searching, it goes straight back to calm and rejoins the patrol (`_go_calm()`) instead of returning to a post.
+- Tested (`test_spawner.gd`):
+  - **Regions:** all three came up over 30 spawns.
+  - **Formations:** column, line and wedge of 5 each walked 10 m left in 8 s, within 0.22 m of their slots.
+  - **Fighting:** a wedge meeting the player 7 m ahead alerted all 5 and fired. With the player gone they were calm after 13.5 s (3 s losing contact, 10 s searching), then re-formed and walked on 9.4 m in 6 s.
+  - **Leaving:** a patrol at the left edge was removed entirely.
+
+### 2026-10-30 — Enemies take cover behind sandbags
+- Mike: an enemy near a sandbag wall should take up one of its defensive spots and defend from there, leaving only if flanked or if its sandbags are destroyed (destruction comes later).
+- **`enemy.gd`, cover:**
+  - **Taking cover:** fighting within `cover_seek_m` (6 m) of a wall, at each rethink it looks for a defensive spot (`_take_cover()`). Each wall has two spots, `COVER_SPOT_M` 0.42 m behind its middle on each side, inside its proximity box, so its shots go over.
+  - **A usable spot** is free (`_spot_taken()`: nobody standing there and no other enemy claiming it) and covered: a ray from it to the fight meets a sandbag wall within `COVER_REACH_M` 1.5 m (`_covered()`, collision layer 4). It takes the nearest.
+  - **Holding** (`_hold_cover()`): it goes to the spot and holds it, firing as usual. No rethinking, no dodging, and it doesn't drop to SEARCH when it loses sight of everyone.
+  - **Leaving:**
+    - Uncovered for `FLANK_GRACE_S` 0.8 s means flanked: it leaves, taking another covered spot if there's one in reach (often the other side of the same wall), otherwise fighting in the open.
+    - It also leaves if its wall is gone (freed or queued for deletion).
+    - Going calm (a patrol rejoining) clears it.
+- Tested (`test_enemy_cover.gd`):
+  - **Taking cover:** three alerted enemies 2.5 m south of a 3-wall row, the player 9 m north, each took a different spot on the south side, within 0.07 m.
+  - **Holding:** 16 shots in 10 s without moving off the spot.
+  - **Losing sight:** with nobody in sight for 16 s, they stayed in cover (still ENGAGE, no search).
+  - **Flanked** from their side, one left after 1.1 s and took the spot on the far side of the wall.
+  - **Wall gone:** with its wall freed, it left cover.
+  - `test_enemy.gd`, `test_spawner.gd` and `test_cover_ai.gd` still pass. In the last, the enemy now takes cover on its own side of the wall and returns fire over it, instead of working round the side.
+
+### 2026-10-30 — Rifle shot sound
+- Mike added `assets/sfx/ES_Guns, Rifle, M40-Sniper Rifle, Barrel - Epidemic Sound - 0000-0305.wav` (Epidemic Sound; 0.3 s, stereo, 24-bit, 96 kHz) as the sound for every rifle shot. He later renamed it `assets/sfx/Rifle.wav`.
+- **`rifle.gd`:** a new "Sound" group of exports:
+  - `shot_sound` (that file, now `Rifle.wav`), `shot_volume_db` 0, `shot_pitch_jitter` 0.05 (each shot's pitch varies ±5%) and `shot_hearing_m` 45 m.
+  - Each rifle gets an `AudioStreamPlayer2D` at the muzzle and plays it from `fire()`.
+  - It's positional: the current camera is the listener, so distant shots are quieter and panned, fading out at 45 m (about the field's width).
+  - `max_polyphony` 4 lets quick shots ring over each other.
+- Since squadmates and enemies use the same rifle, they all get the sound. Per-scene overrides (e.g. a quieter enemy rifle) can go on their Rifle node.
+
+### 2026-10-30 — Dirt impact sounds
+- Mike added `assets/sfx/DirtImpact.mp3`: 7 s holding a set of bullet-into-dirt impacts. He asked for them mixed up, one per bullet hitting the dirt.
+- **Splitting:** nothing here decodes MP3 except Blender's audio module (`aud`), so a one-off script run in headless Blender (in the session scratchpad, not kept) did it:
+  - It found the 8 impacts by the silence between them (above −34 dB counts as sound; 0.25 s of quiet ends one).
+  - Each one is trimmed (4 ms before, 60 ms after, 30 ms fade-out), mixed down to mono for positional playback and normalised to the same peak.
+  - They're written as `assets/sfx/dirt_impact/dirt_impact_0.wav` … `_7.wav` (48 kHz, 16-bit, 0.25–0.34 s each). The MP3 stays as the source.
+- **`bullet.gd _hit_ground()`:**
+  - A round going into the ground plays one of `DIRT_SOUNDS` at random, never the same one twice in a row (`static var _last_dirt`).
+  - Pitch varies ±8%, at `DIRT_VOLUME_DB` −4 dB, fading out at `DIRT_HEARING_M` 30 m from the camera.
+  - It has its own short-lived `AudioStreamPlayer2D` at the landing spot (the bullet is freed straight away), which frees itself when it finishes.
+- Only ground hits make the sound. Hits on squares and sandbags are silent for now.
+
+### 2026-10-30 — Manning a sandbag row
+- Mike: with several units selected and sent to a sandbag spot, they should fill the adjacent spots along that chain of sandbags until it's full or there are no more units.
+- **`command.gd _order_move()`:** a point in a wall's proximity box now mans that wall's row (`_man_sandbags()`). Otherwise the line-abreast move is unchanged (now `_send_in_line()`).
+  - **The row** (`_sandbag_row()`) is the walls joined end to end with the one clicked (`sandbags.gd joined()`), walking each way and coping with a neighbour turned end for end. It's ordered from the clicked wall outward, alternately each way.
+  - **Spots:** one per wall, `COVER_SPOT_M` 0.42 m behind its middle on the side clicked, so everyone faces the same way. Spots someone else is standing on or walking to are skipped (`_spot_held()`).
+  - **Who goes where:** each spot in turn gets the nearest unit still to place, and is sent there with `take_cover` (they dig in, squadmate.gd DEFEND).
+  - **Overflow:** anyone left once the row is full lines up `OVERFLOW_BACK_M` 1.2 m behind the clicked wall.
+  - A single unit works the same way: it snaps to the clicked wall's spot.
+- **`squadmate.gd` fixes found while testing:**
+  - **Squeezing past:** a manned row is a wall of squares 0.8 m apart, a hair too tight for a 0.4 m square to pass. While dug in, a squadmate is now on `DEFEND_LAYER` (collision layer 5) instead of the squares' layer 1 (`_dig_in()`), so others squeeze past. Bullet and sight rays check every layer, so it's still hit and still blocks views.
+  - **Digging in:** only if it got within `DEFEND_ARRIVE_M` 0.3 m of its spot. A unit stopped short (stuck) used to dig in wherever it gave up if that was in the box, even on the wrong side.
+- Tested (`test_man_row.gd`, a row of 5 walls):
+  - **Three units** sent to the middle wall's south side took walls 2, 3, 1.
+  - **Five more** to the same wall skipped those three, took the two ends (0, 4), and the last three lined up behind.
+  - **Crossing:** two of those, sent to the north side of the end wall, squeezed past the manned south side and took 4N and 3N.
+  - `test_defend.gd` still passes (the spot is now the wall's own, 0.24 m from the click).
+
+### 2026-10-30 — "Extra Sandbags" in the Inspector
+- Mike: an Inspector setting on a sandbag wall placed in the editor that adds more sandbags.
+- **`sandbags.gd`** is now `@tool`, with a new export `extra_sandbags` (0–60):
+  - **What it does:** lays that many more walls end to end after this one, along its length the way it's turned, so they join into one row.
+  - **In the editor:** a preview child (not owned, so never saved) draws the whole row with the tiles it will get (start, middles, end), over the wall's own tile, and redraws as the number changes. Everything else in the script returns early in the editor (`Engine.is_editor_hint()`), so no gameplay code runs there.
+  - **In the game:** `_lay_extras()` (deferred, since the parent is still adding children) instantiates the walls beside this one in the level, `TILE_PX` apart and turned the same, carrying its zone and through-chance settings (no extras of their own). They join up through the usual tile logic.
+- Tested (`test_extra_sandbags.gd`): a wall turned 30° with 4 extras became 5 walls, all at 30°, exactly 68 px apart, tiled start, mid, mid, mid, end, with the original's `through_chance`. The project also loads in the editor (headless) without script errors. The preview itself hasn't been looked at in the editor yet.
+
+### 2026-10-30 — Rifle shots: three variants with echo tails
+- Mike: with everyone shooting, the single short rifle snippet (`Rifle.wav`) sounded like popcorn. He added `assets/sfx/Rifle.mp3` with several shots, to be broken up like the dirt impacts.
+- **Wrong file:** the `Rifle.mp3` first in the folder was byte-identical to `DirtImpact.mp3` (a copy of the dirt download). The real one was in Downloads (`ES_Guns, Rifle, M40-Sniper Rifle, Barrel - Epidemic Sound.mp3`, 77,305 bytes, 4.1 s) and was copied over it.
+- **Splitting** (headless Blender `aud` again; script in the session scratchpad):
+  - It holds 3 shots, each a sharp crack and then an echo dying away (about −33 dB at 0.1 s, −45 at 0.5 s).
+  - Each is cut at its onset (3 ms before), kept to **0.6 s** so the echo rings out, faded over the last 0.2 s, mixed to mono and normalised to the same peak.
+  - Written as `assets/sfx/rifle_shot/rifle_shot_0.wav` … `_2.wav` (48 kHz, 16-bit).
+- **`rifle.gd`:**
+  - `shot_sound` → `shot_sounds` (array, those three).
+  - The muzzle player's stream is an `AudioStreamRandomizer` in random-no-repeats mode, so a shot never repeats the last; pitch still varies ±5% (`shot_pitch_jitter`).
+  - `max_polyphony` raised to 6 for the longer tails (the player can fire every 0.12 s).
+- `Rifle.wav` (the original snippet) is no longer used; it's left in the folder.
+
+### 2026-10-30 — Enemies dig in at open sandbag spots they detect
+- Mike: if an enemy's detection circle picks up an open defensive spot, it should go there and dig in. Until now enemies only took cover once fighting, within 6 m, so calm patrols walked straight over his sandbag rows.
+- **`enemy.gd _dig_in_calm()`:** checked while calm, at each THINK_S.
+  - **The spot:** an open defensive spot within `detection_radius_m` (10 m), with a wall between it and the way the enemy faces. For a patrol that's the way it walks. It takes the nearest (`_take_cover()`, now with a reach argument).
+  - **Digging in:** it leaves its patrol (`patrol.gd release()`), the spot becomes its post, and it faces out over the wall. It holds the spot while calm (`_hold_cover()` with no focus, so no flank check), and fights from it once alerted.
+  - **Leaving:** as before, only when flanked in a fight or when its wall goes.
+  - Placed enemies near sandbags will also leave their posts for an open spot in range.
+- Tested (`test_patrol_cover.gd`, Mike's `main.tscn` rows):
+  - **Digging in:** a 5-strong wedge from the right, with the player far off at the start, all dug in behind the first row within 9 s, facing west. The empty patrol removed itself.
+  - **Fighting:** with the player 8 m west, all 5 alerted and fired 39 shots in 5 s, still dug in.
+
+### 2026-10-30 — Opening music synced to the landing
+- Mike added `assets/sfx/Song_Test.wav` (28.6 s, 48 kHz stereo). He wants the soft part before the helicopter lands, the beat dropping as it lands, then 5 s of the song and a fade out.
+- **The song:**
+  - Soft from 0 to ~12 s, a 1 s break, then the drop at **13.46 s** (bass (<150 Hz) and level jump about 7 dB; found from 10 ms frames).
+  - Cut (headless Blender, script in the session scratchpad) into `assets/music/song_test_intro.wav` (0–13.46 s, 10 ms fade at the cut) and `assets/music/song_test_drop.wav` (from the drop: 5 s, then a 3 s fade; 8 s).
+- **`insertion.gd`:**
+  - New `landed` signal at touchdown (INBOUND → SETTLING).
+  - New `static flight_time_s()`, which steps INBOUND exactly as the physics does to give the flight time (5.87 s at 60 ticks/s).
+- **`arrival.gd`:**
+  - Plays the intro from `length − flight time` (7.6 s in), fading in over `music_fade_in_s` 1 s, so it reaches the drop as the helicopter lands. If a flight were longer than the intro, it would wait instead.
+  - On `landed`, it cuts the intro and plays the drop.
+  - Exports `music_intro`, `music_drop`, `music_volume_db` (−4 dB). Non-positional.
+- Tested (`test_arrival_audio.gd`): the intro started 7.60 s in; the drop took over at touchdown; it ran its 8 s and ended.
+
+### 2026-10-30 — Helicopter sound
+- Mike added `assets/sfx/Helicopter.mp3`: 141 s, one continuous take of a helicopter.
+- **The take, mapped every 2 s by level and low/high-frequency balance:**
+  - 0–36 s: far off (−46 to −33 dB), mostly low thump.
+  - 36–56 s: closing.
+  - 56–78 s: loudest (−19 dB), steady, overhead at full power.
+  - 78–92 s: winding down.
+  - 92–141 s: a steady, quieter whine, idling on the ground (−28 dB).
+- **Three seamless loops** (mono, end cross-faded 1 s into the start, normalised), in `assets/sfx/helicopter/`:
+  - `heli_distant.wav`: 4–14 s of the take, 10 s.
+  - `heli_flight.wav`: 64–72 s, 8 s.
+  - `heli_idle.wav`: 104–116 s, 12 s.
+- **`helicopter.gd`:**
+  - Three `AudioStreamPlayer2D`s at the rotor mast, looping (the WAVs are set to forward-loop in code), each starting at a random point.
+  - **Mixing** (`_mix_sound()`, every frame):
+    - flight × (in the air);
+    - idle × (on the ground), cross-fading over the last `GROUND_BLEND_M` 3 m of height;
+    - distant fades in from `DISTANT_FROM_M` 18 m to `DISTANT_FULL_M` 45 m from the camera, heard out to 140 m (the near loops to 60 m);
+    - all scaled by `rotor_spin`.
+  - Exports `sound_volume_db` −2, `idle_volume_db` −6 and `distant_volume_db` −4.
+  - Every helicopter gets it: the opening one and radio-requested insertions.
+  - The take's spool-down and approach stretches (36–56 s, 78–92 s) aren't used: the cross-fades cover those changes, and the helicopter is only on the ground for a few seconds.
+- Tested (same test, each second): the distant thump at 70 m out, flight as it came in, flight handing over to idle in the last 3 m, idle on the ground, flight again on lift-off, and distant again as it flew away.
+
+### 2026-10-30 — Opening music: just the drop
+- Mike: cut it to only the beat dropping when he lands, then the fade out; get rid of the rest.
+- `arrival.gd`: the intro is gone. On touchdown (Insertion `landed`) it plays `music_drop` (5 s from the song's drop, then a 3 s fade), and nothing plays before it. `music_intro` and `music_fade_in_s` are removed.
+- `insertion.gd`: `flight_time_s()` is removed (it only timed the intro). The `landed` signal stays.
+- `assets/music/song_test_intro.wav` is deleted. `song_test_drop.wav` is unchanged.
+
+### 2026-10-30 — Calm enemies shoot at what they can see
+- Mike: if they can see him, they can and should shoot at him. A calm enemy only noticed people inside its 10 m detection circle, so a dug-in enemy watched him walk about in plain view at 15 m and did nothing.
+- **`enemy.gd _check_intruders()`:** a calm enemy now also alerts on a player or squadmate it can see out to `sight_m` (22 m), if they're in front of it: within the new `calm_view_deg` (70°) either side of where it's facing.
+  - Inside the detection circle it still notices in any direction.
+  - Sight lines work as before: stations block them, and someone hidden behind sandbags isn't spotted while it's calm.
+  - Alerted, it fights as usual. Dug in, it fires from its spot.
+
+### 2026-10-30 — Line of sight decides: seen means shot at, hidden means calm
+- Mike: behind something, they can't see him and should stay calm; in the open they can see him and should shoot and be aggressive. The interaction distance wasn't realistic: he could shoot at them from outside their circle.
+- **Seeing** (`enemy.gd _check_intruders()`):
+  - A calm enemy alerts on any player or squadmate it has a clear line of sight to, in any direction, within `sight_m`.
+  - Anything solid blocks the line: a station, a landed helicopter, sandbags.
+  - The forward-view cone from earlier today (`calm_view_deg`) is removed; line of sight is the test.
+  - `sight_m` default 22 → **35 m**.
+- **Hearing** (`_check_shots()`):
+  - A shot fired within the new `hearing_m` (**40 m**) of it alerts it, seen or not. The shooter becomes its threat; if it can't see them it searches where they were and calms down after `search_s`.
+  - A bullet passing within its detection circle (10 m) still alerts it too.
+- Unchanged: once fighting, it still sees and fires over sandbags (since ~10% of shots get over), and stations still block it.
+
+### 2026-10-30 — Landing music adjustable in the Inspector
+- Mike: the beat's timing against the landing is a little off, and he'd like to adjust it himself in the Inspector.
+- **`arrival.gd`, a "Music" export group:**
+  - Touchdown now plays the whole `Song_Test.wav` (`music`) from `music_start_s` (default 13.46 s, the drop) instead of the pre-cut drop file.
+  - `music_delay_s` (default 0) waits after touchdown.
+  - `music_play_s` 5 s at full volume, then a fade over `music_fade_s` 3 s, done by a tween (linear amplitude) instead of being baked into a file.
+  - `music_volume_db` −4.
+  - Raising `music_start_s` brings the beat sooner; lowering it adds lead-in.
+- `assets/music/song_test_drop.wav` and the `assets/music/` folder are removed (nothing else used them).
+
+### 2026-10-30 — Song removed; concrete and sand impacts
+- **Song:** Mike asked for it removed and deleted.
+  - `assets/sfx/Song_Test.wav` and its `.import` are deleted.
+  - `arrival.gd`'s Music group and `_drop_the_beat()` are gone, along with `music_start_s` (13.6, Mike's tweak) from `main.tscn`.
+  - `insertion.gd`'s `landed` signal stays: it's harmless and handy for later.
+- **Impact sounds:** Mike added `assets/sfx/ConcreteImpact.mp3` (5.8 s) and `SandImpact.mp3` (7.5 s). Each was split like the dirt impacts (headless Blender, silence-gap detection, mono, normalised):
+  - `assets/sfx/concrete_impact/concrete_impact_0.wav` … `_7.wav` (0.20–0.28 s each);
+  - `assets/sfx/sand_impact/sand_impact_0.wav` … `_7.wav` (0.35–0.47 s each).
+- **New `scripts/impact_sound.gd`:** `ImpactSound.play(parent, point, kind)` with kinds "dirt", "concrete" and "sand".
+  - One sound of that kind at random, never the same one twice running per kind. Pitch varies ±8%, at −4 dB, fading out at 30 m.
+  - Its own short-lived `AudioStreamPlayer2D`.
+  - The dirt-sound code moved here out of `bullet.gd`.
+- **Where each plays:**
+  - **Ground hits** (`bullet.gd _hit_ground()`): concrete if the point is on a road's asphalt, otherwise dirt. On the asphalt means within `ASPHALT_HALF_M` 2.5 m of the road's centre line (new `road.gd covers()`), not counting the grassy verge.
+  - **Sandbags** (`sandbags.gd bullet_hit()`): sand, wherever a bullet stops in a wall.
+
+### 2026-10-30 — Bullet flybys
+- Mike added `assets/sfx/BulletFlyBy.mp3` (14 s, a run of different whizzes) and asked for an adjustable flyby circle round his character: a bullet passing through it plays one of those sounds.
+- **Splitting:** like the impacts (silence gaps, mono, normalised), into `assets/sfx/bullet_flyby/bullet_flyby_0.wav` … `_11.wav` (12 whizzes, 0.28–0.57 s each).
+- **`player.gd`:** new exports:
+  - `flyby_radius_m` (default **1.5 m**);
+  - `show_flyby_circle` (off), which draws the circle round the player in yellow, to see it while tuning.
+- **`bullet.gd _check_flyby()`:**
+  - Each tick, a bullet not fired by the player checks the stretch it's about to fly. If any point of it comes within the player's `flyby_radius_m`, it plays a flyby once, from that closest point.
+  - It runs after the hit test, so a bullet that hits the player this tick doesn't also whizz.
+- **`impact_sound.gd`:** a new "flyby" kind (the 12 whizzes), so flybys pick at random without repeats, with the same pitch variation, level and fade with distance.
+
+### 2026-10-30 — Magazines and an animated reload
+- Mike asked for a reload animation. The rifle had no ammo yet, so this adds magazines and reloading too.
+- **Art** (`blender/scripts/rifle.py`, run headless), besides `rifle.png`:
+  - `assets/characters/rifle_no_mag.png`: the same rifle with the magazine hidden, same 384 px frame.
+  - `assets/characters/magazine.png`: the magazine alone, lying on its side, 64 px (0.1875 m) at 4× density.
+- **`rifle.gd`:**
+  - New "Magazine" exports: `mag_size` 30 and `reload_s` 2.5 s. `rounds` counts down per shot; `reloading` and `reload_progress` (0..1) track a reload.
+  - It reloads by itself when empty (after the last shot, or on a trigger pull with none left), and `start_reload()` starts one early. No firing while reloading.
+  - New signals `reload_started` and `reload_finished`.
+  - Everyone's rifle does this, so squadmates and enemies run dry and reload mid-fight.
+- **The animation** (`_reload_pose()`, as fractions of `reload_s`):
+  - 0–0.15: the rifle tips 25° out to the right, pulled back 3 cm and lowered 6 cm (its shadow comes in). Tipping it in across the body hid it under the square in the first try.
+  - 0.15: the gun shows `rifle_no_mag.png`, and the empty magazine drops out.
+  - 0.5–0.72: the fresh magazine travels from the body to the magazine well, turning upright.
+  - 0.72: it seats (`rifle.png`), with a 1.5 cm jolt.
+  - 0.74–0.84: a 3.5 cm charging-handle pull.
+  - 0.84–1: back up to the aim.
+  - The aim keeps tracking underneath, so it comes back up on target.
+- **`DroppedMag`** (an inner class): the empty magazine falls from the rifle's height under gravity, drifting out to the gun's right and spinning, its shadow closing in. It bounces once, lies on the ground 5 s, fades over 1 s and is removed.
+- **Player:**
+  - **R** reloads (new `reload` control in `world.gd`; not while busy, commanding or dead).
+  - A yellow arc round the player fills clockwise from the top while reloading.
+- **Death:** `death_fall.gd` calls `abandon_reload()`, so no fresh magazine is left hanging in mid-air.
+- No reload sound yet; one can hang off `reload_started` or the drop and seat moments.
+
+### 2026-10-30 — Reload sound; reload time from it
+- Mike added `assets/sfx/RifleReload.mp3` (12.3 s). He asked for it to be used, with the reload time set by its length, for everyone, at a volume set by distance from the player.
+- **The recording:** 5 complete reload takes, each three sounds: the magazine release (about −8.5 dB), the magazine seating (−5.3 dB) and the charging handle (−0.3 dB). Found from a 10 ms loud-event map.
+- **Cut** (headless Blender) into `assets/sfx/rifle_reload/rifle_reload_0.wav` … `_4.wav`:
+  - from 60 ms before the release to 220 ms after the charge, with a 120 ms fade, mono, normalised;
+  - 1.92–1.99 s long.
+  - Each take's moments (release, seat, charge pull and release) are measured and stored with it.
+- **`rifle.gd`:**
+  - `RELOAD_TAKES` holds the five, with their timings. A reload picks one at random (never the same twice running), and **lasts exactly its length**. The `reload_s` export (2.5 s) is gone.
+  - The animation is timed to the take's own sounds:
+    - the tip-out starts with the release, and the empty magazine drops on the release click;
+    - the fresh magazine travels 0.35 s (`LOAD_S`) and seats on the clack;
+    - the charging-handle pull spans the charge sound;
+    - the rifle comes back up after it.
+  - The sound plays from the magazine well. `attenuation` is 0 so the camera doesn't attenuate it; instead `_set_reload_volume()` sets its loudness every tick from the distance to the player (or the camera, if there's no player): full at 0, falling as (1 − d / `reload_hearing_m`)², silent at 25 m. On-screen panning still applies.
+  - New exports `reload_volume_db` −2 and `reload_hearing_m` 25.
+  - `abandon_reload()` (death) cuts the sound.
+- Everyone's rifle uses it (squadmates, enemies).
+
+### 2026-10-30 — Dry fire, manual reloads, spare magazines and the ammo HUD
+- Mike added `assets/sfx/GunOutofAmmo.mp3`. He asked that the player not reload automatically: the rifle clicks when it's out, and reloading is up to him. He also wants the magazines and ammo he has left in a little HUD while he holds the right mouse button.
+- **Sound:** the file holds 5 dry-fire clicks, 2 s apart. They're cut (like the impacts) into `assets/sfx/dry_fire/dry_fire_0.wav` … `_4.wav`, 0.23–0.25 s each.
+- **`rifle.gd`:**
+  - **`auto_reload`** (default on): off, an empty rifle's trigger plays a dry-fire click (random, no repeats, ±4% pitch, heard to 15 m) and doesn't reload by itself.
+  - **`spare_mags`** (default −1, as many as needed): counted spares are tracked by their rounds (`_spares`).
+  - **Swapping:** a reload swaps in the fullest spare. The magazine coming out is kept as a spare if it still has rounds; only an empty one drops to the ground (DroppedMag). With no spare holding more than the current magazine, `start_reload()` refuses.
+  - New `spare_count()` and `spare_rounds()`.
+- **`player.tscn`** Rifle: `spare_mags` **6**, `auto_reload` **off**. Squadmates and enemies keep the defaults: auto-reload, unlimited.
+- **`player.gd`, the ammo HUD:**
+  - Shown while the right mouse button (`aim`) is held, and not when busy, commanding or dead.
+  - A small panel (`ui_style.gd`) just right of and below the square on screen.
+  - It reads "AMMO 23 / 30", in red at 0, or "RELOADING", and "MAGS 6 (180 rounds)".
+
+### 2026-10-30 — Ammo crate (first supply crate)
+- Mike: a new asset, an ammo crate, the first of many crate types, after his reference photo (a tarped load on a pallet), with the tarp removed and the pallet filled with ammo cans.
+- **`blender/scripts/crates.py`** (new, headless; see the Asset List): every crate shares `build_pallet()` and `build_straps()`, with one loader per kind in `KINDS`, `ammo` first (`build_ammo_load()`).
+  - It renders the top-down `assets/props/crate_<kind>.png`, an angled review render and the .blend.
+  - It prints the footprints and heights the game's shadow uses.
+  - `blender --background --python crates.py -- ammo` renders just that kind.
+- **`scripts/crate.gd`** (new, shared by every crate):
+  - A StaticBody2D on the squares' layer, so it's solid: squares walk round it, and bullets and sight lines stop at it, so it's full cover. It's in the "crates" group.
+  - **Shadow:** the pallet footprint swept along the sun to its height, and the load's to its top, drawn in one CanvasGroup (no double-dark overlap). Worked out against the node's turn, so turned crates shadow correctly.
+  - Exports `pallet_m`, `pallet_height_m`, `load_m` and `load_height_m`, defaulting to the ammo crate's.
+- **`scenes/crate_ammo.tscn`** (new): the script, a Shadow group (z −10), the Body sprite (0.25, mipmaps) and a 102.4 × 68.3 px collision box (the pallet). Drop it into a level and turn it as needed. As with sandbags, a turned crate's baked lighting turns with it.
+- Tested (`test_crate.gd`):
+  - Walking into it, the player stopped 0.60 m from its centre (half the pallet plus half a square).
+  - A bullet fired at it stopped.
+  - An enemy on one side can't see the player hidden on the other.
+  - Screenshot: one crate square-on and one turned 90°, both shadowing correctly.
+- No pickup yet: it doesn't resupply anyone. That's the obvious next step for an ammo crate, along with a bullet-hit effect and sound for it.
+
+### 2026-10-30 — Ammo crate squared off
+- Mike liked it, but wants it squared off: a 2 × 4 block of ammo cans.
+- **`crates.py`:**
+  - The load is 4 cans across × 2 deep × 3 high (24 cans), 0.632 × 0.618 m, nearly square.
+  - The pallet is 0.8 m square to match.
+  - The frame is 1.125 m (384 px) instead of 1.5 m.
+- **`crate.gd`** defaults `pallet_m` 0.8 × 0.8 and `load_m` 0.632 × 0.618. **`crate_ammo.tscn`**'s collision box is 68.27 px square.
+
+### 2026-10-30 — Sandbag crate
+- Mike: an identical crate, same pallet, with sandbags on it.
+- **`crates.py`**, new `sandbags` kind (`build_sandbag_load()`):
+  - Imports `sandbags.py` for its `bag()` model and burlap, so the bags match the wall's.
+  - **Bags:** 0.37 × 0.235 m (`SAND_BAG_L`, `SAND_BAG_W`, a touch smaller than the wall's, so they sit on the pallet and its edge shows from above), 2 × 3 to a layer, 5 layers (`SAND_LAYERS`) with alternate layers turned 90°. Each bag is shaped differently (keyed `bag_rng`).
+  - **Size:** the footprint and top are measured from the bags' bounding boxes: 0.768 × 0.772 m, top at 0.747 m, about the ammo crate's height.
+  - **Straps:** they cinch `SAND_CINCH` 4 cm into the bags. Run through the bags' bulges, they first stood off them like a cage.
+- **`crate.gd`:** new `impact` export. A crate with one shows a stopping bullet (`bullet_hit()`) with a dust puff and that `impact_sound.gd` sound. Empty (the ammo crate) shows nothing.
+- **`scenes/crate_sandbags.tscn`** (new): like the ammo crate's, with `load_m` 0.768 × 0.772, `load_height_m` 0.747 and `impact` "sand".
+
+### 2026-10-30 — Sandbag crate straps; a lone ammo can
+- Mike: make the sandbag crate's straps the same as the ammo crate's, and add an ammo can asset the same size as the ones on the pallet.
+- **Sandbag crate:** the cinch is gone (`SAND_CINCH` removed), so `build_straps()` runs over the load's top and down its sides as on the ammo crate. Re-rendered.
+- **Lone ammo can** (`crates.py render_can()`, `-- can`, also rendered by default):
+  - The same `build_ammo_can()` and materials as the crate's cans, on its own.
+  - It renders `assets/props/ammo_can.png` (0.375 m frame, 128 px), an angled review and `blender/source/ammo_can.blend`.
+  - It measures itself: 0.160 × 0.320 m, top 0.207 m.
+- **`crate.gd`:** a zero `pallet_m` means no pallet, and its shadow part is skipped.
+- **`scenes/ammo_can.tscn`** (new): `crate.gd` with no pallet, the can's footprint and height, and a 13.65 × 27.3 px collision box. Solid and small, like the crates.
+
+### 2026-10-30 — The pallet is its own sprite: squares can stand over its edge
+- Mike (screenshot): right up against a crate his square went under the pallet. He wants to be above the pallet but not clip into the load on it.
+- **Why:** each crate was one sprite at the squares' level, and its collision box was the whole pallet.
+- **`crates.py`:**
+  - `crate_<kind>.png` is now the load and straps only.
+  - The pallet is rendered once on its own (`render_pallet()`, `-- pallet`) to `assets/props/pallet.png`, in the same 1.125 m frame, with mipmaps.
+  - The angled reviews and .blends still include the pallet.
+- **Crate scenes** (`crate_ammo.tscn`, `crate_sandbags.tscn`):
+  - A `Pallet` sprite at z −6, under the squares (their shadows, at z 0, fall on it).
+  - The load (`Body`) at the squares' level.
+  - The collision box is now the **load's** footprint (ammo 53.9 × 52.7 px, sandbags 65.5 × 65.9 px), so a square can step over the pallet's edge but not into the load.
+- **`crate.gd`:** a new `PalletShadow` group (z −5, over the pallet, under the squares) draws the load's shadow across the deck: the load swept from the deck's height to its top, cut to the deck (`_draw_deck_shadow()`). Splitting the renders lost the load's own baked shadow on the deck. The sweep is shared as `_sweep()`. Scenes without a `PalletShadow` (the lone ammo can) skip it.
+
+### 2026-10-30 — Metal impacts on the ammo cans
+- Mike added `assets/sfx/MetalImpact.mp3` (5.2 s), to be broken apart and used for bullets hitting the ammo crate, with a contact effect.
+- **Split** like the other impacts into `assets/sfx/metal_impact/metal_impact_0.wav` … `_2.wav` (3 clangs, 0.50–0.54 s each). They're added to `impact_sound.gd` as the "metal" kind.
+- **New `scripts/hit_sparks.gd`:** a bright 0.06 s flash at the hit point and 9 short streaks glancing back toward the shooter (±70°). They fly at 3–7 m/s, slow quickly, and cool from white-yellow to orange as they fade over 0.08–0.22 s, then they're removed.
+- **`crate.gd bullet_hit()`:** "metal" gives sparks; any other `impact` gives the dust puff as before; both play the impact sound.
+- `crate_ammo.tscn` and `ammo_can.tscn` set `impact = "metal"` (the lone can is the same steel).
 

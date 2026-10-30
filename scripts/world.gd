@@ -41,6 +41,7 @@ const KEY_CONTROLS := {
 	"move_right": [KEY_D, KEY_RIGHT],
 	"command": [KEY_SPACE],   ## hold for command mode (scripts/command.gd)
 	"interact": [KEY_F],      ## use what you're standing at (e.g. tune a station's dish)
+	"reload": [KEY_R],        ## reload the rifle (rifle.gd start_reload())
 }
 const MOUSE_CONTROLS := {
 	"shoot": [MOUSE_BUTTON_LEFT],
@@ -83,10 +84,14 @@ static var radio_station: Node2D = null
 ## (scripts/arrival.gd): command mode stays shut until they step out.
 static var player_aboard := false
 
+## True once the player has been killed (player.gd): no more command mode.
+## Cleared when a level starts again.
+static var player_dead := false
+
 
 ## True while Space is held or radio command mode is on: the mouse gives
 ## squad orders instead of aiming. Never while the player is aboard.
 static func commanding() -> bool:
-	if player_aboard:
+	if player_aboard or player_dead:
 		return false
 	return radio_commanding or (InputMap.has_action("command") and Input.is_action_pressed("command"))

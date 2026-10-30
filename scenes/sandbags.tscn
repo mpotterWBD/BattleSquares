@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" path="res://assets/props/sandbags_single.png" id="2_tex"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall"]
-size = Vector2(64, 16.4)
+size = Vector2(68, 24)
 
 [node name="Sandbags" type="StaticBody2D"]
 collision_layer = 4

@@ -39,6 +39,8 @@ enum Phase { INBOUND, SETTLING, UNLOADING, WAITING, CLIMBING, OUTBOUND }
 
 ## A passenger (from `passengers`) has stepped out and is back in play.
 signal passenger_out(unit: Node2D)
+## Touched down at the landing zone.
+signal landed
 
 var phase := Phase.INBOUND
 var lz := Vector2.ZERO
@@ -89,6 +91,7 @@ func _physics_process(delta: float) -> void:
 				_set_hull(true)
 				phase = Phase.SETTLING
 				_timer = SETTLE_S
+				landed.emit()
 		Phase.SETTLING:
 			_timer -= delta
 			if _timer <= 0.0:

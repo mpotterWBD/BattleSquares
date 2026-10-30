@@ -50,6 +50,7 @@ const TEXTURES_NO_CENTRE := {
 	Condition.BAD: preload("res://assets/textures/road_asphalt_bad_no_centre.png"),
 }
 const BAKE_PX := 8.0     ## how finely curves are followed (smaller = smoother)
+const ASPHALT_HALF_M := 2.5   ## the asphalt reaches this far either side of the centre line (road_asphalt.py ROAD_HALF)
 const SNAP_M := 1.0      ## an end this close to another road's end clicks onto it
 const JOINED_PX := 0.5   ## ends this close together count as joined
 const ALIGN_DEG := 0.5   ## a joined end's handle is turned if it's further off than this
@@ -104,6 +105,14 @@ func _process(_delta: float) -> void:
 ## The Line2D that draws the road, set up on first use. Also after the editor
 ## reloads this script on a road already in the scene: _ready() doesn't run
 ## again then, and the old line (from older code) may be missing its shader.
+## Whether world `point` is on this road's asphalt (not its verge).
+func covers(point: Vector2) -> bool:
+	if curve == null or curve.point_count < 2:
+		return false
+	var local := to_local(point)
+	return local.distance_to(curve.get_closest_point(local)) <= ASPHALT_HALF_M * World.PX_PER_M
+
+
 func _get_line() -> Line2D:
 	if _line_missing():
 		if _line and is_instance_valid(_line):
