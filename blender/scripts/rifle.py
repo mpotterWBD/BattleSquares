@@ -32,7 +32,7 @@ from mathutils import Matrix
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
-ROOT = r"F:\Projects\BattleSquares"
+ROOT = bs.ROOT
 OUT_RIFLE = os.path.join(ROOT, "assets", "characters", "rifle.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "rifle.blend")
 

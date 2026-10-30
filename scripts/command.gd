@@ -1,18 +1,17 @@
 extends Node2D
 ## Command mode: hold Space to give your squad orders, RTS style.
 ##
-## Holding Space, the player speaks: a cone opens out of its front face (its
-## voice, see can_hear() in scripts/player.gd) and "talk waves" ripple
-## along it, and a short circular command aura shows who's close enough to
-## hear without being looked at. Only squadmates inside the cone or the aura
+## Holding Space, the player speaks: its command circle shows round it (its
+## voice carries that far all round, see can_hear() in scripts/player.gd)
+## and "talk waves" ripple out from it. Only squadmates inside the circle
 ## hear: they turn to listen (scripts/squadmate.gd) and only they can be
 ## commanded.
 ##
 ## While Space is held:
-##   - drag with the left mouse button to box-select squadmates in the cone
-##     (a drag that boxes nobody counts as a click where it started, so a
-##     shaky click still works)
-##   - click a squadmate in the cone to select just that one (Shift-click
+##   - drag with the left mouse button to box-select squadmates in the
+##     circle (a drag that boxes nobody counts as a click where it started,
+##     so a shaky click still works)
+##   - click a squadmate in the circle to select just that one (Shift-click
 ##     adds/removes)
 ##   - with squadmates selected, left click (or right click) the ground
 ##     anywhere to send them there, spread out side by side
@@ -20,14 +19,26 @@ extends Node2D
 ##     the selection, or with nobody selected to everyone who can hear.
 ##     Follow me / Lead (held, then a shape chosen from a pop-out) form them
 ##     up behind or in front of the player, keeping station as it moves
-##     (scripts/squadmate.gd); Disperse breaks them out of formation
+##     (scripts/squadmate.gd); Attention (held, then a shape) calls them to
+##     fall in: the next left click picks where (a preview of their spots
+##     follows the mouse; the scroll wheel turns it, 15 degrees a notch;
+##     right click cancels), and they form up there in a line or a column,
+##     facing the player unless turned, and stand still; Disperse breaks
+##     them out of formation.
+##     Fire and Stop (orange) are fighting orders: Fire arms everyone the
+##     order reaches, then the next left click picks the target (any live
+##     square but the player and the shooters; right click cancels), and
+##     they shoot it until it dies. Stop makes them cease fire. While
+##     commanding, an orange line runs from each shooter to its target
+##     (dashed while it's holding fire because someone is in the way).
 ##   - or deploy equipment from the DEPLOY menu right of the player: hold
 ##     Equipment, choose an item from the pop-out, and a see-through ghost
-##     follows the mouse. Click to place it; it must go inside the command
-##     aura (the ghost turns red outside it). Right click cancels. The
+##     follows the mouse. Click to place it; it must go within the player's
+##     deploy reach (player.gd `deploy_reach_m`, a brighter ring while
+##     placing; the ghost turns red outside it). Right click cancels. The
 ##     player carries a limited number of each (player.gd `deployables`).
-## The cone limits who hears and can be selected, not where they can go.
-## Anyone who leaves the cone drops out of the selection (they can't hear
+## The circle limits who hears and can be selected, not where they can go.
+## Anyone who leaves the circle drops out of the selection (they can't hear
 ## further orders), and the selection is cleared whenever Space is pressed
 ## or released. The player keeps walking with WASD but stops aiming and
 ## firing. Selected squadmates are ringed, with lines to where they're
@@ -45,15 +56,22 @@ const RING_RADIUS_M := 0.34
 const PING_TIME_S := 0.6
 const COLOR := World.COMMAND_COLOR
 const REFUSE_COLOR := Color(1.0, 0.4, 0.35)
+const FIRE_COLOR := World.FIRE_COLOR
+const TARGET_PICK_M := 0.3       ## a click this close to a square's centre targets it
+const TARGET_RING_M := 0.38
 
 ## The orders menu beside the player, top to bottom. To add an order, add an
 ## entry here and handle its id in _give_order(). Orders with `shapes` open
 ## the formation pop-out while held: slide onto a shape and let go to choose
 ## it (a quick click uses DEFAULT_SHAPE; letting go elsewhere cancels).
+## `color` overrides the button's green (orange for fighting orders).
 const ORDERS := [
 	{id = "follow", text = "Follow me", shapes = true},
 	{id = "lead", text = "Lead", shapes = true},
+	{id = "attention", text = "Attention", shapes = true},
 	{id = "disperse", text = "Disperse"},
+	{id = "fire", text = "Fire", color = World.FIRE_COLOR},
+	{id = "stop", text = "Stop", color = World.FIRE_COLOR},
 ]
 ## Formation shapes in the pop-out, with their icon layouts as (column, row)
 ## cells. Squadmate slots for each shape are in squadmate.gd _slot_position().
@@ -69,30 +87,31 @@ const DEPLOYABLES := [
 ]
 const DISPERSE_STEP_M := 0.9     ## how far Disperse sends each squadmate out from the player
 const DISPERSE_JITTER_DEG := 30.0   ## randomness in each one's direction, so they fan out
+## Attention: rows and files are spaced as in Follow me / Lead (squadmate.gd).
+## A spot picked closer to the player than this faces the way the player does.
+const ATTENTION_MIN_M := 0.5
+const ATTENTION_TURN_DEG := 15.0   ## how far one scroll-wheel notch turns the formation
 const FORMATIONS := ["follow", "lead"]   ## orders that put squadmates in a formation
 const MENU_GAP_PX := 36.0   ## screen gap between the player's square and the menus
-const GHOST_OK := Color(0.7, 1.0, 0.7, 0.7)       ## placement ghost inside the aura
+const MENU_PICKING_ALPHA := 0.35   ## the menus while a click on the field is wanted
+const GHOST_OK := Color(0.7, 1.0, 0.7, 0.7)       ## placement ghost within deploy reach
 const GHOST_BAD := Color(1.0, 0.45, 0.45, 0.6)    ## ...and outside it
 
-## The voice cone: brightest near the player, fading toward its far edge
-## (shared with the dish beam, in world.gd).
-const CONE_NEAR_ALPHA := World.CONE_NEAR_ALPHA
-const CONE_FAR_ALPHA := World.CONE_FAR_ALPHA
 const CONE_EDGE_ALPHA := World.CONE_EDGE_ALPHA
-const AURA_FILL_ALPHA := 0.08    ## the command aura: hearable all round, up close
+const AURA_FILL_ALPHA := 0.08    ## the command circle's fill (the dish beam's fading fill alphas are in world.gd)
 const UNLINKED_ALPHA := 0.3      ## a radio operator's (dashed) circle while out of the dish beam
 
-## Talk waves: arcs that ripple out from the player's front face, as wide
-## as the voice cone.
+## Talk waves: rings that ripple out all round the player, as its voice does.
 const WAVE_EVERY_S := 0.3
 const WAVE_LIFE_S := 0.7
-const WAVE_FROM_M := 0.28        ## just outside the front face
+const WAVE_FROM_M := 0.28        ## just outside the square
 const WAVE_TO_M := 0.85
 const WAVE_COLOR := Color(1.0, 1.0, 1.0, 0.85)
 
 
 const UiStyle = preload("res://scripts/ui_style.gd")
 const HoldPopout = preload("res://scripts/hold_popout.gd")
+const Squadmate = preload("res://scripts/squadmate.gd")
 
 var _dragging := false
 var _drag_start := Vector2.ZERO   ## viewport coordinates
@@ -108,7 +127,7 @@ var _menu: VBoxContainer
 var _order_buttons: Array[Button] = []
 var _deploy_menu: VBoxContainer
 var _deploy_button: Button
-var _cone_layer: Node2D
+var _ground_layer: Node2D
 
 ## Pop-outs (scripts/hold_popout.gd): formation shapes, opened for
 ## `_shape_order` (follow / lead), and equipment.
@@ -122,16 +141,27 @@ var _placing := ""
 var _ghost: Node2D
 var _mouse_world := Vector2.ZERO
 
+## Fire order waiting for its target: the squadmates it went to (empty =
+## not picking a target).
+var _arming: Array[Node] = []
+## Attention order waiting for its spot: the squadmates it went to (empty =
+## not picking a spot) and the shape chosen.
+var _attention_units: Array[Node] = []
+var _attention_shape := ""
+## The way the formation will face once the scroll wheel has turned it
+## (radians); NAN until then, when it faces the player.
+var _attention_facing := NAN
+
 
 func _ready() -> void:
 	World.register_controls()
 	z_index = 50   # rings, box, pings and the placement ghost above everything
-	# The cone goes on the ground, under the squares.
-	_cone_layer = Node2D.new()
-	_cone_layer.z_as_relative = false
-	_cone_layer.z_index = -50
-	_cone_layer.draw.connect(_draw_cone)
-	add_child(_cone_layer)
+	# The circles go on the ground, under the squares.
+	_ground_layer = Node2D.new()
+	_ground_layer.z_as_relative = false
+	_ground_layer.z_index = -50
+	_ground_layer.draw.connect(_draw_circles)
+	add_child(_ground_layer)
 	_hud = _build_hud()
 
 
@@ -150,6 +180,30 @@ func _unhandled_input(event: InputEvent) -> void:
 				_try_place()
 			elif button.button_index == MOUSE_BUTTON_RIGHT:
 				_stop_placing()
+			get_viewport().set_input_as_handled()
+		return
+	if not _arming.is_empty():
+		# Picking a Fire target: left click a square, right click cancels.
+		if button and button.pressed:
+			if button.button_index == MOUSE_BUTTON_LEFT:
+				_try_target(_to_world(button.position))
+			elif button.button_index == MOUSE_BUTTON_RIGHT:
+				_arming.clear()
+			get_viewport().set_input_as_handled()
+		return
+	if not _attention_units.is_empty():
+		# Picking where to fall in: left click there, right click cancels, the
+		# scroll wheel turns the formation (instead of zooming).
+		if button and button.pressed:
+			if button.button_index == MOUSE_BUTTON_LEFT:
+				_fall_in(_to_world(button.position))
+			elif button.button_index == MOUSE_BUTTON_RIGHT:
+				_attention_units.clear()
+			elif button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+				if is_nan(_attention_facing):
+					_attention_facing = _attention_layout(_mouse_world)[2]   # from where it faces now
+				var notch := -1.0 if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0
+				_attention_facing = wrapf(_attention_facing + notch * deg_to_rad(ATTENTION_TURN_DEG), -PI, PI)
 			get_viewport().set_input_as_handled()
 		return
 	var motion := event as InputEventMouseMotion
@@ -183,7 +237,15 @@ func _process(delta: float) -> void:
 	var commanding := World.commanding()
 	if commanding != _was_commanding:
 		_clear_selection()   # a fresh start every time Space goes down or up
+		_arming.clear()
+		_attention_units.clear()
 		_was_commanding = commanding
+	_arming = _arming.filter(func(u): return is_instance_valid(u) and not u.dead)
+	_attention_units = _attention_units.filter(func(u): return is_instance_valid(u) and not u.dead)
+	# Read the mouse every frame: over the menus the buttons take its motion
+	# events, which used to freeze the previews there until it moved off.
+	if commanding:
+		_mouse_world = _to_world(get_viewport().get_mouse_position())
 	if commanding:
 		for unit in _selected():
 			if not _hears(unit.global_position):
@@ -191,8 +253,16 @@ func _process(delta: float) -> void:
 	_hud.visible = commanding
 	if commanding:
 		_place_menus()
-		_banner.text = ("RADIO COMMAND   radio operators in the dish beam, and anyone in their circle, can hear you   [F] hang up"
-				if World.radio_commanding else "COMMAND MODE   only squadmates in your cone or close by can hear you")
+		if not _arming.is_empty():
+			_banner.text = "FIRE   click a target for %d to shoot   [right click] cancel" % _arming.size()
+			_banner.add_theme_color_override("font_color", FIRE_COLOR)
+		elif not _attention_units.is_empty():
+			_banner.text = "ATTENTION   click where %d fall in (%s)   [scroll] turn   [right click] cancel" % [_attention_units.size(), _attention_shape]
+			_banner.add_theme_color_override("font_color", COLOR)
+		else:
+			_banner.text = ("RADIO COMMAND   radio operators in the dish beam, and anyone in their circle, can hear you   [F] hang up"
+					if World.radio_commanding else "COMMAND MODE   only squadmates inside your command circle can hear you")
+			_banner.add_theme_color_override("font_color", COLOR)
 	else:
 		_shape_popout.close()
 		_deploy_popout.close()
@@ -217,7 +287,7 @@ func _process(delta: float) -> void:
 	else:
 		_next_wave_s = 0.0
 	queue_redraw()
-	_cone_layer.queue_redraw()
+	_ground_layer.queue_redraw()
 
 
 func _draw() -> void:
@@ -232,45 +302,65 @@ func _draw() -> void:
 			var box := Rect2(_to_world(_drag_start), Vector2.ZERO).expand(_to_world(_drag_now))
 			draw_rect(box, Color(COLOR, 0.12))
 			draw_rect(box, COLOR, false, 1.5)
+		_draw_fire(px)
+		_draw_attention(px)
 	for ping in _pings:
 		var t: float = ping.age / PING_TIME_S
 		draw_arc(ping.pos, (0.1 + 0.3 * t) * px, 0.0, TAU, 32, Color(ping.get("color", COLOR), 1.0 - t), 2.0, true)
 	_draw_talk_waves()
 
 
-## The voice cone and command aura, drawn by the ground-level layer while
-## commanding, and over the radio each radio operator's command circle.
-func _draw_cone() -> void:
+## Fighting orders, while commanding: an orange line from each shooter to
+## its target and a ring round each target. While picking a Fire target,
+## the armed squadmates are ringed and the square under the mouse gets a
+## crosshair (or the mouse a small one, when it's over nothing to shoot).
+func _draw_fire(px: float) -> void:
+	var targets := {}
+	for unit in _squad():
+		if unit.is_attacking():
+			targets[unit.attack_target] = true
+			var from: Vector2 = unit.global_position
+			var to: Vector2 = unit.attack_target.global_position
+			if unit.holding_fire:   # someone's in the way: dashed and fainter
+				draw_dashed_line(from, to, Color(FIRE_COLOR, 0.3), 1.5, 8.0, true, true)
+			else:
+				draw_line(from, to, Color(FIRE_COLOR, 0.45), 1.5, true)
+	for target: Node2D in targets:
+		draw_arc(target.global_position, TARGET_RING_M * px, 0.0, TAU, 40, FIRE_COLOR, 2.0, true)
+	if _arming.is_empty():
+		return
+	for unit in _arming:
+		draw_arc(unit.global_position, RING_RADIUS_M * px, 0.0, TAU, 40, FIRE_COLOR, 2.0, true)
+	var target := _target_at(_mouse_world)
+	var at := target.global_position if target else _mouse_world
+	var size := TARGET_RING_M * px if target else 8.0
+	var color := FIRE_COLOR if target else Color(FIRE_COLOR, 0.6)
+	draw_arc(at, size, 0.0, TAU, 40, color, 2.0, true)
+	for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
+		draw_line(at + dir * size * 0.6, at + dir * size * 1.4, color, 2.0, true)
+
+
+## The player's command circle, drawn by the ground-level layer while
+## commanding; over the radio, each radio operator's command circle too;
+## and while placing equipment, the deploy reach as a brighter ring.
+func _draw_circles() -> void:
 	var speaker = _speaker()
 	if speaker == null or not World.commanding():
 		return
 	if World.radio_commanding:
 		_draw_radio_circles(speaker)
 	var origin: Vector2 = speaker.global_position
-	var aura: float = speaker.aura_radius_m * World.PX_PER_M
-	_cone_layer.draw_circle(origin, aura, Color(COLOR, AURA_FILL_ALPHA))
-	# The aura's edge is brighter while placing equipment, which must go inside it.
-	var aura_edge := 0.8 if _placing != "" else CONE_EDGE_ALPHA
-	_cone_layer.draw_arc(origin, aura, 0.0, TAU, 64, Color(COLOR, aura_edge), 1.5, true)
-	var reach: float = speaker.voice_range_m * World.PX_PER_M
-	var half := deg_to_rad(speaker.voice_half_angle_deg)
-	var rim := PackedVector2Array()
-	for i in 33:
-		rim.append(origin + Vector2.from_angle(speaker.facing - half + 2.0 * half * i / 32.0) * reach)
-	# A fan of triangles, bright at the player and fading toward the rim.
-	var near := Color(COLOR, CONE_NEAR_ALPHA)
-	var far := Color(COLOR, CONE_FAR_ALPHA)
-	for i in rim.size() - 1:
-		_cone_layer.draw_polygon(PackedVector2Array([origin, rim[i], rim[i + 1]]),
-				PackedColorArray([near, far, far]))
-	var edge := Color(COLOR, CONE_EDGE_ALPHA)
-	_cone_layer.draw_line(origin, rim[0], edge, 1.5, true)
-	_cone_layer.draw_line(origin, rim[rim.size() - 1], edge, 1.5, true)
-	_cone_layer.draw_polyline(rim, edge, 1.5, true)
+	var radius: float = speaker.aura_radius_m * World.PX_PER_M
+	_ground_layer.draw_circle(origin, radius, Color(COLOR, AURA_FILL_ALPHA))
+	_ground_layer.draw_arc(origin, radius, 0.0, TAU, 96, Color(COLOR, CONE_EDGE_ALPHA), 1.5, true)
+	if _placing != "":
+		var reach: float = speaker.deploy_reach_m * World.PX_PER_M
+		_ground_layer.draw_circle(origin, reach, Color(COLOR, AURA_FILL_ALPHA))
+		_ground_layer.draw_arc(origin, reach, 0.0, TAU, 64, Color(COLOR, 0.8), 1.5, true)
 
 
 ## Radio command mode: a command circle round every radio operator. Linked
-## ones (in the station's dish beam) are drawn like the aura; the rest are
+## ones (in the station's dish beam) are drawn like the player's; the rest are
 ## a dashed outline, out of reach until the beam covers them.
 func _draw_radio_circles(speaker) -> void:
 	var linked: Array[Node] = speaker.linked_radio_operators()
@@ -280,13 +370,13 @@ func _draw_radio_circles(speaker) -> void:
 			continue
 		var at: Vector2 = unit.global_position
 		if unit in linked:
-			_cone_layer.draw_circle(at, radius, Color(COLOR, AURA_FILL_ALPHA))
-			_cone_layer.draw_arc(at, radius, 0.0, TAU, 64, Color(COLOR, CONE_EDGE_ALPHA), 1.5, true)
+			_ground_layer.draw_circle(at, radius, Color(COLOR, AURA_FILL_ALPHA))
+			_ground_layer.draw_arc(at, radius, 0.0, TAU, 64, Color(COLOR, CONE_EDGE_ALPHA), 1.5, true)
 		else:
 			var dashes := 36
 			for i in dashes:
 				var a := TAU * i / dashes
-				_cone_layer.draw_arc(at, radius, a, a + TAU / dashes * 0.55, 4, Color(COLOR, UNLINKED_ALPHA), 2.0, true)
+				_ground_layer.draw_arc(at, radius, a, a + TAU / dashes * 0.55, 4, Color(COLOR, UNLINKED_ALPHA), 2.0, true)
 
 
 func _draw_talk_waves() -> void:
@@ -294,16 +384,14 @@ func _draw_talk_waves() -> void:
 	if speaker == null or _waves.is_empty():
 		return
 	var px := World.PX_PER_M
-	var spread := deg_to_rad(speaker.voice_half_angle_deg)
 	for age in _waves:
 		var t := age / WAVE_LIFE_S
 		var radius := lerpf(WAVE_FROM_M, WAVE_TO_M, t) * px
 		var color := Color(WAVE_COLOR, WAVE_COLOR.a * (1.0 - t))
-		draw_arc(speaker.global_position, radius, speaker.facing - spread,
-				speaker.facing + spread, 16, color, 2.0, true)
+		draw_arc(speaker.global_position, radius, 0.0, TAU, 40, color, 2.0, true)
 
 
-## The player (scripts/player.gd), whose voice cone limits command mode.
+## The player (scripts/player.gd), whose command circle limits command mode.
 func _speaker():
 	return get_tree().get_first_node_in_group("player")
 
@@ -366,7 +454,7 @@ func _box_select(a: Vector2, b: Vector2, shift: bool) -> void:
 
 ## Sends the selection to `point`, anywhere on the field, lined up side by
 ## side across the direction of travel (ordered so nobody has to cross over
-## anyone else). The cone limits who hears the order, not where it sends them.
+## anyone else). The circle limits who hears the order, not where it sends them.
 func _order_move(point: Vector2) -> void:
 	var units := _selected()
 	if units.is_empty():
@@ -390,7 +478,7 @@ func _order_move(point: Vector2) -> void:
 
 
 ## Who a menu order goes to: the selection if there is one, otherwise
-## everyone who can hear (in the cone or the aura).
+## everyone who can hear (inside the command circle, or over the radio).
 func _order_targets() -> Array[Node]:
 	var units := _selected()
 	if units.is_empty():
@@ -404,6 +492,8 @@ func _give_order(id: String, shape := DEFAULT_SHAPE) -> void:
 	var units := _order_targets()
 	if units.is_empty():
 		return
+	_arming.clear()             # a new order drops one still waiting for its click
+	_attention_units.clear()
 	match id:
 		"follow", "lead":
 			for unit in units:
@@ -413,6 +503,19 @@ func _give_order(id: String, shape := DEFAULT_SHAPE) -> void:
 				if unit.is_following(id):
 					unit.follow_shape = shape
 			_assign_formation_slots()
+		"attention":
+			# The next left click picks where they fall in (_fall_in).
+			_attention_units = units
+			_attention_shape = shape
+			_attention_facing = NAN   # faces the player until the wheel turns it
+			return
+		"fire":
+			# Arm them; the next left click picks what they shoot (_try_target).
+			_arming = units
+			return
+		"stop":
+			for unit in units:
+				unit.order_stop_firing()
 		"disperse":
 			# Break formation: each steps out away from the player, fanned a
 			# little, and stands at ease there. The rest close up.
@@ -429,6 +532,110 @@ func _give_order(id: String, shape := DEFAULT_SHAPE) -> void:
 			_assign_formation_slots()
 	for unit in units:
 		_pings.append({pos = unit.global_position, age = 0.0})
+
+
+## Attention: where each of _attention_units stands if they fall in with
+## the front of the formation at `front`, as [units, spots, facing]. They
+## face the player, unless the scroll wheel has turned the formation
+## (_attention_facing). "line": one rank across. "column": two abreast, rows
+## going away from the player. Places are dealt out so nobody crosses
+## anybody: front rows to those nearest the front, left to right across
+## each row.
+func _attention_layout(front: Vector2) -> Array:
+	var speaker = _speaker()
+	var px := World.PX_PER_M
+	var to_player: Vector2 = speaker.global_position - front
+	var facing: float = (to_player.angle() if to_player.length() > ATTENTION_MIN_M * px
+			else speaker.facing)
+	if not is_nan(_attention_facing):
+		facing = _attention_facing
+	var back := -Vector2.from_angle(facing)   # rows go this way, away from the player
+	var right := back.rotated(PI / 2)         # to the right as the player looks at them
+	var area := World.ARENA.grow(-0.3 * px)
+	var units: Array[Node] = _attention_units.duplicate()
+	var n := units.size()
+	var across := func(u, v): return u.global_position.dot(right) < v.global_position.dot(right)
+	var spots: Array[Vector2] = []
+	if _attention_shape == "line":
+		units.sort_custom(across)
+		for i in n:
+			spots.append(front + right * (i - (n - 1) / 2.0) * Squadmate.FILE_GAP_M * px)
+	else:
+		units.sort_custom(func(u, v): return u.global_position.dot(back) < v.global_position.dot(back))
+		for row in ceili(n / 2.0):
+			var pair := units.slice(row * 2, row * 2 + 2)
+			pair.sort_custom(across)
+			for i in pair.size():
+				units[row * 2 + i] = pair[i]
+				var side := 0.0 if pair.size() == 1 else (i - 0.5) * Squadmate.FILE_GAP_M
+				spots.append(front + back * row * Squadmate.ROW_GAP_M * px + right * side * px)
+	for i in n:
+		spots[i] = spots[i].clamp(area.position, area.end)
+	return [units, spots, facing]
+
+
+## Attention, second step: they fall in with the front of the formation at
+## `front` (anywhere on the field) and stand there at attention.
+func _fall_in(front: Vector2) -> void:
+	var layout := _attention_layout(front)
+	var units: Array = layout[0]
+	var spots: Array = layout[1]
+	for i in units.size():
+		units[i].order_attention(spots[i], layout[2])
+		_pings.append({pos = spots[i], age = 0.0})
+	_attention_units.clear()
+	_assign_formation_slots()   # anyone who left a formation leaves a gap to close up
+
+
+## While picking where to fall in: each squadmate ringed, with a faint line
+## to a see-through square where it would stand, following the mouse, and
+## a tick on the side it will face.
+func _draw_attention(px: float) -> void:
+	if _attention_units.is_empty():
+		return
+	var layout := _attention_layout(_mouse_world)
+	var units: Array = layout[0]
+	var spots: Array = layout[1]
+	var half: float = Squadmate.SIZE_M / 2.0 * px
+	var square := Rect2(-half, -half, half * 2.0, half * 2.0)
+	for i in units.size():
+		var unit: Node2D = units[i]
+		var spot: Vector2 = spots[i]
+		draw_arc(unit.global_position, RING_RADIUS_M * px, 0.0, TAU, 40, COLOR, 2.0, true)
+		draw_line(unit.global_position, spot, Color(COLOR, 0.3), 1.5, true)
+		draw_set_transform(spot, layout[2])
+		draw_rect(square, Color(COLOR, 0.15))
+		draw_rect(square, Color(COLOR, 0.8), false, 1.5)
+		draw_line(Vector2(half, 0), Vector2(half + 0.12 * px, 0), Color(COLOR, 0.8), 2.0, true)
+		draw_set_transform(Vector2.ZERO)
+
+
+## The live square nearest `point` that a Fire order may target: anyone in
+## the "units" group except the player and the squadmates being armed.
+func _target_at(point: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_d := TARGET_PICK_M * World.PX_PER_M
+	for unit: Node2D in get_tree().get_nodes_in_group("units"):
+		if unit.is_in_group("player") or unit in _arming:
+			continue
+		var d := unit.global_position.distance_to(point)
+		if d < best_d:
+			best_d = d
+			best = unit
+	return best
+
+
+## Picking a Fire target: a square sets the armed squadmates on it; a click
+## on nothing is refused and they stay armed.
+func _try_target(point: Vector2) -> void:
+	var target := _target_at(point)
+	if target == null:
+		_pings.append({pos = point, age = 0.0, color = REFUSE_COLOR})
+		return
+	for unit in _arming:
+		unit.order_attack(target)
+	_pings.append({pos = target.global_position, age = 0.0, color = FIRE_COLOR})
+	_arming.clear()
 
 
 ## Numbers the squadmates in each formation so nobody has to run past the
@@ -483,10 +690,10 @@ func _stop_placing() -> void:
 		_ghost = null
 
 
-## Equipment has to go down inside the command aura.
+## Equipment has to go down within the player's deploy reach.
 func _can_place_at(point: Vector2) -> bool:
 	var speaker = _speaker()
-	return speaker != null and speaker.global_position.distance_to(point) <= speaker.aura_radius_m * World.PX_PER_M
+	return speaker != null and speaker.global_position.distance_to(point) <= speaker.deploy_reach_m * World.PX_PER_M
 
 
 func _try_place() -> void:
@@ -505,8 +712,20 @@ func _try_place() -> void:
 # ------------------------------------------------------------------- menus --
 
 ## Keeps ORDERS just left of the player's square on screen and DEPLOY just
-## right of it, and dims buttons that would do nothing.
+## right of it, and dims buttons that would do nothing. While a click is
+## wanted on the field (an Attention spot, a Fire target, equipment), the
+## menus fade and let the mouse through, so a click over them lands on the
+## field instead of pressing a button.
 func _place_menus() -> void:
+	var picking := not _attention_units.is_empty() or not _arming.is_empty() or _placing != ""
+	for menu: Control in [_menu, _deploy_menu]:
+		menu.modulate.a = MENU_PICKING_ALPHA if picking else 1.0
+		var controls: Array = [menu] + menu.find_children("*", "Control", true, false)
+		for control: Control in controls:
+			if not control.has_meta("mouse_filter_was"):
+				control.set_meta("mouse_filter_was", control.mouse_filter)   # its own setting, to go back to
+			control.mouse_filter = (Control.MOUSE_FILTER_IGNORE if picking
+					else control.get_meta("mouse_filter_was"))
 	var speaker = _speaker()
 	if speaker == null:
 		return
@@ -543,7 +762,7 @@ func _build_hud() -> CanvasLayer:
 	# ORDERS, left of the player: a column of see-through buttons.
 	_menu = UiStyle.menu_column("ORDERS")
 	for order in ORDERS:
-		var button := UiStyle.menu_button(order.text)
+		var button := UiStyle.menu_button(order.text, Vector2(170, 42), order.get("color", COLOR))
 		if order.get("shapes", false):
 			var id: String = order.id
 			button.button_down.connect(func():

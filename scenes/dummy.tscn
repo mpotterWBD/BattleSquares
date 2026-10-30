@@ -1,0 +1,22 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/soldier.tscn" id="1_soldier"]
+[ext_resource type="Texture2D" path="res://assets/characters/dummy_square_sheet.png" id="2_body"]
+[ext_resource type="Texture2D" path="res://assets/characters/dummy_square_fall_sheet.png" id="3_fall"]
+
+[node name="Dummy" instance=ExtResource("1_soldier")]
+anchored = true
+invincible = true
+fall_sheet = ExtResource("3_fall")
+
+[node name="RifleShadow" parent="Shadows" index="1"]
+visible = false
+
+[node name="Rifle" parent="." index="1"]
+visible = false
+
+[node name="Body" parent="." index="2"]
+texture = ExtResource("2_body")
+
+[node name="Sight" parent="." index="3"]
+visible = false

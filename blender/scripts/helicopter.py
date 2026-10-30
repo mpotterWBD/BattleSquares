@@ -45,7 +45,7 @@ from mathutils import Matrix
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
-ROOT = r"F:\Projects\BattleSquares"
+ROOT = bs.ROOT
 OUT_BODY = os.path.join(ROOT, "assets", "vehicles", "helicopter_body.png")
 OUT_ROTOR = os.path.join(ROOT, "assets", "vehicles", "helicopter_rotor.png")
 OUT_PILOT = os.path.join(ROOT, "assets", "vehicles", "helicopter_pilot.png")

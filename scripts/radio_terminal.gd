@@ -51,16 +51,16 @@ const PACK_BROWN := Color(0.42, 0.29, 0.16)
 const LZ_OK := Color(0.7, 1.0, 0.7, 0.55)
 const LZ_BAD := Color(1.0, 0.45, 0.45, 0.5)
 
-@export var seconds_per_troop := 30.0
+@export var seconds_per_troop := 1.0   # 1 s for testing; was 30
 @export var zone_path: NodePath = ^"../OperatorZone"
-@export var pad_path: NodePath = ^"../StandBox"   ## the green box the F shows on
+@export var pad_path: NodePath = ^"../StandBox"   ## the green box the "[F] Interact" prompt shows under
 
 enum Screen { CLOSED, MENU, SLOTS, LZ }
 var screen := Screen.CLOSED
 
 ## The troop request: one entry per slot, "" while empty or a unit type id.
 var slots: Array[String] = []
-var _pad_key: Label
+var _pad_prompt: Label
 var _pad_timer: Label
 var _progress: Array[float] = []   ## seconds of readying done, per slot
 var _queue: Array[int] = []        ## filled slots, in the order they were filled
@@ -89,8 +89,8 @@ var _send_button: Button
 func _ready() -> void:
 	World.register_controls()
 	_build_ui()
-	_pad_key = UiStyle.pad_key()
-	get_node(pad_path).add_child(_pad_key)
+	_pad_prompt = _make_pad_prompt()
+	get_node(pad_path).add_child(_pad_prompt)
 	_pad_timer = _make_pad_timer()
 	get_node(pad_path).add_child(_pad_timer)
 
@@ -135,7 +135,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_tick_readying(delta)
 	var on_box := _player_on_box()
-	_pad_key.visible = on_box and screen == Screen.CLOSED and not _owns_radio
+	_pad_prompt.visible = on_box and screen == Screen.CLOSED and not _owns_radio
 	_update_pad_timer()
 	if _owns_radio and not on_box:
 		hang_up()
@@ -426,6 +426,28 @@ func _refresh_slots() -> void:
 func _clock(seconds: float) -> String:
 	var left := ceili(seconds)
 	return "%d:%02d" % [left / 60, left % 60]
+
+
+## "[F] Interact" just under the platform's box while the player stands in
+## it, styled like the station's "[F] Tune dish".
+func _make_pad_prompt() -> Label:
+	var settings := LabelSettings.new()
+	settings.font_size = 16
+	settings.font_color = Color(0.75, 1.0, 0.75)
+	settings.outline_size = 5
+	settings.outline_color = Color(0, 0, 0, 0.8)
+	var label := Label.new()
+	label.text = "[F] Interact"
+	label.label_settings = settings
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.size = Vector2(140, 24)
+	# Centred just under the box (145 px tall, centred on the pad).
+	label.position = Vector2(-label.size.x / 2, 72.5 + 3.0)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.z_as_relative = false
+	label.z_index = 30
+	label.visible = false
+	return label
 
 
 ## The timer above the platform's box: how many troopers and the total time

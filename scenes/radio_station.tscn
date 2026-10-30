@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Texture2D" path="res://assets/props/radio_station.png" id="1_body"]
 [ext_resource type="Texture2D" path="res://assets/props/radio_station_shadow.png" id="2_shadow"]
@@ -12,10 +12,7 @@
 size = Vector2(51.2, 119.5)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_dish"]
-radius = 46.9
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_mast"]
-radius = 21.3
+radius = 51.2
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_zone"]
 size = Vector2(93.9, 145)
@@ -58,7 +55,7 @@ texture = ExtResource("3_ground")
 
 [node name="StandBox" type="Polygon2D" parent="."]
 z_index = -4
-position = Vector2(230.4, 0)
+position = Vector2(-25.6, -89.6)
 color = Color(0.55, 1, 0.55, 0.22)
 polygon = PackedVector2Array(-46.95, -72.5, 46.95, -72.5, 46.95, 72.5, -46.95, 72.5)
 
@@ -70,7 +67,7 @@ default_color = Color(0.65, 1, 0.65, 0.75)
 
 [node name="DishStandBox" type="Polygon2D" parent="."]
 z_index = -4
-position = Vector2(-187.7, 234.7)
+position = Vector2(-132.3, 93.9)
 color = Color(0.55, 1, 0.55, 0.22)
 polygon = PackedVector2Array(-42.65, -38.4, 42.65, -38.4, 42.65, 38.4, -42.65, 38.4)
 
@@ -89,7 +86,7 @@ texture = ExtResource("1_body")
 [node name="Dish" type="Sprite2D" parent="."]
 z_index = 5
 texture_filter = 4
-position = Vector2(-187.7, 136.5)
+position = Vector2(0, 93.9)
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("5_dish")
 
@@ -100,10 +97,10 @@ z_index = 30
 [node name="DishPrompt" type="Label" parent="."]
 visible = false
 z_index = 30
-offset_left = -257.7
-offset_top = 276.0
-offset_right = -117.7
-offset_bottom = 300.0
+offset_left = -202.3
+offset_top = 135.2
+offset_right = -62.3
+offset_bottom = 159.2
 text = "[F] Tune dish"
 label_settings = SubResource("LabelSettings_prompt")
 horizontal_alignment = 1
@@ -111,25 +108,22 @@ horizontal_alignment = 1
 [node name="Solid" type="StaticBody2D" parent="."]
 
 [node name="Desk" type="CollisionShape2D" parent="Solid"]
-position = Vector2(311.5, 0)
+position = Vector2(55.5, -89.6)
 shape = SubResource("RectangleShape2D_desk")
 
 [node name="Dish" type="CollisionShape2D" parent="Solid"]
-position = Vector2(-187.7, 136.5)
+position = Vector2(0, 93.9)
 shape = SubResource("CircleShape2D_dish")
 
-[node name="MastBase" type="CollisionShape2D" parent="Solid"]
-shape = SubResource("CircleShape2D_mast")
-
 [node name="OperatorZone" type="Area2D" parent="."]
-position = Vector2(230.4, 0)
+position = Vector2(-25.6, -89.6)
 monitorable = false
 
 [node name="Box" type="CollisionShape2D" parent="OperatorZone"]
 shape = SubResource("RectangleShape2D_zone")
 
 [node name="DishZone" type="Area2D" parent="."]
-position = Vector2(-187.7, 234.7)
+position = Vector2(-132.3, 93.9)
 monitorable = false
 
 [node name="Box" type="CollisionShape2D" parent="DishZone"]

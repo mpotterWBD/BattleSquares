@@ -22,14 +22,56 @@ const SPRITE_SCALE := 1.0 / 4.0
 const HOLD_HEIGHT_M := 0.22   ## how high it's held, for the shadow offset
 const FLASH_TIME_S := 0.05
 
-@export var shoulder_right_m := 0.13   ## shoulder offset to the square's right
-@export var shoulder_forward_m := 0.0  ## shoulder offset toward the front face
-@export var sweep_right_deg := 40.0    ## how far it can swing out to the right
-@export var sweep_left_deg := 30.0     ## how far it can swing across the body
-@export var aim_speed_dps := 720.0     ## how fast it swings toward the mouse
-@export var fire_interval_s := 0.12    ## fastest you can fire
-@export var bullet_speed_mps := 120.0
-@export var recoil_m := 0.04           ## kick back per shot
+# The "##" comment above each setting is its tooltip in Godot's Inspector
+# (hover over the setting's name).
+
+@export_group("Holding")
+## How far the shoulder the rifle pivots on sits to the right of the
+## square's centre, in metres.
+@export_range(0.0, 0.5, 0.01, "suffix:m") var shoulder_right_m := 0.13
+## How far the shoulder sits toward the square's front face, in metres
+## (negative = toward the back).
+@export_range(-0.3, 0.3, 0.01, "suffix:m") var shoulder_forward_m := 0.0
+## How far the rifle can swing out to the right of where the square faces
+## before the square has to turn.
+@export_range(0.0, 180.0, 1.0, "suffix:°") var sweep_right_deg := 40.0
+## How far the rifle can swing across the body, to the left of where the
+## square faces, before the square has to turn.
+@export_range(0.0, 180.0, 1.0, "suffix:°") var sweep_left_deg := 30.0
+## How fast the rifle swings round toward the mouse, in degrees per second.
+@export_range(0.0, 3600.0, 10.0, "suffix:°/s") var aim_speed_dps := 720.0
+
+@export_group("Firing")
+## The shortest time between shots: clicks faster than this are ignored.
+@export_range(0.0, 5.0, 0.01, "suffix:s") var fire_interval_s := 0.12
+## How fast the bullet flies, in metres per second.
+@export_range(1.0, 1000.0, 1.0, "suffix:m/s") var bullet_speed_mps := 120.0
+## Health a hit takes off a square (a full square has max_health in
+## soldier.gd, normally 100).
+@export_range(0.0, 500.0, 0.5) var damage := 25.0
+## How far the rifle kicks back toward the shoulder with each shot, in
+## metres. Just for looks: it doesn't change where shots go.
+@export_range(0.0, 0.2, 0.005, "suffix:m") var recoil_m := 0.04
+
+@export_group("Aim")
+## The length of the solid part of the aiming line (right mouse): click
+## anywhere within this distance of the muzzle and the shot goes exactly
+## there. Past it, shots start to stray.
+@export_range(0.0, 50.0, 0.5, "suffix:m") var aim_accurate_m := 6.0
+## How far past the solid line the spread takes to grow to its worst
+## (Aim Max Spread Deg). Clicks further out than that are no worse.
+@export_range(0.1, 50.0, 0.5, "suffix:m") var aim_falloff_m := 12.0
+## The worst a shot can stray, either side of where you aimed, once you're
+## Aim Falloff M past the solid line. Each shot lands at random within it.
+@export_range(0.0, 45.0, 0.5, "suffix:°") var aim_max_spread_deg := 8.0
+## How the spread grows between the end of the solid line and its worst:
+## 1 = steadily; above 1 = barely at first, then quickly near the end;
+## below 1 = quickly at first, then levelling off.
+@export_range(0.1, 4.0, 0.1) var aim_spread_curve := 1.0
+
+@export_group("")
+## The rifle's shadow sprite, darkened and offset by the sun. Leave as is
+## unless the scene's node layout changes.
 @export var shadow_path: NodePath = ^"../Shadows/RifleShadow"
 
 ## Where the rifle points, in radians (0 = right, -PI/2 = up).
@@ -92,9 +134,25 @@ func update_aim(facing: float, lift_m: float, target: Vector2, delta: float) -> 
 	_shadow.scale = scale * SPRITE_SCALE
 
 
+## Where shots leave the barrel, in world coordinates.
+func muzzle_position() -> Vector2:
+	return global_position + Vector2.from_angle(aim) * LENGTH_M * World.PX_PER_M * scale.x
+
+
+## How far either side of the aim (degrees) a shot at a point `distance_m`
+## from the muzzle may stray. See `aim_accurate_m`.
+func spread_at(distance_m: float) -> float:
+	var past := distance_m - aim_accurate_m
+	if past <= 0.0:
+		return 0.0
+	var t := clampf(past / maxf(aim_falloff_m, 0.001), 0.0, 1.0)
+	return aim_max_spread_deg * pow(t, aim_spread_curve)
+
+
 ## Fires one shot if the rifle is ready. Bullets are added to the player's
 ## parent, so they fly on their own instead of following the player.
-func fire() -> void:
+## `spread_deg` throws the shot up to that far either side of the aim.
+func fire(spread_deg := 0.0) -> void:
 	if _cooldown > 0.0:
 		return
 	_cooldown = fire_interval_s
@@ -102,8 +160,9 @@ func fire() -> void:
 	_flash_left = FLASH_TIME_S
 	_flash.visible = true
 	_flash.rotation = randf_range(-0.15, 0.15)
-	var muzzle := global_position + Vector2.from_angle(aim) * LENGTH_M * World.PX_PER_M * scale.x
+	var muzzle := muzzle_position()
 	var bullet := Bullet.new()
-	bullet.setup(muzzle, aim, bullet_speed_mps)
+	var angle := aim + deg_to_rad(randf_range(-spread_deg, spread_deg))
+	bullet.setup(muzzle, angle, bullet_speed_mps, owner, damage)
 	owner.get_parent().add_child(bullet)
 	fired.emit()

@@ -2,36 +2,30 @@
 
 [ext_resource type="Texture2D" uid="uid://c53qicadne4gm" path="res://assets/textures/field_grass_tile.png" id="1_grass"]
 [ext_resource type="Script" uid="uid://ctx0c7nnko1g8" path="res://scripts/field.gd" id="2_field"]
-[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3_player"]
+[ext_resource type="PackedScene" uid="uid://b1l0t7qsfuwbs" path="res://scenes/player.tscn" id="3_player"]
 [ext_resource type="Script" uid="uid://drn0xmttnvq8y" path="res://scripts/game_camera.gd" id="4_camera"]
 [ext_resource type="Script" uid="uid://b855wxv55g82y" path="res://scripts/command.gd" id="6_command"]
-[ext_resource type="Script" path="res://scripts/arena_edge.gd" id="7_edge"]
+[ext_resource type="Script" uid="uid://es3uswkipqpt" path="res://scripts/arena_edge.gd" id="7_edge"]
+[ext_resource type="Script" uid="uid://cv0kyjeypajvj" path="res://scripts/arrival.gd" id="8_arrival"]
+[ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="9_enemy"]
 
 [node name="Main" type="Node2D" unique_id=79091743]
 
 [node name="Field" type="Sprite2D" parent="." unique_id=658196379]
 z_index = -100
 texture_repeat = 2
-position = Vector2(-8.999999, -3)
-scale = Vector2(0.9895833, 1.0027778)
 texture = ExtResource("1_grass")
 centered = false
 region_enabled = true
-region_rect = Rect2(0, 0, 1920, 1080)
+region_rect = Rect2(0, 0, 3840, 2160)
 script = ExtResource("2_field")
 
-[node name="Edge" type="Node2D" parent="."]
+[node name="Edge" type="Node2D" parent="." unique_id=285229265]
+z_index = -50
 script = ExtResource("7_edge")
 
 [node name="Player" parent="." unique_id=571398669 instance=ExtResource("3_player")]
 position = Vector2(1137, 555)
-voice_range_m = 8.0
-voice_half_angle_deg = 40.0
-aura_radius_m = 2.475
-deployables = {
-"radio_station": 1
-}
-formation_turn_dps = 90.0
 
 [node name="Camera" type="Camera2D" parent="." unique_id=1993857809]
 position = Vector2(960, 540)
@@ -39,3 +33,158 @@ script = ExtResource("4_camera")
 
 [node name="Command" type="Node2D" parent="." unique_id=586087931]
 script = ExtResource("6_command")
+
+[node name="Arrival" type="Node" parent="." unique_id=1577641184]
+script = ExtResource("8_arrival")
+
+[node name="Enemy" parent="." unique_id=313454565 instance=ExtResource("9_enemy")]
+position = Vector2(3488, 271)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy2" parent="." unique_id=1112692212 instance=ExtResource("9_enemy")]
+position = Vector2(3287, 853)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy3" parent="." unique_id=85293024 instance=ExtResource("9_enemy")]
+position = Vector2(3383, 239)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy4" parent="." unique_id=1990365351 instance=ExtResource("9_enemy")]
+position = Vector2(3477, 184)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy5" parent="." unique_id=2033915866 instance=ExtResource("9_enemy")]
+position = Vector2(3297, 930)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy6" parent="." unique_id=1468471294 instance=ExtResource("9_enemy")]
+position = Vector2(3399, 322)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy7" parent="." unique_id=171328018 instance=ExtResource("9_enemy")]
+position = Vector2(3371, 948)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0
+
+[node name="Enemy8" parent="." unique_id=1571943128 instance=ExtResource("9_enemy")]
+position = Vector2(3358, 870)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 22.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+start_facing_deg = 180.0

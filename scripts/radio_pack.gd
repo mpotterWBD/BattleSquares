@@ -39,6 +39,13 @@ func update_pose(facing: float, lift_m: float) -> void:
 			* World.PX_PER_M)
 
 
+## The wearer has died and is toppling over: the pack, drawn for a square
+## standing up, goes (with its shadow).
+func drop() -> void:
+	visible = false
+	_shadow.visible = false
+
+
 func _sprite() -> Sprite2D:
 	var sprite := Sprite2D.new()
 	sprite.texture = TEXTURE

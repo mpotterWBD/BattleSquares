@@ -38,6 +38,7 @@ texture = ExtResource("3_body")
 hframes = 30
 
 [node name="Sight" type="Polygon2D" parent="."]
+z_index = -1
 color = Color(1, 1, 1, 0.35)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]

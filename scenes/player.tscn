@@ -1,7 +1,20 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene format=3 uid="uid://b1l0t7qsfuwbs"]
 
 [ext_resource type="PackedScene" path="res://scenes/soldier.tscn" id="1_soldier"]
-[ext_resource type="Script" path="res://scripts/player.gd" id="2_player"]
+[ext_resource type="Script" uid="uid://b0dn5ttgg6808" path="res://scripts/player.gd" id="2_player"]
 
-[node name="Player" instance=ExtResource("1_soldier")]
+[node name="Player" unique_id=201289413 instance=ExtResource("1_soldier")]
 script = ExtResource("2_player")
+aura_radius_m = 8.0
+radio_circle_radius_m = 4.95
+deploy_reach_m = 2.475
+deployables = {
+"radio_station": 1
+}
+formation_turn_dps = 90.0
+
+[node name="Rifle" parent="." index="1"]
+aim_accurate_m = 3.0
+aim_falloff_m = 3.1
+aim_max_spread_deg = 18.0
+aim_spread_curve = 0.1

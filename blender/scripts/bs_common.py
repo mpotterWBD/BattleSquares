@@ -6,9 +6,15 @@ things keep the right size relative to each other and their shading agrees.
 """
 
 import math
+import os
 
 import bpy
 import numpy as np
+
+# The Godot project folder (this file is in blender/scripts/), which every
+# script saves into. Worked out from here so it keeps working if the project
+# moves (it was once hard-coded to F:\Projects\BattleSquares).
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Pixels per metre in every render: this sets the game's zoom level. Godot's
 # scripts/world.gd holds the same number. History: 1024/1 (first close-up),

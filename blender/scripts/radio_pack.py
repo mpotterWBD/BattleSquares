@@ -34,7 +34,7 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
-ROOT = r"F:\Projects\BattleSquares"
+ROOT = bs.ROOT
 OUT_PACK = os.path.join(ROOT, "assets", "characters", "radio_pack.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "radio_pack.blend")
 

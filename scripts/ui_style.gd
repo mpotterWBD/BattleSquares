@@ -9,24 +9,31 @@ const World = preload("res://scripts/world.gd")
 const COLOR := World.COMMAND_COLOR
 
 
-static func menu_button(text: String, min_size := Vector2(170, 42)) -> Button:
+## `color` sets the text, border and hover tint: green by default, orange
+## (World.FIRE_COLOR) for fighting orders.
+static func menu_button(text: String, min_size := Vector2(170, 42), color := COLOR) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.focus_mode = Control.FOCUS_NONE   # keyboard keys (Space!) don't press it
 	button.custom_minimum_size = min_size
 	button.add_theme_font_size_override("font_size", 22)
-	button.add_theme_color_override("font_color", COLOR)
+	button.add_theme_color_override("font_color", color)
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_color_override("font_pressed_color", Color.WHITE)
-	button.add_theme_color_override("font_disabled_color", Color(COLOR, 0.35))
+	button.add_theme_color_override("font_disabled_color", Color(color, 0.35))
+	var hover := Color(0.1, 0.35, 0.1, 0.55)
+	var pressed := Color(0.2, 0.55, 0.2, 0.7)
+	if color != COLOR:   # tint the hover and press fills to match
+		hover = Color(color.r * 0.4, color.g * 0.4, color.b * 0.4, 0.55)
+		pressed = Color(color.r * 0.6, color.g * 0.6, color.b * 0.6, 0.7)
 	var fills := {
 		"normal": Color(0, 0, 0, 0.35),
-		"hover": Color(0.1, 0.35, 0.1, 0.55),
-		"pressed": Color(0.2, 0.55, 0.2, 0.7),
+		"hover": hover,
+		"pressed": pressed,
 		"disabled": Color(0, 0, 0, 0.2),
 	}
 	for style: String in fills:
-		button.add_theme_stylebox_override(style, box(fills[style], 0.25 if style == "disabled" else 0.7))
+		button.add_theme_stylebox_override(style, box(fills[style], 0.25 if style == "disabled" else 0.7, color))
 	return button
 
 
@@ -61,11 +68,12 @@ static func caption(text: String, size := 22) -> Label:
 	return label
 
 
-## A rounded panel style: `fill` behind, a green border at `edge_alpha`.
-static func box(fill: Color, edge_alpha := 0.7) -> StyleBoxFlat:
+## A rounded panel style: `fill` behind, a border (green unless `edge`
+## says otherwise) at `edge_alpha`.
+static func box(fill: Color, edge_alpha := 0.7, edge := COLOR) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = fill
-	style.border_color = Color(COLOR, edge_alpha)
+	style.border_color = Color(edge, edge_alpha)
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(6)
 	style.set_content_margin_all(8)

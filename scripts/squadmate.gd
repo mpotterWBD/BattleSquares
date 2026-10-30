@@ -1,6 +1,6 @@
-extends "res://scripts/soldier.gd"
+extends "res://scripts/ai_soldier.gd"
 ## A squadmate: the same square as the player (scripts/soldier.gd), run by
-## simple AI.
+## simple AI (walking, steering and fire discipline are in scripts/ai_soldier.gd).
 ##
 ## Idle, it stands at its post, every few seconds either glancing somewhere
 ## new or shuffling a step or two, never straying more than SHUFFLE_RADIUS_M.
@@ -15,20 +15,33 @@ extends "res://scripts/soldier.gd"
 ## It jogs to catch up when out of position, and in position looks the way
 ## the player faces. command.gd hands out the slots (follow_slot/follow_count).
 ##
+## Called to Attention (order_attention()) it falls in: it goes to the spot
+## command.gd picked for it in a line or column formed up in front of the
+## player, and stands there facing the way it was told (toward the player),
+## still: no idle glancing or shuffling, and it doesn't follow the player.
+## It stays until it's given another order.
+##
 ## While the player is in command mode (holding Space) and it's inside the
-## player's voice cone, it turns to face the player, listening, even while
-## walking somewhere. Outside the cone it can't hear and carries on.
+## player's command circle, it turns to face the player, listening, even while
+## walking somewhere. Outside the circle it can't hear and carries on.
+##
+## Given a Fire order (order_attack()) it shoots `attack_target` until the
+## target dies or it's told to Stop (order_stop_firing()). Firing is on top
+## of whatever else it's doing: it still stands, walks or keeps formation,
+## but aims at the target (even while listening) and fires every
+## SHOT_GAP_S whenever its rifle is lined up, each shot straying up to
+## SHOT_SPREAD_DEG, holding fire while anyone is in the way (ai_soldier.gd).
+##
+## It also returns fire on its own: with nothing to shoot, it picks the
+## alerted enemy (scripts/enemy.gd) that last hit it, or else the nearest
+## alerted enemy it can see within RETURN_FIRE_M. Stop puts it on
+## `hold_fire`: no returning fire until its next Fire order, or until it's
+## hit itself.
 
-enum State { IDLE, SHUFFLE, MOVE, FOLLOW }
+enum State { IDLE, SHUFFLE, MOVE, FOLLOW, ATTENTION }
 
-const ARRIVE_M := 0.08           ## close enough to count as arrived
-const SLOW_DOWN_M := 0.3         ## eases off over the last stretch
 const SHUFFLE_RADIUS_M := 0.25   ## how far idle shuffling strays from the post
 const SHUFFLE_SPEED := 0.35      ## fraction of walking speed when shuffling
-const STUCK_TIME_S := 2.0        ## gives up on a spot it gets no closer to for this long
-const PROGRESS_M := 0.05         ## getting this much closer counts as progress
-const DETOUR_SWAP_S := 0.7       ## no progress for this long: try going round the other side
-const LOOK_DISTANCE_M := 10.0
 
 ## Formation slots, in metres from the player along its formation heading.
 const FOLLOW_FIRST_ROW_M := 0.9  ## first row behind the player (Follow me)
@@ -36,9 +49,13 @@ const LEAD_FIRST_ROW_M := 1.2    ## first row ahead of the player (Lead), clear 
 const ROW_GAP_M := 0.7
 const FILE_GAP_M := 0.9          ## side-to-side gap between the pair in a row
 const IN_SLOT_M := 0.12          ## close enough to its slot to stand still
+const AT_ATTENTION_M := 0.03     ## at Attention it steps in this close, so the ranks are straight
 const JOG_FROM_M := 1.0          ## further than this from its slot, it jogs
 const JOG_SPEED := 1.4           ## jogging speed, as a multiple of walking speed
-const AVOID_M := 0.8             ## steers around squares closer than this that are in the way
+
+const SHOT_SPREAD_DEG := 1.5     ## how far a shot may stray either side of the aim
+const RETURN_FIRE_M := 20.0      ## shoots back at alerted enemies it can see this close
+const RETURN_FIRE_CHECK_S := 0.3 ## how often it looks for someone to shoot back at
 
 @export var idle_min_s := 1.5    ## shortest pause between idle glances/shuffles
 @export var idle_max_s := 5.0    ## longest pause
@@ -54,15 +71,16 @@ var follow_mode := ""
 var follow_shape := "column"   ## "column" or "line"
 var follow_slot := 0
 var follow_count := 1
+## Set by Stop: it won't return fire on its own until its next Fire order
+## or until it's hit.
+var hold_fire := false
 
 var _post := Vector2.ZERO
 var _look_angle := 0.0
 var _next_idle_s := 0.0
 var _listening := false
-## Progress toward the current destination, for spotting when it's blocked.
-var _best_dist := INF
-var _no_progress_s := 0.0
-var _detour := 1.0   ## 1 or -1: which side _steer prefers to pass obstacles on
+var _return_fire_in := 0.0
+var _attention_facing := 0.0   ## which way it faces at Attention (radians)
 
 
 func _ready() -> void:
@@ -87,6 +105,39 @@ func order_follow(mode: String, shape := "column") -> void:
 	follow_shape = shape
 
 
+## Fall in at `spot` and stand at attention there, facing `face_angle`
+## (radians), until the next order.
+func order_attention(spot: Vector2, face_angle: float) -> void:
+	_start_walk(spot, State.ATTENTION)
+	follow_mode = ""
+	_attention_facing = face_angle
+
+
+## Shoot `target` until it dies or Stop. Takes a moment to bring the rifle up.
+func order_attack(target: Node2D) -> void:
+	attack_target = target
+	hold_fire = false
+	_next_shot_s = randf_range(0.1, SHOT_GAP_S.x)
+
+
+## Cease fire, and don't return fire on its own until told to Fire again
+## (or it's hit).
+func order_stop_firing() -> void:
+	attack_target = null
+	hold_fire = true
+
+
+## Hit by an enemy: that ends any Stop, and with nothing else to shoot it
+## shoots back at whoever hit it.
+func take_hit(point: Vector2, direction: Vector2, damage := 0.0, by: Node2D = null) -> void:
+	super(point, direction, damage, by)
+	if dead or by == null or not is_instance_valid(by) or not by.is_in_group("enemies"):
+		return
+	hold_fire = false
+	if not is_attacking():
+		order_attack(by)
+
+
 func is_moving() -> bool:
 	return state == State.MOVE
 
@@ -94,9 +145,7 @@ func is_moving() -> bool:
 func _start_walk(point: Vector2, walk_state: State) -> void:
 	destination = point
 	state = walk_state
-	_best_dist = INF
-	_no_progress_s = 0.0
-	_detour = 1.0
+	_reset_progress()
 
 
 func is_following(mode: String) -> bool:
@@ -105,57 +154,32 @@ func is_following(mode: String) -> bool:
 
 func _move_intent() -> Vector2:
 	_speed_scale = 1.0
+	_look_for_return_fire()
 	match state:
 		State.MOVE:
 			return _walk_to(destination, 1.0)
 		State.SHUFFLE:
 			return _walk_to(destination, SHUFFLE_SPEED)
 		State.FOLLOW:
-			return _keep_station()
+			return _head_for(_slot_position())
+		State.ATTENTION:
+			return _head_for(destination, AT_ATTENTION_M)
 	_tick_idle()
 	return Vector2.ZERO
 
 
-## Heads for its formation slot: jogs when well out of position, eases in
-## as it gets close, and stands still once there.
-func _keep_station() -> Vector2:
+## Heads for its place in a formation (its Follow me / Lead slot, or its
+## Attention spot): jogs when well out of position, eases in as it gets
+## close, and stands still once there.
+func _head_for(spot: Vector2, close_enough := IN_SLOT_M) -> Vector2:
 	var px := World.PX_PER_M
-	var to := _slot_position() - global_position
+	var to := spot - global_position
 	var dist := to.length() / px
-	if dist < IN_SLOT_M:
+	if dist < close_enough:
 		return Vector2.ZERO
 	if dist > JOG_FROM_M:
 		_speed_scale = JOG_SPEED
 	return _steer(to.normalized()) * clampf(dist / (SLOW_DOWN_M * 2.0), 0.0, 1.0)
-
-
-## Bends a walking direction around any square (player or squadmate) that's
-## close and in the way, slipping past on the side it's already offset to.
-## Without this a squadmate whose slot is on the far side of the player walks
-## straight into the player and stops.
-func _steer(dir: Vector2) -> Vector2:
-	var px := World.PX_PER_M
-	var push := Vector2.ZERO
-	var others := get_tree().get_nodes_in_group("squad") + get_tree().get_nodes_in_group("player")
-	for other in others:
-		if other == self:
-			continue
-		var away: Vector2 = global_position - other.global_position
-		var d := away.length() / px
-		if d > AVOID_M or d < 0.001:
-			continue
-		if (-away).dot(dir) <= 0.0:
-			continue   # beside or behind us: not in the way
-		var side := dir.orthogonal()
-		if side.dot(away) < 0.0:
-			side = -side
-		side *= _detour   # flipped when this way round isn't getting anywhere
-		# Grows from nothing at AVOID_M to twice the walking direction at
-		# contact (two half-widths apart), so close up it mostly sidesteps.
-		# A gentler push snags corner-to-corner on the other square.
-		var weight := clampf((AVOID_M - d) / (AVOID_M - SIZE_M), 0.0, 1.0) * 2.0
-		push += (side + away.normalized() * 0.2) * weight
-	return (dir + push).normalized()
 
 
 ## Its slot in the formation, in world coordinates.
@@ -188,6 +212,9 @@ func _leader():
 ## it's walking on a move order, keeps the player's heading in formation, or
 ## looks around when idle.
 func _aim_point() -> Vector2:
+	if is_attacking():
+		_listening = false
+		return attack_target.global_position
 	var leader = _leader()
 	if World.commanding():
 		# Turn to the player only when hearing its voice; over the radio
@@ -209,42 +236,24 @@ func _aim_point() -> Vector2:
 		if to_slot.length() > 0.5 * px:
 			return global_position + to_slot.normalized() * LOOK_DISTANCE_M * px
 		_look_angle = leader.formation_heading
+	if state == State.ATTENTION:
+		var to_spot := destination - global_position
+		if to_spot.length() > 0.5 * px:
+			return global_position + to_spot.normalized() * LOOK_DISTANCE_M * px
+		_look_angle = _attention_facing
 	return global_position + Vector2.from_angle(_look_angle) * LOOK_DISTANCE_M * px
 
 
-func _walk_to(point: Vector2, speed_fraction: float) -> Vector2:
-	var px := World.PX_PER_M
-	var to := point - global_position
-	if to.length() < ARRIVE_M * px or _is_stuck(to.length()):
-		_arrive()
-		return Vector2.ZERO
-	var ease_off := clampf(to.length() / (SLOW_DOWN_M * px), 0.3, 1.0)
-	return _steer(to.normalized()) * speed_fraction * ease_off
-
-
-## Watches progress toward the destination (`dist` px away). Every
-## DETOUR_SWAP_S without getting closer it tries passing obstacles on the
-## other side; after STUCK_TIME_S it gives up. Judging by progress rather
-## than speed catches being pinned while still jiggling about, e.g. wedged
-## between the player and another squadmate.
-func _is_stuck(dist: float) -> bool:
-	if dist < _best_dist - PROGRESS_M * World.PX_PER_M:
-		_best_dist = dist
-		_no_progress_s = 0.0
-		return false
-	var before := _no_progress_s
-	_no_progress_s += get_physics_process_delta_time()
-	if floorf(_no_progress_s / DETOUR_SWAP_S) > floorf(before / DETOUR_SWAP_S):
-		_detour = -_detour
-	return _no_progress_s > STUCK_TIME_S
+func _shot_spread_deg() -> float:
+	return SHOT_SPREAD_DEG
 
 
 func _arrive() -> void:
+	super()
 	if state == State.MOVE:
 		_post = global_position
 		_look_angle = facing   # keep looking the way it came
 	state = State.IDLE
-	_detour = 1.0
 	_next_idle_s = randf_range(idle_min_s, idle_max_s)
 
 
@@ -262,3 +271,29 @@ func _tick_idle() -> void:
 	else:
 		# Glance somewhere new: usually a modest turn, now and then over the shoulder.
 		_look_angle = facing + randf_range(-1.0, 1.0) * (PI * 0.75 if randf() < 0.2 else PI / 3)
+
+
+## The enemy is fair game: they don't count as in the way of a shot.
+func _is_hostile(other: Node) -> bool:
+	return other.is_in_group("enemies")
+
+
+## Returning fire: with nothing to shoot and not told to hold, it picks the
+## nearest alerted enemy it can see within RETURN_FIRE_M. Checked every
+## RETURN_FIRE_CHECK_S rather than every tick.
+func _look_for_return_fire() -> void:
+	_return_fire_in -= get_physics_process_delta_time()
+	if _return_fire_in > 0.0 or hold_fire or is_attacking():
+		return
+	_return_fire_in = RETURN_FIRE_CHECK_S
+	var best: Node2D = null
+	var best_d := RETURN_FIRE_M * World.PX_PER_M
+	for enemy: Node2D in get_tree().get_nodes_in_group("enemies"):
+		if not enemy.alerted:
+			continue
+		var d := global_position.distance_to(enemy.global_position)
+		if d < best_d and _clear_view(global_position, enemy.global_position):
+			best_d = d
+			best = enemy
+	if best:
+		order_attack(best)

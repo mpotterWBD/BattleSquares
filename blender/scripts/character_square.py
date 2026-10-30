@@ -33,7 +33,7 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
-ROOT = r"F:\Projects\BattleSquares"
+ROOT = bs.ROOT
 OUT_BODY = os.path.join(ROOT, "assets", "characters", "red_square_sheet.png")
 OUT_SHADOW = os.path.join(ROOT, "assets", "characters", "red_square_shadow_sheet.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "character_square.blend")
@@ -162,4 +162,5 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
 
 
-main()
+if __name__ == "__main__":   # dummy_square.py imports this module for its helpers
+    main()

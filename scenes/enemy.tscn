@@ -1,0 +1,13 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/soldier.tscn" id="1_soldier"]
+[ext_resource type="Script" path="res://scripts/enemy.gd" id="2_enemy"]
+[ext_resource type="Texture2D" path="res://assets/characters/blue_square_sheet.png" id="3_body"]
+[ext_resource type="Texture2D" path="res://assets/characters/blue_square_fall_sheet.png" id="4_fall"]
+
+[node name="Enemy" instance=ExtResource("1_soldier")]
+script = ExtResource("2_enemy")
+fall_sheet = ExtResource("4_fall")
+
+[node name="Body" parent="." index="2"]
+texture = ExtResource("3_body")

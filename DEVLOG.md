@@ -8,7 +8,7 @@ A running record of how Battle Squares is designed and built: decisions, progres
 
 | Item | Value |
 |------|-------|
-| Project folder | `F:\Projects\BattleSquares` |
+| Project folder | `C:\Users\mpott\Desktop\BattleSquares` (was `F:\Projects\BattleSquares`) |
 | Started | 2026-10-28 |
 | Game engine | Godot 4.7.2 (`C:\Users\mpott\Desktop\Godot_v4.7.2-stable_win64.exe`) |
 | Art style | Realistic proportions at **real-world scale**, clean rendered look (squares are glossy red blocks; vehicles and kit are detailed but unmarked) |
@@ -20,7 +20,7 @@ A running record of how Battle Squares is designed and built: decisions, progres
 
 ### Concept
 
-A top-down tactical squad game. You are a red square with a rifle, leading a squad of identical squares. Hold Space to talk to them: only those in your voice cone or close by hear you, and you can move them, form them up, or deploy equipment such as a field comms station. Helicopters will insert and extract the squad, and long-range radio comms (via the station's dish) are planned.
+A top-down tactical squad game. You are a red square with a rifle, leading a squad of identical squares. Hold Space to talk to them: only those inside your 8 m command circle hear you, and you can move them, form them up, or deploy equipment such as a field comms station. Helicopters will insert and extract the squad, and long-range radio comms (via the station's dish) are planned.
 
 ### Core Gameplay Loop
 
@@ -28,7 +28,7 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 
 ---
 
-## Start Here: Current State (updated 2026-10-29, morning)
+## Start Here: Current State (updated 2026-10-29, afternoon)
 
 **Read this first in a new session.** Details are in the sections below and the dated Log.
 
@@ -38,9 +38,10 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 |-------|--------|
 | WASD / arrows | Walk (screen directions; you can strafe) |
 | Mouse | Aim: the square turns loosely toward the cursor, and the rifle aims within its sweep |
-| Left click | Fire (one shot per click) |
-| Scroll wheel | Zoom 0.5×–3× |
-| **Space** (hold) | Command mode: voice cone and aura, ORDERS menu (left), DEPLOY menu (right), selection and move orders |
+| Left click | Fire (one shot per click). Dead-on within the rifle's accurate range (6 m) of the click; strays more the further past it you click |
+| **Right mouse** (hold) | Aim: shows the aiming line (solid = accurate range, then a red-shading spread wedge out to the mouse) |
+| Scroll wheel | Zoom 0.5×–3× (while placing an Attention formation: turn it 15° a notch) |
+| **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left), DEPLOY menu (right), selection and move orders |
 | **F** | Interact: at a station's desk (platform box), open/close the RADIO menu or hang up radio command; in the dish box, open/close the dish tuning wheel |
 | Esc | Close the RADIO menu (or step back out of marking an LZ) |
 | Right click | In command mode: move order (or cancel equipment placement); while marking an LZ: back to the request |
@@ -48,21 +49,22 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 ### What's in the game (`scenes/main.tscn`)
 
 - The **grass field** fills whatever the camera sees.
-- The **player** (`player.tscn`, inheriting `soldier.tscn`). As of the 2026-10-29 morning session, Mike's `main.tscn` holds only Field, Player, Camera and Command: **no squadmates or helicopters are placed**. Troops now arrive by helicopter from a radio station (below), and tests add their own squadmates.
+- The **player** (`player.tscn`, inheriting `soldier.tscn`). Mike's `main.tscn` holds Field, Edge, Player, Camera, Command and **Arrival**: **no squadmates or helicopters are placed**. The game opens with the player **flown in by helicopter** (`scripts/arrival.gd`): it lands so the player steps out of the front starboard door exactly where the Player node is placed, after about 6.6 s. Until then the player is hidden and switched off and command mode is shut (`World.player_aboard`). Troops arrive by helicopter from a radio station (below), and tests add their own squadmates.
 - **Helicopters** (`helicopter.tscn`) appear only when sent from a station's terminal (`scripts/insertion.gd` flies them in and out).
 - **Command system** (`scripts/command.gd`):
-  - a voice cone (8 m, ±40°) plus a command aura (2.475 m radius);
+  - a command circle all round the player (`aura_radius_m` 8 m; the voice cone was removed on 2026-10-29). Radio operators' circles are their own setting, `radio_circle_radius_m` 4.95 m, and equipment is placed within `deploy_reach_m` 2.475 m (a brighter ring while placing);
   - selection by box or click;
   - move orders to anywhere;
-  - an ORDERS menu: Follow me / Lead (hold for a Line/Column pop-out) and Disperse; with nothing selected, an order goes to everyone who can hear;
+  - an ORDERS menu: Follow me / Lead (hold for a Line/Column pop-out), **Attention** (hold for Line/Column, then click where they fall in: they form up there facing the player and stand still), Disperse, and the orange fighting orders **Fire** (arms everyone the order reaches; the next left click on a square picks the target, right click cancels; they shoot it until it dies, on top of whatever they were doing, holding fire while anyone is in the line of fire) and **Stop** (cease fire); with nothing selected, an order goes to everyone who can hear;
   - a DEPLOY menu: Equipment → Radio station, placed as a ghost inside the aura. The player carries 1 (`player.gd` `deployables`).
 - **Deployed radio station** (`radio_station.tscn` + `scripts/radio_station.gd`):
-  - a guyed mast, and an operator platform with a desk;
+  - compact: an operator platform with a desk, and just south of it (no wider than the platform) the antenna, a small steerable dish, with its green tuning box to its west;
   - **the radio terminal** (`Terminal` node, `scripts/radio_terminal.gd`). In the platform's green box (`OperatorZone`), F opens the **RADIO** menu:
     - **Command:** radio command mode (`World.radio_commanding`, `World.radio_station`). **The command structure:** your voice (cone + aura) still works. On top of it, radio operators (`kit = "radio"`) inside *this station's* dish beam are linked, and they and anyone within their **command circle** (2× the player's aura, 4.95 m) can be commanded. You see your cone, the beam, and a circle round each operator: solid when linked, dashed when out of the beam. F or stepping off the box hangs up.
     - **Deploy** (hold) → **Troops** / Vehicles (disabled, "soon"). Troops opens **10 slots** (2 rows of 5); fill as many as you want sent. Press a slot for the unit-type pop-out, which opens left of the panel: **Infantry** or **Radio** (a radio operator: infantry with a radio pack, `kit = "radio"`); a quick click = Infantry. **Clear** empties them.
-    - Filled slots ready one after another, `seconds_per_troop` = **30 s each**. Then **Send helicopter** gives a ghost helicopter to mark the LZ (anywhere inside the play area). A click sends the real one: it flies in from the west at 25 m, lands, unloads the troopers (who join the squad and disperse about 6 m to either side), lifts off and flies away. The request survives walking away from the desk, and while the menu is closed a timer above the box shows "3 troopers  1:30" (total time left), then "3 troopers READY";
-  - a satellite dish with its own green box. F there opens a tuning wheel. The mouse only picks a heading (white line; a green line shows where the dish points now). A left click or F locks the pick in (`target_heading`), and the dish turns to it slowly: at most 12°/s, easing in and out, so 180° takes about 15 s. A 60 m, ±18° beam shows where it actually points, drawn like the voice cone (same green and see-through; the alphas are shared in `world.gd`). It shows while tuning and in command mode, not while the dish turns on its own. The current heading is in `dish_heading`, and `dish_tuned(heading)` is emitted when the dish arrives. **Nothing consumes it yet.**
+    - Filled slots ready one after another, `seconds_per_troop` = **1 s each (testing value; it was 30 s)**. Then **Send helicopter** gives a ghost helicopter to mark the LZ (anywhere inside the play area). A click sends the real one: it flies in from the west at 25 m, lands, unloads the troopers (who join the squad and step about 1 m clear of the doors, spread over 3 m along each side), lifts off and flies away. The request survives walking away from the desk, and while the menu is closed a timer above the box shows "3 troopers  1:30" (total time left), then "3 troopers READY";
+  - a satellite dish with its own green box. F there opens a tuning wheel. The mouse only picks a heading (white line; a green line shows where the dish points now). A left click or F locks the pick in (`target_heading`), and the dish turns to it slowly: at most 12°/s, easing in and out, so 180° takes about 15 s. A 60 m, ±18° beam shows where it actually points, in the same green and see-through as the command circles (the alphas are shared in `world.gd`). It shows while tuning and in command mode, not while the dish turns on its own. The current heading is in `dish_heading`, and `dish_tuned(heading)` is emitted when the dish arrives. **Nothing consumes it yet.**
+- **Bullets hit.** A bullet traces a ray along each tick's flight (`bullet.gd`), ignores its shooter, and stops at the first solid thing (squares, a landed helicopter's hull, a radio station). A square that's hit (`soldier.gd take_hit()`) is shoved back 0.3 m along the shot in 0.12 s (`hit_knockback_m`, `hit_knockback_s`), twists up to 20° (`hit_twist_deg`) when the hit lands off-centre, and dust bursts off the hit spot back toward the shooter (`scripts/hit_dust.gd`). **Anchored** squares (`anchored`, on for the dummy) don't move: they rock on a spring, up to 0.1 m and the same twist, and settle back where they stand. **Health:** every square has `max_health` 2 for testing (normally 100) and a rifle hit does 25 (`rifle.gd damage`), so one hit kills (4 at 100). A dead square leaves every group and the collision layers (bullets and squares pass over it) and goes down as a **ragdoll** (`scripts/death_fall.gd`): the killing shot sends it skidding ~0.3–0.45 m and spinning (if hit off-centre), it topples over whichever face was pushed (front, back or a side) under gravity, bounces and settles with dust, and bumps off anything solid it skids into. Its rifle flies free under gravity: dropped to the side, or flung and spinning when it goes over backwards. It darkens, lies 5 s, fades and is removed. The player takes hits but can't die yet (no game over). Friendly fire hits too. The dummy is `invincible` for now: it takes hits (rocks, dust) but never loses health.
 - **Menu building blocks:** `scripts/ui_style.gd` (shared button and panel look) and `scripts/hold_popout.gd` (the reusable press-hold-slide-release pop-out), used by command mode and the terminal.
 
 ### Next steps (Mike's stated direction)
@@ -75,12 +77,14 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 
 ### Loose ends and known issues
 
-- **No version control yet.** Mike plans to set up git (said "tomorrow" just after midnight on 2026-10-29). Offer to help: `git init`, a `.gitignore` that excludes `.godot/` (the existing `.gitignore` already does), and a first commit of the working state.
+- **Git:** the project is now in git (`main`, with an `origin` remote).
+- **Testing values to restore:** `seconds_per_troop` is 1 s (was 30 s) in `radio_terminal.gd`; `max_health` is 2 (was 100) in `soldier.gd`.
 
 - The `Field` node in `main.tscn` was scaled to (0.9896, 1.0028) and moved to (0, 3), probably by an accidental drag in the editor. Mike was told and it was left alone.
 - Soldier collision boxes don't rotate with facing.
 - Art is rendered for 1× zoom: at 3× the grass and squares are soft (the rifle and station are rendered at 2–4× density and stay sharp). At 0.5× the 12 m grass tile repeats visibly.
 - Flowers in the far-zoom grass are fairly dense.
+- `main.tscn` has a **Dummy nested inside another Dummy** (`Dummy/Dummy`, probably dropped onto the first one in the Scene panel). The inner one moves with the outer one, so when the outer one is shot both get shoved. Drag it onto Main to fix it. Left alone for Mike.
 - Ideas raised but not built: a speed penalty for strafing or backing up; squadmates firing; a faint dish beam always visible; choosing the helicopter's approach direction.
 - The LZ only needs its centre inside the play area: nothing stops a helicopter landing on squares, the station or another helicopter. Troopers dispersing past the play area's edge are held at the edge.
 
@@ -128,7 +132,7 @@ BattleSquares/
 │   ├── soldier.gd       ← every square: movement, facing, hop, shadows, rifle
 │   ├── player.gd        ← keyboard/mouse control of a soldier
 │   ├── squadmate.gd     ← AI soldier: idle glances/shuffles, move orders
-│   ├── command.gd       ← hold Space: voice cone/aura, selection, orders menu, HUD
+│   ├── command.gd       ← hold Space: command circle, selection, orders menu, HUD
 │   ├── helicopter.gd    ← rotor spin, altitude, swept shadows, hull outline
 │   ├── radio_station.gd ← deployed station: stand boxes, F to tune the dish (wheel + beam)
 │   ├── radio_terminal.gd ← the station's desk: RADIO menu, radio command, troop requests, LZ
@@ -195,8 +199,11 @@ BattleSquares/
 | Rifle | Done (v2, detailed) | `blender/scripts/rifle.py` | `assets/characters/rifle.png` (384 px, **rendered at 4× density**, shown at 0.25 scale with mipmaps so it stays sharp when zoomed in). 0.48 m from pivot to muzzle (0.28 m beyond the front face). Parts: gunmetal receiver, red-dot sight with a red lens, polymer handguard, front sight post, barrel, muzzle brake, and a forward-raked magazine. **Canted 30°** so the magazine shows from above (it pokes out to the gun's right). Lit from straight overhead so it can rotate; its shadow is drawn in Godot. v1 (plain bar) is in `assets/previews/rifle_v1_plain.png`. |
 | Radio pack (radio operator) | Done (v1) | `blender/scripts/radio_pack.py` | `assets/characters/radio_pack.png` (614 px = 1.8 m, **rendered at 4× density**, shown at 0.25 scale with mipmaps), centred on the square's centre, square facing +x. Brown canvas pack on the square's back (0.16 m deep, 0.3 m wide, top at 0.44 m, just above the square), darker top flap and side pouches, shoulder straps over the square's top, the radio's top with two knobs, and a 0.6 m whip antenna raked 32° back with a tip cap. Lit from straight overhead so it turns with the square; its shadow is drawn in Godot (`radio_pack.gd`). |
 | Helicopter (UH-60-style transport) | Done (v3, 0.55 scale, cockpit, flies insertions) | `blender/scripts/helicopter.py` | Modelled at real size, then shrunk by `SCALE` = 0.55 (`helicopter.gd SCALE` must match): fuselage 8.4 m, rotor 9 m. Cockpit (laid out for scale 0.5 and grown with `SCALE`): two red pilot squares, 0.44 m, corners rounded like the player's (upright edges only, top edges sharp), under dark tinted glass (alpha 0.85); an instrument panel with screens, switch strips and a centre console with lamps. `assets/vehicles/helicopter_body.png` (939 px = 11 m, nose to +x; cockpit interior without pilots or glass), `helicopter_pilot.png` (one pilot, lit as in the cockpit; the game draws two and animates them), `helicopter_glass.png` (glass only, drawn over the pilots) and `helicopter_rotor.png` (centred on the mast), both lit from straight overhead so they can face any heading. Plus 4 half-res shadow outlines `helicopter_shadow_{body,stabilator,fin,tailrotor}.png` (padded for sweeping). Olive drab, matte, no markings; black blades with yellow tip bands. Renders in about 15 s. |
-| Deployable comms station (radio mast, small antenna, satellite dish, laptop) | Done, **in the game via DEPLOY** | `blender/scripts/radio_station.py` | Four images, all 2× density (show at scale 0.5): `radio_station.png` (tall parts, z 4), `radio_station_ground.png` (deck, cables, stakes, z −5), `radio_station_shadow.png` (2133 px = 12.5 m, centred on the mast base), and `radio_station_dish.png` (2.4 m, centred on the dish post, lit from overhead, rotated in game). Guyed 7 m tripod mast with dipole and whip, 3 orange-flagged stakes 4.5 m out; 1 m dish on a tripod at 40° elevation with feed arm; a 2 m square plank operator platform with a field desk carrying a radio (whip antenna, handset), the detailed rugged laptop (lit mapping-app screen, mouse), a power unit, a headset, a notebook and a mug; cables to the mast and dish. Lit by the normal top-left sun (it doesn't turn), with its shadow rendered separately and normalised like the squares'. Review image: `assets/previews/radio_station_preview.png`. Renders in about 30 s. |
+| Deployable comms station (platform, desk, laptop, small satellite dish) | Done, **in the game via DEPLOY** | `blender/scripts/radio_station.py` | Four images, all 2× density (show at scale 0.5): `radio_station.png` (tall parts, z 4), `radio_station_ground.png` (deck and cable, z −5), `radio_station_shadow.png` (1109 px = 6.5 m, centred on the station's middle), and `radio_station_dish.png` (2.4 m, centred on the dish post, lit from overhead, rotated in game). **Compact since 2026-10-29:** a 2 m square plank operator platform centred 1.05 m north of the origin, with a field desk along its east edge carrying a radio (whip antenna, handset), the detailed rugged laptop (lit mapping-app screen, mouse), a power unit, a headset, a notebook and a mug; the antenna (since 2026-10-30) is a desert-tan flyaway satellite terminal 1.1 m south of the origin, inside the platform's width: four splayed outrigger legs on round grey foot pads braced to a centre column, a pan/tilt head and yoke, a 1.2 m dish at 40° elevation with a rolled rim and a centre feed boom, and a black cable down the column. The head, yoke, dish, rim, boom and feed are the turning image; the base stays in the station image; one cable from the desk to the dish. The 7 m guyed mast and its stakes are gone. Lit by the normal top-left sun (it doesn't turn), with its shadow rendered separately and normalised like the squares'. Review images: `assets/previews/radio_station_preview.png` (an in-game screenshot) and `radio_station_dish_preview.png` (an angled close-up of the antenna). Renders in about 20 s. |
 | Red square: player (body + shadow) | Done (v3, turning sheets) | `blender/scripts/character_square.py` | `assets/characters/red_square_sheet.png` (30 frames × 64 px; the block is about 34 px = 0.4 m) and `red_square_shadow_sheet.png` (30 × 128 px). Frame k = the block turned k × 3° clockwise; 30 frames cover 90°, because a square repeats every quarter turn. Pre-lit at every angle, so the highlight and the shadow's shape stay correct as it turns. Glossy red plastic with rounded edges. Renders in about 20 s. Older single images are in `assets/previews/`. |
+| Crash test dummy square (body) | Done (v1), `scenes/dummy.tscn` ready to place | `blender/scripts/dummy_square.py` | `assets/characters/dummy_square_sheet.png` (30 frames × 64 px, same layout, size, bevel and sun as the red square, so it drops into a soldier's Body sprite as-is). Crash-test yellow with a black ring-and-cross tracking target on top. Not the classic half-black quadrant target: the sheet covers only a quarter turn, and a quadrant target would swap black and yellow every time the frames wrap round. The shadow is the same shape, so it reuses `red_square_shadow_sheet.png`. Imports `character_square.py` for the block and render helpers (its `main()` is now guarded). Renders in about 8 s. Preview: `assets/previews/dummy_square_preview.png` (red square, then the dummy at 0°, 24° and 45°, 6×). |
+| Blue enemy square (body and fall sheets) | Done, **in the game** (`scenes/enemy.tscn`) | `blender/scripts/enemy_square.py`, `fall_square.py -- blue` | `assets/characters/blue_square_sheet.png` (same layout as the red sheet) and `blue_square_fall_sheet.png` (same layout as the red fall sheet). The same block in blue plastic, `bs.srgb(0.08, 0.32, 0.88)`; the shadow sheets are shared. `fall_square.py` now takes `-- red/dummy/blue/shadow` to render only some sheets. Preview: `assets/previews/enemy_fight_preview.png`. |
+| Square death falls (red, dummy, shared shadow) | Done (v1), **in the game** | `blender/scripts/fall_square.py` | `assets/characters/red_square_fall_sheet.png` and `dummy_square_fall_sheet.png` (1536×3840: 30 rows × 12 columns of 128 px = 1.5 m frames) and `square_fall_shadow_sheet.png` (2304×5760, 192 px = 2.25 m frames, normalised like the standing shadow). Row k = toppling toward k × 12° (Godot angle, clockwise from east); column j = j × 90/11° over, pivoting on the bottom edge on that side, so it ends one block-width (0.4 m) from where it stood. Every direction is rendered because the fixed sun lights each one differently. Frames are centred where the block stood. Reuses `character_square.py`'s block and `dummy_square.py`'s material (both scripts' `main()` are now guarded so they can be imported). 64 samples; about 6 min for all three. Preview: `assets/previews/death_falls_preview.png` (scripted falls) and `ragdoll_preview.png` (the ragdoll). |
 
 Status values: `Planned` · `In progress` · `Done` · `Needs rework`
 
@@ -219,6 +226,7 @@ Major choices and the reasons behind them.
 | 2026-10-28 | All squares share `soldier.gd`; player and squadmates are subclasses | One body, movement and rifle for everyone; the behaviours differ only in intent, aim and fire |
 | 2026-10-28 | Facing follows aim loosely (comfort zone); walking is independent of facing | Mike: "nailed that feeling" |
 | 2026-10-28 | Command mode on **Space** (was C); voice cone + aura limit who can be commanded, not where they can go | Mike's design; the destination limit was a misread and was reversed |
+| 2026-10-29 | Voice cone removed; the command circle is 8 m all round (the cone's old range). Radio operators' circles stay 4.95 m and deploy reach stays 2.475 m, as separate settings | Mike asked to remove the cone and grow the circle to the cone's radius; he chose to keep the radio circle and deploy reach as they were |
 | 2026-10-28 | Menu orders go to the selection, or to everyone who can hear if nothing is selected | Mike: shouldn't need to select first |
 | 2026-10-28 | Static props use the world sun + a separate shadow image; anything that rotates is lit from overhead with a swept outline shadow | Lighting stays consistent while things can turn |
 | 2026-10-29 | Station split into a ground layer (under squares) and a tall layer (over them) | The deck was drawing over the player |
@@ -850,3 +858,346 @@ Major choices and the reasons behind them.
 - `game_camera.gd`: while `World.radio_commanding`, the camera fits the player plus every squad member, grown by `OVERVIEW_MARGIN_M` = 4 m. It eases its zoom (never closer than your own zoom, never past `min_zoom`) and pans (`move_ease` 5) onto the group's centre, still kept inside the arena + 2 m, and keeps tracking as units move. The wheel is ignored meanwhile.
 - On hang-up it restores your zoom, eases back to the player, then snaps to following exactly once within 1 px.
 - Tested (`test_overview.gd`, windowed): zoom 1.4 at the desk with 3 squadmates spread across the map → Command → zoom 0.47 with every unit at least 2 m inside the view (screenshot) → hang up → zoom 1.4, centred on the player, following again. Terminal test passes.
+
+### 2026-10-29 — Player arrives by helicopter; troop cooldown 5 s for testing
+- Mike: when the game starts, have the helicopter drop the character off where he's placed; reduce all cooldowns to 5 s for testing.
+- New `scripts/arrival.gd`, as an `Arrival` node in `main.tscn`. At start it sends a helicopter (`insertion.gd`) with the player aboard, landing at `player.position - Insertion.first_out_offset()` so the front starboard door's exit spot is exactly the Player's placed position. `enabled` turns it off.
+- `insertion.gd`: `start(heli, lz, unit_types, riders = [])`. Riders are squares already in the scene: hidden and `PROCESS_MODE_DISABLED` (which also takes them out of physics) until they step out first, onto their door spot, with no move order. `passenger_out(unit)` signal. `first_out_offset()` static. Normal troop drops are unchanged.
+- `world.gd`: `static var player_aboard`; `commanding()` returns false while it's set, so Space and radio command do nothing until the player is out.
+- Cooldowns: the only gameplay cooldown is the terminal's troop readying, `seconds_per_troop` 30 → **5 s** (marked as a testing value; restore later). Not changed: the rifle's 0.12 s fire interval (a fire-rate limit), and the dish's turn speed (a rate, not a cooldown; 180° still takes ~15 s).
+- Tested (headless, scratch copy): at start the player is hidden, switched off, `player_aboard` true, and holding Space doesn't enter command mode; the player steps out after 6.6 s at exactly (1137, 555), 0.00 px off, and walks with D; the helicopter leaves 8.9 s later; `seconds_per_troop` = 5. Regression: a terminal-style drop of infantry/radio/infantry with Arrival disabled still gives 3 squadmates with kits `["", "radio", ""]`.
+
+### 2026-10-29 — Crash test dummy square (art only)
+- Mike: using Blender, generate a dummy the same size as a player or unit, in crash test dummy colours.
+- New `blender/scripts/dummy_square.py` → `assets/characters/dummy_square_sheet.png`. It reuses `character_square.py`'s block, size, bevel, frame size, frame count and sun, so it's an exact drop-in for `soldier.tscn`'s Body sheet. A ring-and-cross target (it looks the same every quarter turn) instead of the quadrant target (which would flip colours as the 90° sheet wraps). The shadow sheet is reused unchanged.
+- `character_square.py`: `main()` now runs only when the script is run directly, so it can be imported.
+- Every Blender script wrote to a hard-coded `ROOT = F:\Projects\BattleSquares`, which no longer exists. Fixed (same day): `bs_common.py` now has `ROOT`, worked out from its own location, and all seven scripts use `ROOT = bs.ROOT`. Checked: every script parses and every output folder exists; `dummy_square.py` re-rendered into the Desktop project.
+- Not wired into the game yet. Checked with an enlarged comparison against the red square on grass: same size and shading, and the target turns with the frames.
+
+### 2026-10-29 — Dummy scene
+- Mike: how do I add the dummy to the scene? There was no `dummy.tscn` yet, so it was made for him.
+- New `scenes/dummy.tscn`: inherits `soldier.tscn` (root renamed `Dummy`). Body uses `dummy_square_sheet.png`; Rifle, RifleShadow and Sight are hidden. It's a plain `soldier.gd`, so it stands still facing `facing`, isn't in the `player` or `squad` group, and blocks movement. Bullets don't hit anything yet.
+- To place it: drag `scenes/dummy.tscn` from FileSystem into `main.tscn`'s 2D view. Not placed by Claude, since Mike places nodes himself.
+- Tested (headless, scratch copy): instanced in main with Arrival off. It shows the dummy sheet (30 frames) and the red square's shadow, with the rifle, rifle shadow and sight hidden. It isn't in either group. Walking the player into it from the west stops at its left edge.
+
+### 2026-10-29 — Hit detection and hit reaction
+- Mike: work on hit detection and reaction; hits should hit hard; a hit unit jostles back, and hit dust comes off the unit where it was hit.
+- `bullet.gd`: each tick a `PhysicsRayQueryParameters2D` ray over the step it's about to fly (2 m a tick at 120 m/s, so it can't tunnel through a 0.4 m square), excluding `shooter`. Any body stops it; one with `take_hit()` is hit. Areas (station zones) are ignored. `setup()` takes the shooter; `rifle.gd` passes its `owner`.
+- `soldier.gd take_hit(point, direction)`:
+  - **Knockback:** `_knock`, slowing evenly to a stop, so it covers `hit_knockback_m` 0.3 m in `hit_knockback_s` 0.12 s: a sharp jolt, not a slide. It's applied with `move_and_collide` after walking, so it doesn't make the square hop, and walls and the arena edge stop it. Each tick moves at the average speed over the tick, so the distance is exact (plain stepping overshot to 0.343 m).
+  - **Twist:** `facing` turns by (hit offset × shot direction) / half-width, clamped to ±1, times `hit_twist_deg` 20°: a corner hit spins it that way, a centre hit doesn't. Controlled squares turn back toward their aim on their own; the dummy stays twisted.
+  - **Dust:** `scripts/hit_dust.gd`, added to the level at the hit point. A 0.07 s bright pop, 8 tan puffs bursting back toward the shooter within ±65° (1.2–3.6 m/s, dragged to a stop, swelling 2.6× and fading over 0.4–0.8 s), and 7 dark grit streaks (4–8 m/s, 0.15–0.3 s). It frees itself.
+- Tested (`test_hits.gd`, headless, Mike's dummies removed, a dummy 5 m east of the player): own shot from inside the player's box passes out and hits the dummy; centre hit 0.301 m east, 0 sideways, no twist; hit 0.1 m above centre +10.0°; hit 0.15 m below −15.0°; bullets gone; dust gone within about 2 s; a dummy against the east edge stays in the arena. Windowed screenshots 0.04, 0.12 and 0.3 s after a hit: the pop, then puffs billowing back toward the shooter.
+- Not done (ideas): damage/health, a camera shake or brief hit-stop when the player is hit, a hit flash, dust or sparks when a bullet hits the helicopter or station.
+
+### 2026-10-29 — The dummy stays put when hit
+- Mike: make the dummy more static; let it jostle but not move around.
+- `soldier.gd`: `@export var anchored` (on in `dummy.tscn`). An anchored square isn't shoved or turned for real. A hit kicks a damped spring instead, which moves only what's drawn (Body, Shadows, Sight and the radio pack) and adds an extra turn to the frame it shows, then rocks back to rest. `jostle_m` 0.1 m (how far the first swing goes), `jostle_hz` 7, `jostle_damping` 0.3 (fraction of critical damping). The twist is the same lever × `hit_twist_deg` as before. Dust is unchanged.
+- The spring is stepped with its exact solution (`_spring_step`), and the kick is sized from `_spring_first_peak()` so the first swing is exactly `jostle_m`. The first try, simple stepping, only reached 0.042 m of 0.1, because at 7 Hz and 60 ticks a second that stepping loses most of the swing.
+- Tested (`test_anchored.gd`, headless): a hit 0.1 m above centre rocks it 0.099 m and 9.9°, swings back past home 3 times, and is fully at rest by 1.5 s. The node itself never moves (0.0000 m) and its facing is unchanged. 8 rapid shots stay bounded and settle. A squadmate (not anchored) is still shoved 0.301 m.
+
+### 2026-10-29 — Fire and Stop orders, health and death
+- Mike: add two commands, Fire and Stop, in orange. Fire: any unit within selectable range can fire; after Fire you select the target, and the units attack it until it's dead or Stop is pressed.
+- **Health** (`soldier.gd`): `max_health` 100, `health`, `dead`, `died` signal. `take_hit(point, dir, damage)`; `rifle.gd damage` 25, carried by the bullet. `_die()`: leaves every group (out of the squad, can't be targeted), collision off, rifle and sight hidden, Body tinted dark (0.15 s), lies 1.5 s, fades 0.8 s, freed. A dead square doesn't move, turn or fire, but finishes its knockback. Every live square is in the new `units` group. `player.gd` overrides `_die()` to top its health back up: there's no game over yet.
+- **Squadmates fire** (`squadmate.gd`): `attack_target`, `order_attack()`, `order_stop_firing()`, `is_attacking()` (drops a dead or freed target). Firing is on top of their state (idle, move or formation): they aim at the target, even over listening to the player, and `_wants_to_fire()` shoots every 0.35–0.6 s (`SHOT_GAP_S`) once the rifle is within 4° (`LINED_UP_DEG`). Each shot strays up to ±1.5° (`SHOT_SPREAD_DEG`, via the new `_shot_spread_deg()` hook; `rifle.fire(spread_deg)`).
+- **Orders** (`command.gd`): `ORDERS` gains `fire` and `stop`, with `color = World.FIRE_COLOR` (new, orange 1.0/0.6/0.15). `UiStyle.menu_button(text, size, color)` and `box(fill, alpha, edge)` take a colour.
+  - Fire arms `_order_targets()` into `_arming`. The next left click is `_try_target()`: the nearest live `units` square within 0.3 m, excluding the player and the armed squadmates. A click on nothing gets a red ping and they stay armed; right click cancels; so does pressing or releasing Space.
+  - Stop calls `order_stop_firing()` on everyone the order reaches.
+  - While commanding: orange lines from shooters to targets, a ring on each target, rings on the armed squadmates, a crosshair on the square under the mouse (a small one when it's over nothing), and an orange banner while picking.
+- Tested (`test_fire.gd`, headless): 3 squadmates within earshot, facing away, plus one out of earshot, and a dummy 6 m off. Fire armed 3 (not the far one); a click on nothing was refused and they stayed armed; the player and the armed squadmates couldn't be targeted. The dummy died after 1.05 s and 6 shots, then they stopped attacking; it left `units` and was removed after the fade. The second dummy took 1 hit in 0.5 s, then Stop: no hits after (75 health, 2 s later still 75, alive). Releasing Space cancelled picking. The player took 6 hits and is alive. Windowed screenshot: orange Fire/Stop buttons, banner, lines, target ring, armed ring and hover crosshair.
+- Not done: no enemies yet, so targets are dummies or your own squadmates. (Line-of-fire check: added later the same day, below.)
+
+### 2026-10-29 — Dummy invincible for now
+- Mike: make the dummy invincible for now.
+- `soldier.gd`: `@export var invincible`. It still gets the full hit reaction (shove or rock, twist, dust) but loses no health. On in `dummy.tscn`. A Fire order on a dummy now goes on until Stop.
+- Tested (headless): a dummy hit 10 times stays at 100 health, alive and targetable, rocking with dust each time; a squadmate still dies after 4 hits.
+
+### 2026-10-29 — Squadmates don't shoot through people
+- Mike: adjust their AI so they don't shoot if someone is in the way; keep friendly fire on.
+- `squadmate.gd _line_blocked()`: before each shot it checks every other live square in `units` (squadmates, the player, dummies) except itself and the target. Anyone between the rifle and the target (not behind the rifle or past the target) whose centre is within `LINE_CLEAR_M` 0.35 m of the line, plus the spread's widening with distance (tan 1.5°), is in the way. 0.35 m is half a square's diagonal (0.28) plus a margin. While blocked, `holding_fire` is true and it keeps aiming without firing or using up its shot timer, so it fires as soon as the line clears. Friendly fire is unchanged: stray shots and people stepping into a shot still get hit.
+- `command.gd`: a shooter that's holding fire gets a dashed, fainter orange line to its target.
+- Tested (`test_clear.gd`, headless, target 6 m off, bystander at 3 m): on the line or 0.3 m off it, 0 shots and holding fire 99–100% of the time; 0.9 m off, past the target, or behind the shooter, it fires (7/5/4 shots in 2–3 s). Player on the line: 0 shots; player moves away: 5 shots. No bystander hit in any case. `test_fire.gd` rerun (dummy made mortal for it): the player stood in front of one shooter and wasn't hit; the dummy died in 0.85 s with 4 shots, none wasted; Stop and the rest as before.
+
+### 2026-10-29 — Dropped troops stay close to the helicopter
+- Mike: reduce how far troops move away from the helicopter when deployed; have them end up pretty close to where they were dropped off.
+- `insertion.gd`: `DISPERSE_OUT_M` 6 → **2 m** from the centreline (a step of about 1 m out from the door spot at 0.99 m), and `DISPERSE_SPREAD_M` 7 → **3 m** along the fuselage. Each side's spots are now spaced around the middle of the two doors, not each trooper's own door. At the smaller spread, door-relative spots put the 1st and 2nd trooper on a side 0.02 m apart.
+- Tested (`test_drop_close.gd`, headless): 1, 4 and 10 troopers all unload and go idle. The furthest any ends from its own door is 2.2 m, and the furthest from the LZ centre 3.3 m (was about 6–7.5 m). With 10, the closest pair is 0.60 m apart, so nobody stacks.
+
+### 2026-10-29 — Command cone removed; command circle 8 m
+- Mike: remove the player's command cone and grow the player's command circle to the cone's radius.
+- `player.gd`: `voice_range_m` and `voice_half_angle_deg` removed; `hears_voice()` is now just "within `aura_radius_m`", which is **8 m** (the cone's old reach; set in `main.tscn` too). Asked first, since two things were tied to the circle; Mike chose to keep both as they were, as their own settings: `radio_circle_radius_m` 4.95 m (a radio operator's circle; it was 2× the old 2.475 m aura via `RADIO_CIRCLE_SCALE`, now removed) and `deploy_reach_m` 2.475 m (where equipment may be placed).
+- `command.gd`: `_draw_cone` → `_draw_circles` and `_cone_layer` → `_ground_layer`. It draws the 8 m circle (fill 0.08, edge 0.35), the radio circles over the radio, and while placing equipment a brighter deploy-reach ring. Talk waves are full rings now (there's no front face to talk out of). `_can_place_at` uses `deploy_reach_m`. The banner reads "only squadmates inside your command circle can hear you". Comments in `squadmate.gd`, `world.gd` and `radio_station.gd` no longer mention the cone.
+- Tested (`test_circle.gd`): hears at 7.9 m ahead, behind and to the side, not at 8.1 m; radio circle 4.95, deploy reach 2.475 (placing at 2.4 m OK, 2.6 m refused); a squadmate 6 m behind the player (out of the old cone) is an order target and turns to listen. Screenshot: no cone, the 8 m circle, ring talk waves, menus unchanged.
+
+### 2026-10-29 — Dramatic deaths: falling on the front or the back
+- Mike: make deaths more dramatic, with a couple of animations: one falling on their front with the gun falling next to them, and one on their back with the gun falling to their side.
+- **Art:** `blender/scripts/fall_square.py` renders the block toppling over its bottom edge toward 30 directions in 12 steps, for the red square and the dummy, plus a shared shadow (see the Asset List). Checked first with a 4-direction test render composited on grass: east, south, west and north each tip the right way. Frame sizes were made even (1.5 m = 128 px, 2.25 m = 192 px; 1.4 m gave 119 px, half a pixel off-centre).
+- **Which fall:** `soldier.gd _die(direction)` (was `_die()`; `player.gd`'s override updated). If the killing shot travels along the way the square faces (shot from behind), it falls forward onto its front; otherwise backward onto its back. The fall direction snaps to the nearest 12° row. Chosen over random so the fall matches the hit.
+- **`scripts/death_fall.gd`** (a child added on death; it swaps the Body and Shadow sprites to the fall sheets, 12 × 30 frames):
+  - reels 0.12 s, topples over 0.42 s (tip ∝ t², slow then fast like a falling block), lands, and rebounds 12° over 0.2 s.
+  - On landing, 3 `HitDust` bursts spray out from under the far edge and both sides. The body darkens to 0.55 over 1.5 s, lies for 5 s after landing, fades over 1 s, and the square is freed.
+  - **Rifle:** leaves the shoulder from wherever it was. Forward: drops from 0.22 m in 0.38 s to lie along its right side (0.1 m ahead, 0.36 m right, within ±20° of its facing). Backward: flung out in 0.55 s on an arc 0.25 m higher to 0.75 m to its right (0.1 m back), spinning about 200° ±40° either way. Then a 3 cm bounce. Its shadow follows its height.
+  - The hit's knockback still plays out while it falls. The radio pack is hidden (`radio_pack.gd drop()`), being drawn for a standing square.
+- `soldier.gd`: `@export var fall_sheet` (red by default; `dummy.tscn` sets the dummy's). The `DEAD_*` tint and fade constants are gone. When dead, the physics tick only finishes the knockback; `death_fall.gd` draws the sprites.
+- Tested (`test_death.gd`, headless): squadmates facing east, shot from the west and the east, fall on rows 0 (east, forward) and 15 (west, backward); a radio operator facing south falls on row 8, pack hidden. Tip columns over 0.8 s: 0,0,1,2,5,8,10,10,11,11 (speeding up, the bounce, flat). 9 dust bursts on landing. Forward rifle ends 0.15 m ahead and 0.32 m right; backward 0.12 m back and 0.76 m right, both on the ground. All removed after the fade. A mortal dummy uses `dummy_square_fall_sheet.png`. Windowed frame sequence (0.05–2.5 s) of both falls saved as `assets/previews/death_falls_preview.png`.
+
+### 2026-10-29 — Ragdoll deaths
+- Mike: add some ragdoll to the characters.
+- The squares are rigid blocks, so "ragdoll" here means physics instead of a script: the killing shot's push decides how the body goes down, and every death comes out a little different. `scripts/death_fall.gd` was rewritten around it (same sheets, no new art):
+  - **Skid:** shoved along the shot at 2.2 m/s ±25%, slowing at 4 m/s² while upright and 10 m/s² flat. It uses `move_and_collide` and bounces off solid things (keeping 40% of its speed): helicopter hull, stations, live squares. Scraping flat above 0.5 m/s kicks up light dust puffs.
+  - **Spin:** an off-centre hit spins it (up to 360°/s at a corner, ±60°/s at random), dying away at 3/s (6/s flat). Spinning moves it along the sheet rows, so it stays correctly lit.
+  - **Topple:** it tips over the edge of whichever face the shot pushed (front, back, left or right; the side falls are new). It's modelled as a block pivoting on its edge: kicked to 70°/s, pulled over by gravity (33 · sin(tip + 20°) rad/s²). It hits flat at about 0.32 s, bounces back 35% of its speed (dust again on a hard bounce) and settles by about 0.6 s. The reel delay is gone; the slow start of the tip does that job.
+  - **Rifle:** now a free body in world space (it doesn't ride along with the skid). On front and side falls it's let go at 0.8 m/s ±30% out to the side away from the fall, spinning a little. On back falls it's flung at 1.3 m/s sideways and 1.4 m/s up, spinning 540°/s ±25%. It keeps half the body's skid, falls at 9.8 m/s², bounces at 30% until it's landing slower than 0.5 m/s, then skids at 6 m/s² and stops spinning.
+  - Anchored squares (the dummy) topple and spin but don't skid.
+- `soldier.gd _die(point, direction)` (was `_die(direction)`; `player.gd` updated). It now sets `collision_layer` to 0 instead of disabling the shape, so the body still collides as it skids while bullets and squares pass over it. The hit's own knockback is dropped, because the ragdoll shove replaces it.
+- `hit_dust.gd setup(point, direction, strength := 1.0)`: under 1 gives fewer, slower puffs and no flash (skid and bounce dust).
+- Tested (`test_ragdoll.gd`, headless), squares facing east:
+  - Shot from behind: falls east and skids 0.45 m.
+  - Shot from the front: falls west and skids 0.34 m.
+  - Shot from the north: falls onto its right side (south) and skids 0.30 m.
+  - Shot 0.15 m off-centre from behind: spins 66° counter-clockwise as it goes.
+  - All land at about 0.32 s and settle at 0.55–0.62 s, with rifles on the ground. Tip trace: 3, 9, 18, 29, 44, 64, 88 → bounce 82 → 90.
+  - A body shot into the player stops 0.44 m from it.
+  - All bodies are removed after the fade. A mortal anchored dummy doesn't move.
+  - The first test flung the rifle 1.7 m, so the fling was cut from 2.2/1.6 m/s to 1.3/1.4 m/s.
+  - Windowed frame sequence saved as `assets/previews/ragdoll_preview.png`. Rows: shot from behind, from the front, off-centre.
+
+### 2026-10-29 — Attention order
+- Mike: add an order called Attention with a Line / Column sub-menu, telling everyone to get in line or in columns so everyone is together.
+- `command.gd`: `{id = "attention", text = "Attention", shapes = true}` in `ORDERS`, between Lead and Disperse. Like Follow me and Lead, you hold it for the Line / Column pop-out; a quick click gives Column. It goes to the selection, or to everyone who can hear.
+- `_fall_in(units, shape)` forms them up at a spot **fixed on the ground**, `ATTENTION_AHEAD_M` 1.5 m in front of the player, all facing the player:
+  - **Line:** one rank across the player's view, 0.9 m apart.
+  - **Column:** two abreast, rows 0.7 m apart, going away from the player. An odd one out stands in the middle of the last row.
+  - Spacing reuses squadmate.gd `FILE_GAP_M` and `ROW_GAP_M`.
+  - Places are dealt out so nobody crosses anybody: the front rows go to whoever is nearest the player, and each row is filled left to right.
+  - Anyone who was in Follow me / Lead leaves it, and the rest close up.
+- `squadmate.gd`:
+  - New `State.ATTENTION` and `order_attention(spot, face_angle)`. The unit jogs or walks to its spot, steps in to within `AT_ATTENTION_M` (3 cm, so the ranks are straight), then stands still facing the way it was told.
+  - At Attention it doesn't glance around or shuffle, and it doesn't follow the player. Any other order releases it, and it can still Fire.
+  - `_keep_station()` became `_head_for(spot, close_enough)`, shared with Follow me / Lead.
+- Unlike Follow me / Lead, the formation doesn't move with the player.
+- Tested (`test_attention.gd`, headless; 5 squadmates scattered round the player, who faces up):
+  - Line: ranked 1.5 m ahead at x = −1.8, −0.9, 0, 0.9, 1.8.
+  - Column: rows at 1.5, 2.2 and 2.9 m ahead, ±0.45 m, with the fifth one centred.
+  - Everyone ends within 0.03 m of their spot, facing the player.
+  - When the player walked 3 m away they didn't move or turn at all over 3 s.
+
+### 2026-10-29 — Health 2 for testing
+- Mike: make everyone's health only 2.
+- `soldier.gd max_health` changed from 100 to **2**. No scene overrides it, so this covers squadmates, the player and the dummy. A rifle hit does 25, so one hit kills.
+- The player still can't die (its health tops back up), and the dummy is still `invincible`. Restore to 100 later (listed under Testing values to restore).
+
+### 2026-10-29 — Cooldowns 1 s for testing
+- Mike: make cooldowns 1 s.
+- `radio_terminal.gd seconds_per_troop` changed from 5 s to **1 s**. This is still the only gameplay cooldown. The rifle's `fire_interval_s` is its rate of fire, left as it was. Restore to 30 s later (listed under Testing values to restore).
+
+### 2026-10-29 — Sight triangle on the ground, under the rifle
+- Mike: put the weapon in front of the direction triangle; the triangle should be on the ground in front of them.
+- `scenes/soldier.tscn`: `Sight` gets `z_index = -1`. It was the soldier's last child, so it was drawn over the rifle (and the square's shadows). Now it's painted on the ground: under the shadows, the rifle and every square, while still above the field. No change in `dummy.tscn` (its Sight is hidden).
+- Checked with a windowed screenshot: the rifle barrel crosses over the triangle, and the square's shadow falls across it.
+
+### 2026-10-29 — Attention: click where they fall in
+- Mike: after Line or Column is chosen for Attention, the next click picks where they line up.
+- `command.gd`:
+  - Choosing a shape now arms the order (`_attention_units`, `_attention_shape`), the same way Fire waits for its target.
+  - While it's armed, the banner reads "ATTENTION click where N fall in (line) [right click] cancel". Each squadmate is ringed, with a faint line to a see-through square where it would stand; the preview follows the mouse and has a tick on the side it will face.
+  - Left click anywhere on the field (`_fall_in(front)`) sends them, and right click cancels. Pressing or releasing Space, or giving any other order, drops a pending pick. Fire and Attention clear each other.
+- **Layout** (`_attention_layout(front)`): the clicked point is the middle of the front row, and the formation faces the player from there.
+  - Line: one rank across that facing.
+  - Column: two abreast, rows going away from the player.
+  - Clicked within `ATTENTION_MIN_M` (0.5 m) of the player, it faces the way the player does instead.
+  - Places are still dealt out so nobody crosses anybody.
+  - `ATTENTION_AHEAD_M` (the fixed 1.5 m in front) is gone.
+- Tested (`test_attention.gd`):
+  - Nobody moves while waiting for the click.
+  - Line clicked 3 m east of the player: a north–south rank at 0, ±0.9 and ±1.8 m, all facing west at the player.
+  - Column clicked 3 m up-left: rows going away along the diagonal, at ±0.45 m across, all facing the player (45°).
+  - Everyone ends within 0.03 m of their spot.
+  - The windowed screenshot shows the banner, the rings, the lines and the ghost squares.
+
+### 2026-10-29 — Aiming line and accuracy at range
+- Mike: pressing the right mouse button starts aiming. It shows a line, and the line decides how accurate the weapon is: click within its length and the shot is 100%, as before; the further past it you click, the more inaccurate and unpredictable the shot. Rifle only for now, but each gun will get its own, so make the line easy to adjust.
+- **Per weapon** (`rifle.gd`, an "Aim" group in the Inspector):
+  - `aim_accurate_m` 6 m: the length of the line.
+  - `aim_falloff_m` 12 m: how far past it the spread takes to grow to its worst.
+  - `aim_max_spread_deg` 8°: the worst, either side.
+  - `aim_spread_curve` 1: 1 is steady growth, above 1 is gentle then fast, below 1 is fast then gentle.
+  - `spread_at(distance_m)` turns these into a spread, and `muzzle_position()` is new too.
+  - A future gun sets its own values: the line and the shots both read them from the weapon.
+- **Shots:** `player.gd _shot_spread_deg()` is now `spread_at(distance from the muzzle to the clicked point)`. The shot is thrown at random within ± that, so it's unpredictable rather than biased. This applies to every player shot, whether or not right mouse is held; holding it only shows the line. Squadmates keep their fixed 1.5°.
+- **The line** (new `scripts/aim_line.gd`, added by the player): it shows while `aim` (right mouse, `world.gd MOUSE_CONTROLS`) is held, except in command mode or while busy at a station. It's drawn in the world from the muzzle along the barrel:
+  - A solid white line the full accurate length, with a tick across the end, wherever the mouse is.
+  - Past that, if the mouse is further out, a wedge as wide as the spread at each distance, shading from white to red toward the weapon's worst. A dashed centre line runs through it, with an arc across it at the mouse marking how far either side the shot may land.
+- Tested (`test_aim.gd`):
+  - `spread_at` gives 0 at 3 and 6 m, 2° at 9 m, 4° at 12 m, and 8° at 18 and 30 m.
+  - 40 shots per distance: clicked at 4 m they strayed 0.00° max; at 10 m, 2.31° max (2.35° allowed); at 25 m, 7.82° max (8°).
+  - The line shows while right mouse is held.
+  - Screenshots: aiming at about 9 m shows the line and a narrow wedge; at 4 m, only the full 6 m solid line. Saved as `assets/previews/aim_line_preview.png`.
+
+### 2026-10-29 — Rifle settings described in the Inspector
+- Mike: add descriptions to rifle.gd's settings.
+- Every `@export` in `rifle.gd` now has a `##` comment directly above it, which Godot shows as the tooltip when you hover the setting in the Inspector. Before, most were end-of-line comments the Inspector doesn't show, and the Aim ones shared one block.
+- The settings are now `@export_range`s with unit suffixes (m, °, °/s, s, m/s), so the Inspector shows units and gives sliders. They're grouped as **Holding** (shoulder, sweep, swing speed), **Firing** (interval, bullet speed, damage, recoil) and **Aim**; `shadow_path` comes after them, ungrouped. Names and values are unchanged, so scenes are unaffected. `test_aim.gd` re-run gives the same results.
+
+### 2026-10-29 — Scroll wheel turns the Attention formation
+- Mike: while placing Attention, make the scroll wheel rotate the previewed formation.
+- `command.gd`: while an Attention order is waiting for its click, each scroll-wheel notch turns the formation `ATTENTION_TURN_DEG` (15°): wheel down turns it clockwise, up counter-clockwise.
+  - The first notch starts from the way it faced at that moment (toward the player). From then on the facing stays fixed as the mouse moves (`_attention_facing`; NAN means it still faces the player).
+  - A new Attention order starts facing the player again.
+  - The wheel is used up by the order, so the camera doesn't zoom while placing; at any other time the wheel still zooms. Command's input runs before the camera's, as it comes later in `main.tscn`.
+  - The preview, the spots and where the rows go all turn with it. The banner adds "[scroll] turn".
+- Tested (`test_turn.gd`, with wheel events pushed through the viewport):
+  - Before scrolling it faces the player.
+  - 6 notches down turned it 90° clockwise, with no camera zoom; one notch up took it back 15°.
+  - Moving the mouse kept the facing.
+  - Everyone fell in facing that way, all 4 at the same angle.
+  - A new order faced the player again, and the scroll wheel zooms again when not placing.
+  - The screenshot shows the turned preview.
+
+### 2026-10-29 — Fix: previews stuck over the command menus
+- Mike: while placing (the green Attention helpers), dragging over one of the command buttons made the preview stick for a moment and feel laggy.
+- **Cause:** `command.gd` only updated `_mouse_world` from mouse events reaching `_unhandled_input`. Over the ORDERS/DEPLOY buttons the GUI takes the motion events, so the preview froze until the mouse left them. The Fire crosshair and the equipment ghost had the same problem.
+- **Fix:** `_process` now reads the mouse every frame while commanding (`get_viewport().get_mouse_position()` → `_to_world`).
+- **Also:** while a click on the field is wanted (an Attention spot, a Fire target, equipment), the menus fade to `MENU_PICKING_ALPHA` (0.35) and stop taking the mouse. Before, a click there would have pressed a button (e.g. Disperse) instead of placing. Each control's own `mouse_filter` is remembered (in meta `mouse_filter_was`) and restored afterwards.
+- Tested windowed (`test_menu_hover.gd`). Note: the window is 1280×720 while the viewport is 1920×1080 (canvas_items stretch), so the test converts viewport positions to window positions.
+  - With the mouse over Disperse while placing Attention, the preview point stays 1.5 px from the mouse.
+  - The menus fade, and the button ignores the mouse.
+  - Clicking on the button placed the formation there; it didn't Disperse.
+  - Afterwards the menus are opaque again, the buttons take the mouse, and the header label's filter is restored.
+
+### 2026-10-29 — Compact radio station: no mast, small dish under the platform
+- Mike: make the radio station just the platform and the desk, with a much smaller antenna no wider than the platform. He sketched where it goes: in a box directly below (south of) the platform. Asked first: the antenna is the existing **tunable dish** (the mast goes), and the tuning spot is a **small box beside the dish**.
+- **`radio_station.py`:**
+  - The 7 m guyed mast, its tripod, dipole, whip, guy wires, stakes and orange flags are removed. `"Stake"` and `"Flag"` are dropped from `GROUND_PARTS`, and `ORANGE` is gone.
+  - New layout around the station's middle:
+    - `PLATFORM_AT` (0, 1.05);
+    - `DESK_AT` = the platform + (0.65, 0, deck height), which is still on the east edge, so the desk is the same;
+    - `DISH_AT` (0, −1.1). The dish is 1 m, with tripod legs at 0.55 m and turning reach about 0.65 m, so it stays inside the 2 m width.
+  - One cable now runs from the desk across the deck to its south edge and on to the dish post.
+  - `FRAME_M` goes from 12.5 to 6.5 m.
+  - Re-rendered all four images and the desk close-up (about 20 s).
+- **`radio_station.tscn`:**
+  - Positions follow the new layout:
+    - `StandBox` and `OperatorZone` at (−25.6, −89.6);
+    - the `Desk` collision at (55.5, −89.6);
+    - the `Dish` sprite and collision at (0, 93.9);
+    - `DishStandBox` and `DishZone` at (−132.3, 93.9), west of the dish;
+    - the `DishPrompt` under that box.
+  - `Solid/MastBase` and its shape are removed. The node origin is now the middle of the station, so the DEPLOY ghost centres on the mouse.
+- **`radio_station.gd`:** `DISH_AT` is (0, 93.9), and the header comment is updated. There are no logic changes, since the beam, wheel and dish shadow all key off `DISH_AT`. No other code depended on the old offsets: the terminal uses node paths, and `main.tscn` has no pre-placed station.
+- Tested (`test_station.gd`):
+  - The operator box triggers only the terminal, the dish box only the dish, and open ground neither.
+  - Walking east into the desk stops at x = 0.15 m (the desk's west face is 0.35 m), and walking into the dish post stops 0.76 m short of its centre.
+  - The deck's west side is walkable.
+  - Tuned east, the beam covers 20 m east of the new dish post and not 20 m west.
+  - A windowed screenshot matches the sketch and is saved as `assets/previews/radio_station_preview.png`.
+
+### 2026-10-29 — Blue enemies with tactical AI
+- Mike: start on the enemy. Blue, the same square type and the same gun, with decent smarts: manoeuvre sensibly and flank. For testing, they only start firing if you shoot within their detection circle; otherwise they leave you alone.
+- Mike's answers to the questions:
+  - A shot **fired from inside** the circle or a bullet **passing through** it wakes them, and so does a hit.
+  - An alerted enemy **wakes the others inside its own circle**, which can chain.
+  - Enemies fight the player and the squad, and **squadmates return fire on their own**.
+  - After losing contact they **search for about 10 s, then go back** to their posts.
+- **Art:** new `blender/scripts/enemy_square.py` (`dress_as_enemy()`), plus a blue output in `fall_square.py` (see the Asset List). Body sheet 10 s, fall sheet about 1¾ min.
+- **Shared AI base, new `scripts/ai_soldier.gd`:**
+  - Walking, steering round squares, stuck detection and fire discipline moved here from `squadmate.gd`. Squadmate behaviour is unchanged: the Attention test gives identical results.
+  - `_steer` now steers round every live square (the `"units"` group), not just squad and player.
+  - Line-of-fire checks skip squares on the other side (`_is_hostile()`), so you may shoot past an enemy at another enemy.
+  - New: `_clear_view()` (a ray that sees past squares but not stations or helicopters), and the hooks `_ready_to_fire()` and `_next_shot_gap()`.
+- **Who shot whom:**
+  - `soldier.gd take_hit(point, direction, damage, by)` now takes the shooter and keeps `last_hit_by`.
+  - `bullet.gd` passes its shooter, and bullets in flight are in a `"bullets"` group with their `origin`.
+- **`scripts/enemy.gd`** (`scenes/enemy.tscn` inherits `soldier.tscn` with the blue sheets; 4 placed in `main.tscn`):
+  - **CALM:** stands at its post facing `start_facing_deg` (180, west), glancing about. Each tick it checks `"bullets"`: one fired from inside `detection_radius_m` (10 m) or currently inside it, by anyone not an enemy, calls `alert()`. A hit calls it too, *before* the damage, so even a killing shot raises the alarm. `alert()` wakes every calm enemy within the alerted one's own radius, recursively.
+  - **ENGAGE:**
+    - Every 0.25 s it looks for the nearest visible player or squadmate within `sight_m` (22 m), sticking with its current threat.
+    - Every `rethink_s` (0.8 s ±25%, out of step with the others) it scores spots on 3 rings × 12 directions round the target, across `min_range_m`–`max_range_m` (5–9 m, about the rifle's accurate range). Each spot is scored for:
+      - being in range;
+      - being round the target's side or back (`flank_weight` 3 × angle off the target's facing / 180°);
+      - spreading round the target from the others' spots (crossfire);
+      - not bunching (`spacing_m` 2.5, weight 6, against the others' spots and positions);
+      - distance to travel;
+      - not crossing the target's 25° front cone;
+      - clear view (−5 if blocked);
+      - a clear line of fire past friends (−2 if not);
+      - a small bonus for keeping its current spot.
+    - **Flankers swing round in an arc** (`_route()`): if the straight way would pass inside its minimum range, it heads 35° further round at a range inside its band.
+    - **Dodging:** if its target aims within 8° of it from within 1.5 × max range, it sidesteps `dodge_m` (1.2 m), jogging, with a 1.5–2.5 s cooldown.
+    - **Firing:** first shot after `reaction_s` (0.3–0.6 s), then bursts of `burst_shots` (3) with `burst_pause_s` (0.9 s) between. Spread is the rifle's `spread_at(range)`, plus `moving_spread_deg` (3°) while moving. It never fires with a friend in the line.
+  - **SEARCH:** with nobody in sight for `lose_contact_s` (3 s), it walks to the last seen spot and looks round for `search_s` (10 s).
+  - **RETURN:** walks home and goes CALM again, no longer alerted.
+  - The detection circle is drawn on the ground (`scripts/enemy_ring.gd`): faint blue when calm, bold dashed red-orange when alerted. `show_detection` turns it off.
+  - Every setting is an Inspector export with a tooltip.
+- **`squadmate.gd`:**
+  - With nothing to shoot it returns fire at the nearest alerted enemy it can see within `RETURN_FIRE_M` (20 m), checked every 0.3 s, and at once at an enemy that hits it.
+  - Stop now sets `hold_fire`: no return fire until the next Fire order, or until it's hit.
+- Tested (`test_enemy.gd`, headless):
+  - The player walking through the circles for 5 s: all stay calm, 0 enemy shots.
+  - A shot far away: calm.
+  - A bullet fired from outside but flying through a circle: all 4 alert (chained).
+  - Fired from inside one circle, shooting away: that one and those within 10 m alert, and one moved 18 m away doesn't.
+  - A hit from 20 m with 1 m circles: only the hit one alerts, with the player as its threat.
+  - The fight, 3 runs of 10 s against a stationary player facing them:
+    - They fan out round his front, sides and back, usually with one past 100° (almost behind him).
+    - Ranges are 4.6–9.8 m, and the closest pair at the end is 2.0–3.2 m apart.
+    - Brief close passes while repositioning: 0.1–9% of pair-time under 1.5 m.
+    - About 60 shots each run, **0 fired with a friend in the line, 0 enemies hit by enemies**.
+  - The first version walked straight past the player to reach his back (down to 0.7 m), which led to the `_route()` arc. Raising the spacing weight came from early bunching.
+  - Losing contact: engage → search at 4 s → return at 14 s → calm at 24–26 s, all within 0.07 m of their posts and no longer alerted. The test shrinks `sight_m` here, because the 45 × 25 m arena is too small to get 22 m out of sight.
+  - Squad return fire:
+    - A squadmate auto-targets an alerted enemy.
+    - After Stop it doesn't re-target until it's hit.
+  - The windowed frame sequence (calm, alerted, flanking, a blue death) is saved as `assets/previews/enemy_fight_preview.png`.
+  - Regression: `test_attention` and `test_ragdoll` give the same results.
+- Noticed, not changed:
+  - The enemies' hits shove the player about 6 m over a long fight, from the 0.3 m hit knockback adding up.
+  - `main.tscn` again has dummies nested inside dummies (`Dummy2/Dummy2/Dummy2/Dummy2`).
+
+### 2026-10-30 — Enemies also wake when you walk into their circle
+- Mike: the blue enemies should also start attacking if he or his squadmates walk into their detection circle.
+- `enemy.gd`: while CALM, every 0.25 s `_check_intruders()` wakes the enemy (`alert()`, with that person as its threat) if the player or a squadmate is inside `detection_radius_m` **where it can see them**. A station or helicopter in between blocks the view (`_clear_view()`). The alert chains as before. Shots in the circle still wake it too.
+- `CLAUDE.md`'s note on the 4 enemies in `main.tscn` still holds: tests that place the player or squadmates within 10 m of them will now wake them.
+- Tested (`test_intrude.gd`):
+  - Player at 10.5 m for 1 s: calm. Stepping to 9.5 m alerts all 4, with the player as the threat.
+  - A squadmate at 12 m: calm. Walking to 8 m alerts all 4, with the squadmate as the threat.
+  - The player 6 m away with the station's dish between them: calm. Stepping out into view: alerted.
+
+### 2026-10-30 — Editor shows the real field and boundary
+- Mike asked why the enemies look off the field in the editor while the game's field is much bigger, and why scenes he places in `main.tscn` sometimes aren't where they were in the editor.
+- **Cause:**
+  - The `Field` sprite in `main.tscn` was saved at 1920×1080 (with an accidental ~1% stretch), only the top-left quarter of the 3840×2160 arena. `field.gd` refits it to the camera only while the game runs.
+  - The arena boundary was also drawn only in the game. Anything placed outside the arena is moved inside it at start (`soldier.gd _stay_in_arena()`).
+  - The other way things shift is nesting: dropping a scene into the viewport while a node is selected makes it that node's child, positioned relative to it. That's what happened with the dummies earlier; Mike has since removed them.
+- **Fix:**
+  - The `Field` now saves its `region_rect` as the whole arena, with no stretch, so the editor shows the real field. The game still refits it every frame.
+  - `arena_edge.gd` is now a `@tool` script, so the boundary line, posts and dimmed outside show in the editor too.
+- The editor had also written every enemy export into `main.tscn` at its default value, which would pin these four enemies to today's defaults. I removed those 64 lines, so `Enemy`–`Enemy4` keep only their positions and follow `enemy.gd`/`enemy.tscn` defaults. `test_intrude.gd` gives the same results.
+
+### 2026-10-30 — The dish restyled as a flyaway satellite terminal
+- Mike sent a photo of a desert-tan military flyaway satellite antenna, and asked for the dish to look more like it in our art style.
+- `radio_station.py`:
+  - The tripod dish is replaced by a desert-tan terminal (`DISH_TAN`, `DISH_TAN_DARK`, `FOOT_GREY`):
+    - **Base:** four outrigger legs in an X, sloping from a hub on the column to round foot pads 0.6 m out, with braces back up to the column, jack screws and two collars. It's 0.78 m tall.
+    - **Head and dish:** a pan/tilt head, and a yoke up to the back of a 1.2 m dish (was 1 m), 0.15 deep, at 40° with a rolled rim.
+    - **Boom and cable:** a feed boom from the dish's centre to its focus (0.6 m) with the feed on the end, and a black flex cable down the column.
+  - `DISH_PARTS` adds `DishRim`, `Head` and `Yoke`, so the head turns with the dish in the game while the legs stay put.
+  - Removed the now-unused tripod materials, and re-rendered (about 20 s).
+- **Game:**
+  - `radio_station.gd`'s `DISH_LOW_M`/`DISH_HIGH_M` are now 0.78/1.72 m (the turning parts' height range, for the swept shadow).
+  - The dish collision radius is now 51.2 px (0.6 m), to cover the feet.
+  - The turning parts reach about 0.6 m from the post, so the antenna still fits inside the platform's 2 m width.
+- Tested (`test_station.gd`):
+  - The zones work as before.
+  - The dish post blocks at 0.81 m.
+  - Tuned east, the beam covers 20 m east and not 20 m west.
+  - Screenshots saved: in-game as `assets/previews/radio_station_preview.png`, and an angled close-up rendered from the .blend as `assets/previews/radio_station_dish_preview.png`.
+
+### 2026-10-30 — Thinner feed boom
+- Mike: make the dish's black inner antenna line about 40% thinner.
+- `radio_station.py`: the `FeedArm` radius goes from 0.02 to 0.012 m. Re-rendered, and both previews (`radio_station_preview.png` and `radio_station_dish_preview.png`) updated. `test_station.gd` still passes.
+
+### 2026-10-30 — Platform prompt: "[F] Interact" instead of the big F
+- Mike: when the player steps onto the platform, drop the big white F, and put a small "[F] Interact" under the box, like the dish's "[F] Tune dish".
+- `radio_terminal.gd`: `_pad_key` (`UiStyle.pad_key()`) is replaced by `_pad_prompt` (`_make_pad_prompt()`): "[F] Interact" in the dish prompt's style (16 px, light green, dark outline), centred 3 px under the StandBox. It shows at the same times the F did: on the box, menu closed, not on the radio. The troop timer above the box is unchanged. The dish box still shows its big F along with "[F] Tune dish"; that wasn't asked.
+- Checked with a windowed screenshot of the player on the platform: no big F, and "[F] Interact" sits under the box.

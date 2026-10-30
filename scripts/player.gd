@@ -2,30 +2,36 @@ extends "res://scripts/soldier.gd"
 ## The square you control (see scripts/soldier.gd for how every square
 ## moves, turns and carries its rifle).
 ##
-## WASD or the arrow keys walk, the mouse aims, left click fires. Holding Space
+## WASD or the arrow keys walk, the mouse aims, left click fires. A shot
+## goes exactly where you click within the rifle's accurate range, and
+## strays more the further past it you click (rifle.gd `aim_*`); hold right
+## mouse to see that as the aiming line (scripts/aim_line.gd). Holding Space
 ## enters command mode (scripts/command.gd): the mouse then gives squad
 ## orders, so this square keeps looking where it last aimed and won't fire.
 ## It's in the "player" group so squadmates and the command overlay can
 ## find it.
 ##
-## Its voice carries in a cone out of its front face (`voice_range_m` long,
-## `voice_half_angle_deg` either side), and all round it within a short
-## "command aura" (`aura_radius_m`), close enough to be heard without
-## looking. In command mode only squadmates inside the cone or the aura hear
-## it: they turn to listen and can be selected and given orders, which can
-## send them anywhere.
+## Its voice carries all round it within its command circle
+## (`aura_radius_m`), whichever way it faces. In command mode only
+## squadmates inside the circle hear it: they turn to listen and can be
+## selected and given orders, which can send them anywhere.
 ##
 ## Over the radio (radio command mode at a station's terminal) orders also
 ## go through the radio net: radio operators (soldier `kit` "radio") inside
 ## that station's dish beam are linked, and they pass orders on to anyone
-## within their command circle, RADIO_CIRCLE_SCALE times this square's aura.
+## within their own command circle (`radio_circle_radius_m`).
 ## Communications decide who can be commanded.
 
-@export var voice_range_m := 8.0
-@export var voice_half_angle_deg := 40.0
-@export var aura_radius_m := 2.475   # 1.5 m + 65%
-## A radio operator's command circle, relative to this square's aura.
-const RADIO_CIRCLE_SCALE := 2.0
+const AimLine = preload("res://scripts/aim_line.gd")
+
+## The command circle: how far its voice carries, all round. (Until
+## 2026-10-29 this was 2.475 m plus an 8 m voice cone out of its front face.)
+@export var aura_radius_m := 8.0
+## A radio operator's command circle radius. Its own setting: it used to be
+## twice the player's old 2.475 m circle.
+@export var radio_circle_radius_m := 4.95
+## How far away equipment can be put down from command mode's DEPLOY menu.
+@export var deploy_reach_m := 2.475
 ## Equipment carried, to deploy from command mode: deployable id -> count.
 ## Ids match DEPLOYABLES in scripts/command.gd.
 @export var deployables := {"radio_station": 1}
@@ -41,6 +47,7 @@ var formation_heading := -PI / 2
 var busy := false
 
 var _last_aim := Vector2.ZERO
+var _aim_line: Node2D
 
 
 func _ready() -> void:
@@ -49,12 +56,24 @@ func _ready() -> void:
 	World.register_controls()
 	_last_aim = global_position + Vector2.from_angle(facing) * 10.0 * World.PX_PER_M
 	formation_heading = facing
+	_aim_line = AimLine.new()
+	_aim_line.weapon = _rifle
+	_aim_line.visible = false
+	add_child(_aim_line)
 
 
 func _physics_process(delta: float) -> void:
 	super(delta)
 	formation_heading = wrapf(rotate_toward(formation_heading, facing,
 			deg_to_rad(formation_turn_dps) * delta), -PI, PI)
+	_aim_line.visible = Input.is_action_pressed("aim") and not World.commanding() and not busy
+	_aim_line.target = _last_aim
+
+
+## The player can't die yet (there's no game over to go to): it still
+## takes hits, but its health just tops back up.
+func _die(_point: Vector2, _direction: Vector2) -> void:
+	health = max_health
 
 
 func _move_intent() -> Vector2:
@@ -69,11 +88,17 @@ func _aim_point() -> Vector2:
 	return _last_aim
 
 
-## Holds still while commanding, so the voice cone stays exactly where it
-## opened instead of drifting as the body settles toward its aim.
+## Holds still while commanding: the mouse is giving orders, so the body
+## doesn't drift round as it settles toward its last aim.
 func _turn_toward(target: Vector2, delta: float) -> void:
 	if not World.commanding():
 		super(target, delta)
+
+
+## How far the shot may stray: none within the rifle's accurate range of
+## the point clicked, more the further past it.
+func _shot_spread_deg() -> float:
+	return _rifle.spread_at(_rifle.muzzle_position().distance_to(_last_aim) / World.PX_PER_M)
 
 
 func _wants_to_fire() -> bool:
@@ -88,7 +113,7 @@ func can_hear(point: Vector2) -> bool:
 
 ## A radio operator's command circle radius, in metres.
 func radio_circle_m() -> float:
-	return aura_radius_m * RADIO_CIRCLE_SCALE
+	return radio_circle_radius_m
 
 
 ## Radio operators the station in use links to: those inside its dish beam.
@@ -110,12 +135,7 @@ func radio_reaches(point: Vector2) -> bool:
 	return false
 
 
-## Whether a point is within earshot of the player's voice: inside the
-## command aura, or inside the voice cone (close enough and in front).
+## Whether a point is within earshot of the player's voice: inside its
+## command circle.
 func hears_voice(point: Vector2) -> bool:
-	var to := point - global_position
-	if to.length() <= aura_radius_m * World.PX_PER_M:
-		return true
-	if to.length() > voice_range_m * World.PX_PER_M:
-		return false
-	return absf(angle_difference(facing, to.angle())) <= deg_to_rad(voice_half_angle_deg)
+	return global_position.distance_to(point) <= aura_radius_m * World.PX_PER_M

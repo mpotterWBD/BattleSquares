@@ -1,8 +1,11 @@
+@tool
 extends Node2D
 ## The barrier round the play area (World.ARENA): a light boundary line
 ## with small posts every POST_EVERY_M, and the ground beyond it dimmed so
-## it's clear where the field ends. Squares can't cross it (soldier.gd and
-## squadmate.gd keep inside the arena); this just shows where it is.
+## it's clear where the field ends. Squares can't cross it (soldier.gd keeps
+## them inside, so anything placed outside is moved in when the game
+## starts); this just shows where it is. It's a @tool script, so the same
+## boundary shows in the editor while placing things in main.tscn.
 
 const World = preload("res://scripts/world.gd")
 

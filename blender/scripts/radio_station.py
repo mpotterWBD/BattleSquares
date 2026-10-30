@@ -3,17 +3,20 @@
 Run headless:
     blender --background --python radio_station.py
 
-Pieces (metres; +x = screen right, +y = screen up):
-  - radio mast at the origin: tripod base, three telescoping sections to
-    7 m, dipole crossbar and whip on top, three guy wires to staked anchors
-    with orange marker flags (4.5 m out)
-  - 1 m portable satellite dish on a short tripod, tilted up, with feed arm
-  - operator platform: a 2 m square plank deck east of the mast, between
-    two guy wires; the operator stands on it to work the radio
-  - field desk along the platform's far edge, facing the operator, with a
+Pieces (metres; +x = screen right, +y = screen up), compact: everything
+fits in a 2 m wide column, the platform on top and the dish under it:
+  - operator platform: a 2 m square plank deck, north of the origin; the
+    operator stands on it to work the radio
+  - field desk along the platform's east edge, facing the operator, with a
     field radio (controls on top, handset, 1.2 m whip antenna), the rugged
     laptop and mouse, a power unit, headset, notebook and pen, and a mug
-  - cables linking the desk to the mast and the dish
+  - the antenna: a desert-tan flyaway satellite terminal just south of the
+    platform and no wider than it: four splayed outrigger legs on round
+    foot pads with braces up to a centre column, a pan/tilt head with a
+    yoke holding a 1.2 m dish tilted up 40 degrees, a feed boom out of the
+    dish's centre, and a black cable down from the head
+  - a cable from the desk across the deck to the dish
+(Until 2026-10-29 there was also a 7 m guyed mast with stakes 4.5 m out.)
 
 It doesn't turn once set up, so unlike the helicopter it's lit by the
 normal top-left sun (bs_common), with its shadow rendered separately (a
@@ -41,13 +44,13 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
-ROOT = r"F:\Projects\BattleSquares"
+ROOT = bs.ROOT
 OUT_BODY = os.path.join(ROOT, "assets", "props", "radio_station.png")
 OUT_SHADOW = os.path.join(ROOT, "assets", "props", "radio_station_shadow.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "radio_station.blend")
 
 RENDER_SCALE = 2
-FRAME_M = 12.5          # stakes 4.5 m out, plus the mast's ~6 m shadow to the bottom-right
+FRAME_M = 6.5           # the platform and dish (x -1.1..1.1, y -1.9..2.1) plus the dish's shadow
 SAMPLES = 128
 SHADOW_ALPHA = 0.71     # open-ground shadow level (character_square.py), for normalising
 # The shared sun is 8 degrees wide for soft character shadows. That blurs
@@ -60,18 +63,19 @@ OLIVE_DARK = (0.17, 0.19, 0.14)
 METAL = (0.55, 0.56, 0.55)
 BLACK = (0.03, 0.03, 0.03)
 TAN = (0.55, 0.47, 0.33)
-DISH = (0.72, 0.72, 0.68)
-ORANGE = (1.0, 0.42, 0.05)
+DISH_TAN = (0.80, 0.72, 0.58)        # the antenna: desert-tan flyaway terminal
+DISH_TAN_DARK = (0.62, 0.55, 0.43)   # its positioner head and collars
+FOOT_GREY = (0.45, 0.45, 0.43)
 GUNMETAL = (0.24, 0.25, 0.26)
 RUBBER = (0.04, 0.04, 0.04)
 LED = (0.3, 1.0, 0.35)
 
 # Operator platform and desk. scenes/radio_station.tscn's desk collision and
 # operator zone must match these.
-PLATFORM_AT = Vector((3.0, 0.0, 0.0))
+PLATFORM_AT = Vector((0.0, 1.05, 0.0))
 PLATFORM_M = 2.0
 PLATFORM_H = 0.12
-DESK_AT = Vector((3.65, 0.0, PLATFORM_H))   # desk centre, on the deck
+DESK_AT = PLATFORM_AT + Vector((0.65, 0.0, PLATFORM_H))   # desk centre, on the deck's east side
 DESK_SIZE = (1.4, 0.6)                      # length across the operator, depth
 DESK_TOP_Z = 0.75                           # above the deck
 
@@ -81,18 +85,18 @@ PAPER = (0.92, 0.9, 0.84)
 
 OUT_CLOSEUP = os.path.join(ROOT, "assets", "previews", "radio_station_desk_closeup.png")
 OUT_GROUND = os.path.join(ROOT, "assets", "props", "radio_station_ground.png")
-# Parts low enough for a square to walk over or onto (the deck, ground
-# cables, stakes and their flags), rendered as their own image that the
-# game draws under the squares. Everything else is drawn over them.
-GROUND_PARTS = {"Joist", "Plank", "DeckEdge", "Cable", "Stake", "Flag"}
+# Parts low enough for a square to walk over or onto (the deck and the
+# ground cable), rendered as their own image that the game draws under the
+# squares. Everything else is drawn over them.
+GROUND_PARTS = {"Joist", "Plank", "DeckEdge", "Cable"}
 # The dish turns in the game (it's aimed with the tuning wheel), so its
 # turning parts are left out of the station images and rendered on their
 # own, lit from straight overhead so the game can rotate them freely, like
 # the helicopter. Its tripod and post stay in the station.
 # scripts/radio_station.gd must match DISH_AT, and treats the dish as built
 # facing south (screen down).
-DISH_AT = Vector((-2.2, -1.6, 0.0))
-DISH_PARTS = {"Dish", "FeedArm", "Feed"}
+DISH_AT = Vector((0.0, -1.1, 0.0))   # just south of the platform
+DISH_PARTS = {"Dish", "DishRim", "FeedArm", "Feed", "Head", "Yoke"}
 DISH_FRAME_M = 2.4
 OUT_DISH = os.path.join(ROOT, "assets", "props", "radio_station_dish.png")
 CLOSEUP_SCALE = 8       # close-up review render: 8x the game's pixel density
@@ -370,7 +374,7 @@ def build_desk():
 
     root = bpy.data.objects.new("Desk", None)
     root.location = DESK_AT
-    root.rotation_euler.z = -math.pi / 2   # operator side (-y) toward the mast (-x)
+    root.rotation_euler.z = -math.pi / 2   # operator side (-y) toward the deck's west side (-x)
     bpy.context.scene.collection.objects.link(root)
     parts = []
     length, depth = DESK_SIZE
@@ -454,43 +458,39 @@ def build_desk():
 
 
 def build():
-    olive = material("Olive", OLIVE, roughness=0.75)
-    olive_dark = material("OliveDark", OLIVE_DARK, roughness=0.8)
-    metal = material("Metal", METAL, metallic=0.8, roughness=0.35)
     black = material("Black", BLACK, roughness=0.6)
-    dish = material("Dish", DISH, roughness=0.5)
-    orange = material("Orange", ORANGE, roughness=0.6)
+    metal = material("Metal", METAL, metallic=0.8, roughness=0.35)
+    tan = material("DishTan", DISH_TAN, roughness=0.55)
+    tan_dark = material("DishTanDark", DISH_TAN_DARK, roughness=0.6)
+    foot_grey = material("FootPad", FOOT_GREY, roughness=0.85)
 
-    # --- Radio mast: tripod, three telescoping sections, guyed. ---
-    collar_z = 1.4
-    for k in range(3):
-        a = math.radians(90 + 120 * k)
-        rod("TripodLeg", (1.2 * math.cos(a), 1.2 * math.sin(a), 0.0), (0, 0, collar_z), 0.03, olive)
-    sections = [(0.0, 3.0, 0.06), (3.0, 5.2, 0.045), (5.2, 7.0, 0.032)]
-    for z0, z1, r in sections:
-        rod("MastSection", (0, 0, z0), (0, 0, z1), r, olive)
-        rod("MastCollar", (0, 0, z1 - 0.05), (0, 0, z1 + 0.05), r + 0.018, metal)
-    rod("Dipole", (-0.8, 0, 7.0), (0.8, 0, 7.0), 0.012, black)
-    rod("TopWhip", (0, 0, 7.0), (0, 0, 8.2), 0.01, black)
-    box("Coupler", (0, 0, 6.9), (0.16, 0.12, 0.14), olive_dark, bevel=0.01)
-    for k in range(3):
-        a = math.radians(30 + 120 * k)
-        stake = Vector((4.5 * math.cos(a), 4.5 * math.sin(a), 0.0))
-        rod("GuyWire", (0, 0, 6.5), stake + Vector((0, 0, 0.25)), 0.012, black, segs=6)
-        rod("Stake", stake, stake + Vector((0, 0, 0.3)), 0.025, metal)
-        # Orange marker flag tied near the top of each stake.
-        box("Flag", stake + Vector((0.07, 0.0, 0.27)), (0.14, 0.02, 0.08), orange)
+    # --- The antenna: a flyaway satellite terminal, aimed up and to the south. ---
+    # Base (stays put in the game): four outrigger legs in an X, sloping down
+    # from a hub on the column to round foot pads, each braced back up to
+    # the column, and jack screws on the feet.
+    da = DISH_AT
+    column_top = 0.78
+    for k in range(4):
+        a = math.radians(45 + 90 * k)
+        out = Vector((math.cos(a), math.sin(a), 0))
+        foot = da + out * 0.6
+        rod("DishLeg", da + out * 0.06 + Vector((0, 0, 0.2)), foot + Vector((0, 0, 0.08)), 0.032, tan)
+        rod("LegBrace", da + Vector((0, 0, 0.5)), da + out * 0.3 + Vector((0, 0, 0.15)), 0.016, tan)
+        rod("FootScrew", foot + Vector((0, 0, 0.02)), foot + Vector((0, 0, 0.14)), 0.012, metal)
+        rod("FootPad", foot, foot + Vector((0, 0, 0.025)), 0.075, foot_grey, segs=20)
+    rod("DishColumn", da, da + Vector((0, 0, column_top)), 0.05, tan)
+    box("ColumnCollar", da + Vector((0, 0, 0.2)), (0.15, 0.15, 0.07), tan_dark, bevel=0.01)
+    box("ColumnCollar", da + Vector((0, 0, 0.5)), (0.13, 0.13, 0.06), tan_dark, bevel=0.01)
 
-
-    # --- Satellite dish on a short tripod, aimed up and to the south. ---
-    dish_at = DISH_AT
-    for k in range(3):
-        a = math.radians(90 + 120 * k)
-        rod("DishLeg", dish_at + Vector((0.55 * math.cos(a), 0.55 * math.sin(a), 0)),
-            dish_at + Vector((0, 0, 0.8)), 0.02, olive)
-    rod("DishPost", dish_at, dish_at + Vector((0, 0, 0.95)), 0.035, olive)
+    # The turning parts (rendered on their own, rotated in the game): the
+    # pan/tilt head on top of the column, a yoke up to the back of the dish,
+    # the dish with a rolled rim, and a feed boom out of its centre.
+    elevation = math.radians(40)
+    axis = Vector((0, -math.cos(elevation), math.sin(elevation)))   # the way the dish looks
+    head_z = column_top + 0.07
+    box("Head", da + Vector((0, 0, head_z)), (0.22, 0.2, 0.14), tan_dark, bevel=0.02)
+    radius, depth, rings, segs = 0.6, 0.15, 10, 40
     bm = bmesh.new()
-    rings, segs, radius, depth = 8, 32, 0.5, 0.12
     verts = [[bm.verts.new((0, 0, 0))]]
     for i in range(1, rings + 1):
         r = radius * i / rings
@@ -502,32 +502,47 @@ def build():
     for i in range(1, rings):
         for j in range(segs):
             bm.faces.new((verts[i][j], verts[i + 1][j], verts[i + 1][(j + 1) % segs], verts[i][(j + 1) % segs]))
-    bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=0.015)
+    bmesh.ops.solidify(bm, geom=bm.faces[:], thickness=0.018)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     dish_me = bpy.data.meshes.new("Dish")
     bm.to_mesh(dish_me)
     bm.free()
-    dish_obj = add("Dish", dish_me, dish)
-    elevation = math.radians(40)
+    dish_obj = add("Dish", dish_me, tan)
     dish_obj.rotation_euler = (math.pi / 2 - elevation, 0, 0)   # tip the dish's axis down toward the south horizon
-    dish_obj.location = dish_at + Vector((0, 0, 1.05))
-    # Feed arm from the lower rim out to the focal point, with the feed box.
-    axis = Vector((0, -math.cos(elevation), math.sin(elevation)))
-    focus = dish_obj.location + axis * 0.55
-    rim = dish_obj.location + Vector((0, -math.sin(elevation), -math.cos(elevation))) * 0.48
-    rod("FeedArm", rim, focus, 0.012, black)
-    box("Feed", focus, (0.09, 0.09, 0.09), olive_dark, bevel=0.01)
+    vertex = da + Vector((0, 0.1, head_z + 0.3))                # the middle of the dish's back
+    dish_obj.location = vertex
+    # A rolled rim round the edge, so it reads as a solid antenna from above.
+    tilt = Matrix.Rotation(math.pi / 2 - elevation, 3, "X")   # the dish's own rotation
+    rim_pts = []
+    for j in range(segs + 1):
+        a = 2 * math.pi * j / segs
+        rim_pts.append(vertex + tilt @ Vector((radius * math.cos(a), radius * math.sin(a), depth)))
+    for a_pt, b_pt in zip(rim_pts, rim_pts[1:]):
+        rod("DishRim", a_pt, b_pt, 0.014, tan_dark, segs=8)
+    # Yoke: two arms from the head's sides up to either side of the dish's back.
+    for sx in (-1, 1):
+        rod("Yoke", da + Vector((sx * 0.1, 0, head_z + 0.05)), vertex + Vector((sx * 0.13, 0.04, -0.05)), 0.028, tan_dark)
+    # Feed boom out of the centre to the focus, with the feed horn on the end.
+    focal = radius * radius / (4 * depth)
+    focus = vertex + axis * focal
+    rod("FeedArm", vertex + axis * 0.02, focus, 0.012, black)   # 40% thinner than first drawn
+    box("Feed", focus, (0.08, 0.08, 0.1), tan_dark, bevel=0.012)
+
+    # A black flex cable from the head down the column to the ground.
+    rod("DishCable", da + Vector((0.06, -0.06, head_z - 0.04)), da + Vector((0.09, -0.08, 0.35)), 0.016, black, segs=8)
+    rod("DishCable", da + Vector((0.09, -0.08, 0.35)), da + Vector((0.07, -0.05, 0.02)), 0.016, black, segs=8)
 
     # --- Operator platform and desk. ---
     build_platform()
     build_desk()
 
-    # --- Cables: down the desk across the deck, then over the ground. ---
-    # Each deck run ends exactly where its ground run starts, at the deck's edge.
-    cable("Cable", [(3.35, 0.32), (2.7, 0.45), (2.0, 0.3)], black, z=PLATFORM_H)         # desk to deck edge
-    cable("Cable", [(2.0, 0.3), (1.2, 0.4), (0.5, 0.15), (0.06, 0.02)], black)          # to the mast
-    cable("Cable", [(3.35, -0.32), (2.6, -0.55), (2.0, -0.7)], black, z=PLATFORM_H)      # desk to deck edge
-    cable("Cable", [(2.0, -0.7), (0.8, -1.6), (-0.8, -1.9), (-2.0, -1.65)], black)      # to the dish
+    # --- Cable: down the desk across the deck, then over the ground to the
+    # dish. The deck run ends exactly where the ground run starts, at the
+    # deck's south edge.
+    dx, dy = DESK_AT.x, DESK_AT.y
+    edge_y = PLATFORM_AT.y - PLATFORM_M / 2
+    cable("Cable", [(dx - 0.3, dy - 0.32), (dx - 0.45, dy - 0.7), (0.3, edge_y)], black, z=PLATFORM_H)
+    cable("Cable", [(0.3, edge_y), (0.35, edge_y - 0.3), (0.12, DISH_AT.y + 0.2), (DISH_AT.x + 0.04, DISH_AT.y + 0.03)], black)
 
 
 def normalise_shadow(path):

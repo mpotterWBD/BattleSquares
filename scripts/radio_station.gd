@@ -1,14 +1,17 @@
 extends Node2D
-## A deployed comms station (scenes/radio_station.tscn): guyed mast,
-## operator platform with its desk, and a satellite dish you aim by hand.
+## A deployed comms station (scenes/radio_station.tscn), compact: the
+## operator platform with its desk, and just south of it, no wider than the
+## platform, the antenna: a small satellite dish you aim by hand. (Until
+## 2026-10-29 it also had a 7 m guyed mast.) The node's origin is the
+## middle of the whole thing, so the deploy ghost centres on the mouse.
 ##
-## Stand in the green box by the dish and press F (the "interact" control)
+## Stand in the green box beside the dish (west of it) and press F (the "interact" control)
 ## to tune it. A wheel opens around the dish with a white line that follows
 ## the mouse: that only picks the heading, the dish stays put. Left click or
 ## F again locks the pick in (`target_heading`) and the dish then turns to
 ## it slowly (TURN_DEG_PER_S, easing in and out). A very big translucent cone
-## comes out of the dish to show where it actually points, drawn like the
-## voice cone (same green and see-through); it shows while tuning and in
+## comes out of the dish to show where it actually points, in the same
+## green and see-through as the command circles; it shows while tuning and in
 ## command mode (holding Space), not while the dish turns on its own. Stepping out of the box or pressing Space closes
 ## the wheel without changing the pick. Where the dish points is kept in
 ## `dish_heading`, and `dish_tuned` is announced once it gets there, for the
@@ -27,13 +30,13 @@ signal dish_tuned(heading: float)
 const World = preload("res://scripts/world.gd")
 const UiStyle = preload("res://scripts/ui_style.gd")
 
-const DISH_AT := Vector2(-187.7, 136.5)   ## the dish's post; matches DISH_AT in blender/scripts/radio_station.py
-const DISH_LOW_M := 0.7                   ## the dish's lowest and highest points, for its shadow
-const DISH_HIGH_M := 1.45
+const DISH_AT := Vector2(0, 93.9)         ## the dish's post; matches DISH_AT in blender/scripts/radio_station.py
+const DISH_LOW_M := 0.78                  ## the turning parts' lowest and highest points (head to top of the rim), for their shadow
+const DISH_HIGH_M := 1.72
 const DISH_TEXEL_PX := 0.5                ## the dish image is rendered at 2x the game's pixel density
 const BEAM_LENGTH_M := 60.0
 const BEAM_HALF_DEG := 18.0
-const BEAM_COLOR := World.COMMAND_COLOR    ## same green as the command cone and menus
+const BEAM_COLOR := World.COMMAND_COLOR    ## same green as the command circles and menus
 const WHEEL_RADIUS_PX := 150.0
 const WHEEL_COLOR := World.COMMAND_COLOR
 const TURN_DEG_PER_S := 12.0    ## the dish's top turning speed: half a turn takes ~15 s
@@ -207,8 +210,8 @@ func _update_dish() -> void:
 	(_dish_shadow.material as ShaderMaterial).set_shader_parameter("sweep", sweep)
 
 
-## The beam: a very big cone out of the dish along its heading, drawn like
-## the player's voice cone (command.gd _draw_cone): a fading fill and a faint
+## The beam: a very big cone out of the dish along its heading, drawn with
+## the shared command alphas (world.gd CONE_*): a fading fill and a faint
 ## outline, same green and see-through.
 func _draw_beam() -> void:
 	var reach := BEAM_LENGTH_M * World.PX_PER_M

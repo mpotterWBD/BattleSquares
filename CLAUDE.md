@@ -103,7 +103,7 @@ the folder map current.
 - Don't name methods after Node built-ins (`request_ready`, `ready`,
   `process` and so on). A clashing signature is a parse error that silently
   breaks whichever scene uses the script.
-- `main.tscn` places no squadmates or helicopters; tests must spawn their own.
+- `main.tscn` places no squadmates or helicopters; tests must spawn their own. It does place 4 blue enemies (`Enemy`…`Enemy4`, about 15 m east of the player's start): a test that doesn't want them should free the nodes whose script is `enemy.gd`. They stay calm unless the player or a squadmate walks into, or someone shoots within, their 10 m detection circles. Its `Arrival` node flies the player in at the start: for a test that needs the player on the ground at once, instantiate `main.tscn` yourself and set `Arrival.enabled = false` before adding it to the tree (freeing it after `_ready` is too late; its helicopter is already on the way).
 
 ## How Mike phrases things
 

@@ -22,7 +22,7 @@ import bs_common as bs  # noqa: E402
 from bs_common import srgb  # noqa: E402
 
 # ---------------------------------------------------------------- settings --
-ROOT = r"F:\Projects\BattleSquares"
+ROOT = bs.ROOT
 OUT_TEX = os.path.join(ROOT, "assets", "textures", "field_grass_tile.png")
 OUT_PREVIEW = os.path.join(ROOT, "assets", "previews", "field_grass_3x3.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "field_grass.blend")
