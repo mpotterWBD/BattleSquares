@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b44d8opkf5rlw"
-path="res://.godot/imported/radio_station.png-1f75b7b3193387a501cf3a0d30a35edd.ctex"
+uid="uid://dwkw4o7ixbue5"
+path="res://.godot/imported/sandbags_mid_2_d2.png-7e0022bea534dbcbc7bcfc7ad3714e94.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/props/radio_station.png"
-dest_files=["res://.godot/imported/radio_station.png-1f75b7b3193387a501cf3a0d30a35edd.ctex"]
+source_file="res://assets/props/sandbags_mid_2_d2.png"
+dest_files=["res://.godot/imported/sandbags_mid_2_d2.png-7e0022bea534dbcbc7bcfc7ad3714e94.ctex"]
 
 [params]
 

@@ -1,11 +1,13 @@
 extends Node2D
 ## A deployed comms station (scenes/radio_station.tscn), compact: the
-## operator platform with its desk, and just south of it, no wider than the
-## platform, the antenna: a small satellite dish you aim by hand. (Until
+## operator's desk (on the ground; there was a wooden platform under it
+## until 2026-10-30), and just south of it, no wider than the operator's
+## spot, the antenna: a small satellite dish you aim by hand. (Until
 ## 2026-10-29 it also had a 7 m guyed mast.) The node's origin is the
 ## middle of the whole thing, so the deploy ghost centres on the mouse.
 ##
-## Stand in the green box beside the dish (west of it) and press F (the "interact" control)
+## Stand anywhere round the dish (its DishZone, a ring 1.35 m out from its
+## middle, unmarked; a big green F shows on the dish) and press F (the "interact" control)
 ## to tune it. A wheel opens around the dish with a white line that follows
 ## the mouse: that only picks the heading, the dish stays put. Left click or
 ## F again locks the pick in (`target_heading`) and the dish then turns to
@@ -18,7 +20,28 @@ extends Node2D
 ## long-range comms to come. While tuning, the player doesn't aim or fire
 ## (player.gd `busy`).
 ##
-## The platform's green box (OperatorZone) is where the operator stands to
+## It's built from a comms crate (crate.gd), PARTS one at a time: placed from
+## DEPLOY near the crate (command.gd), it starts as a construction site
+## (start_site(): `built` off), every part a faint green ghost of itself and
+## nothing working. The player (player.gd), or squadmates under a Build
+## order (squadmate.gd), fetch each part from the crate and bring it here (a green F shows over the
+## site's middle when the player's got one it needs, within DELIVER_M), and
+## install() puts it in. While it's being built it's in the "build_sites" group. With all
+## of them in it's `built`: the radio (terminal), the dish and its beam work.
+## A station placed in a scene by hand starts built.
+##
+## The station's art (the desk, the kit on it and the dish's stand) is drawn under the
+## squares (z -1), so a square at the desk has its rifle over the desk; the
+## turning dish (z 5) is drawn over them.
+##
+## The desk and dish (DeskBody, DishBody: scripts/partial_cover.gd) are
+## solid to walk into but only stop some of the bullets that reach them, with
+## sparks and a clang: the desk 30% (the rest go over or under it, half each;
+## it doesn't hide anyone), the dish 60% (the rest go over it; it does hide
+## whoever's behind it).
+##
+## The spot beside the desk (OperatorZone; StandBox marks its middle, unmarked on
+## the ground since 2026-10-30) is where the operator stands to
 ## work the radio: see the Terminal node (scripts/radio_terminal.gd).
 ##
 ## The dish is its own sprite, lit from straight overhead so it can turn to
@@ -26,7 +49,7 @@ extends Node2D
 ## range (shaders/shadow_sweep.gdshader).
 ##
 ## The station can be deployed turned (command.gd: the scroll wheel while
-## placing, in 15 degree steps). Everything turns with the node: platform,
+## placing, in 15 degree steps). Everything turns with the node: desk,
 ## desk, boxes, zones and collisions. `dish_heading` is a world heading, so
 ## the dish, its shadow and the beam are worked out against the node's
 ## turn; the dish turns along with the station while it's being placed
@@ -79,6 +102,23 @@ var _free_player_on_release := false
 var _wheel_layer: CanvasLayer
 var _wheel: Control
 var _pad_key: Label
+## Building: whether it's done, the parts that are in, and the crate they come from.
+@export var built := true
+var installed: Array[String] = []
+var site_crate: Node2D = null
+var _deliver_key: Label
+## The parts, in the order they come off the comms crate, and their nodes:
+## sprites and shadows to show, and collision bodies to switch on.
+const PARTS := ["desk", "electronics", "legs", "dish", "wiring"]
+const PART_NODES := {
+	"desk": ["Desk", "ShadowDesk", "DeskBody"],
+	"electronics": ["Electronics", "ShadowElectronics"],
+	"legs": ["Stand", "ShadowStand"],
+	"dish": ["Dish", "DishShadow", "DishBody"],
+	"wiring": ["Ground"],
+}
+const GHOST := Color(0.55, 1.0, 0.55, 0.3)   ## a part still to come, as a faint green ghost
+const DELIVER_M := 2.6         ## the player brings a part in within this far of the middle
 ## Labels kept upright on the turned station: [label, anchor node, its
 ## centre from the anchor's position on screen] (keep_upright()).
 var _upright: Array = []
@@ -87,17 +127,21 @@ var _turned_by := 0.0   ## the turn the dish heading has been carried along for
 @onready var _dish: Sprite2D = $Dish
 @onready var _dish_shadow: Sprite2D = $DishShadow
 @onready var _zone: Area2D = $DishZone
-@onready var _prompt: Label = $DishPrompt
 @onready var _beam: Node2D = $Beam
 
 
 func _ready() -> void:
 	World.register_controls()
 	_beam.draw.connect(_draw_beam)
-	_pad_key = UiStyle.pad_key()
+	# A big green F over the site's middle while the player's bringing a part.
+	_deliver_key = UiStyle.pad_key("F", Color(World.COMMAND_COLOR, 0.55))
+	add_child(_deliver_key)
+	keep_upright(_deliver_key, self)
+	_show_parts()
+	# A big green F on the dish while the player's round it.
+	_pad_key = UiStyle.pad_key("F", Color(World.COMMAND_COLOR, 0.55))   # see-through, like the desk's
 	$DishStandBox.add_child(_pad_key)
 	keep_upright(_pad_key, $DishStandBox)
-	keep_upright(_prompt, $DishStandBox)
 	_wheel_layer = CanvasLayer.new()
 	_wheel_layer.visible = false
 	add_child(_wheel_layer)
@@ -130,7 +174,8 @@ func _apply_turn() -> void:
 	# unturned station, so undo its offset in the station's frame and redo
 	# it in the world's (q = R(-turn) d - d, d = the sun's offset).
 	var d := World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * SHADOW_HEIGHT_M * World.PX_PER_M
-	$Shadow.position = d.rotated(-global_rotation) - d
+	for shadow in [$ShadowDesk, $ShadowElectronics, $ShadowStand]:
+		shadow.position = d.rotated(-global_rotation) - d
 	_place_upright()
 
 
@@ -187,9 +232,11 @@ func _process(delta: float) -> void:
 		if player and not tuning:
 			player.busy = false
 	_place_upright()   # labels can change size as their text changes
+	var player = _player()
+	_deliver_key.visible = (not built and player != null and player.carrying != "" and needs(player.carrying)
+			and player.global_position.distance_to(global_position) <= DELIVER_M * World.PX_PER_M)
 	var at_dish := _player_at_dish()
-	_prompt.visible = at_dish and not tuning
-	_pad_key.visible = _prompt.visible
+	_pad_key.visible = at_dish and not tuning
 	if tuning and (not at_dish or World.commanding()):
 		_stop_tuning()
 	if turning:
@@ -199,7 +246,7 @@ func _process(delta: float) -> void:
 		_wheel.queue_redraw()
 	# The beam shows while tuning, and in command mode so you can see where
 	# each dish is pointed while giving orders.
-	_beam.visible = tuning or World.commanding()
+	_beam.visible = built and (tuning or World.commanding())
 	if _beam.visible:
 		_beam.queue_redraw()
 
@@ -219,7 +266,57 @@ func beam_covers(point: Vector2) -> bool:
 
 func _player_at_dish() -> bool:
 	var player = _player()
-	return player != null and _zone.overlaps_body(player)
+	return built and player != null and _zone.overlaps_body(player)
+
+
+# -------------------------------------------------------------- building --
+
+## Starts it as a construction site, its parts to come from `crate`.
+func start_site(crate: Node2D) -> void:
+	built = false
+	installed.clear()
+	site_crate = crate
+	crate.reserve(self, PARTS.size())
+	add_to_group("build_sites")
+	_show_parts()
+
+
+## Whether it still needs `part`.
+func needs(part: String) -> bool:
+	return not built and part in PARTS and not part in installed
+
+
+## Whether the player at `at` (world) can bring a part in here.
+func can_deliver_at(at: Vector2) -> bool:
+	return not built and at.distance_to(global_position) <= DELIVER_M * World.PX_PER_M
+
+
+## A part's been brought in: it goes in; with all of them in, it's built.
+func install(part: String) -> void:
+	if not needs(part):
+		return
+	installed.append(part)
+	if installed.size() == PARTS.size():
+		built = true
+		remove_from_group("build_sites")
+	_show_parts()
+
+
+## Shows the parts that are in as they are, the rest as faint ghosts (no
+## shadows, not solid).
+func _show_parts() -> void:
+	for part: String in PART_NODES:
+		var done := built or part in installed
+		for node_name: String in PART_NODES[part]:
+			var node := get_node(node_name)
+			if node is CollisionObject2D:
+				for shape in node.get_children():
+					if shape is CollisionShape2D:
+						shape.set_deferred("disabled", not done)
+			elif node_name.begins_with("Shadow") or node_name == "DishShadow":
+				node.visible = done
+			else:
+				node.modulate = Color.WHITE if done else GHOST
 
 
 func _start_tuning() -> void:

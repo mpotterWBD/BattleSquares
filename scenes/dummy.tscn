@@ -17,6 +17,3 @@ visible = false
 
 [node name="Body" parent="." index="2"]
 texture = ExtResource("2_body")
-
-[node name="Sight" parent="." index="3"]
-visible = false

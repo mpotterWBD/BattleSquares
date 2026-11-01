@@ -9,6 +9,24 @@ extends StaticBody2D
 ## (their rays check every layer). Squares draw over it (it's low; their
 ## shadows fall on it).
 ##
+## Laid from command mode's DEPLOY, it's built from a sandbag crate (crate.gd,
+## a wall a crate part): it goes down as a site (start_site(): `built` off),
+## a faint green ghost that's not solid, gives no cover and can't be climbed,
+## until someone brings a part's worth of bags from the crate (the player,
+## player.gd, or squadmates under a Build order, squadmate.gd; a green F shows
+## on it when the player's carrying bags within DELIVER_M) and install() puts
+## it up. Walls placed by hand in a scene start built.
+##
+## It can be shot to pieces: bullets that stop in it (bullet_hit(), not
+## the ones that go over) take their damage off its `max_health` (60). It
+## shows three stages of damage as it goes: past a third gone, torn with a
+## top bag blown off and sand spilt (sandbags_<tile>_d1.png); past two thirds,
+## the top course gone and the middle sagging, a bag burst open (_d2); and at
+## nothing it collapses into a puddle of sand (sandbags_collapsed.png): no
+## longer solid, cover or climbable, out of the "deployed_sandbags" group (its
+## neighbours finish their ends), its shadow gone. Squares dug in behind it
+## look for another spot (squadmate.gd, enemy.gd). (Art: sandbags.py.)
+##
 ## Placed by hand in a scene, `extra_sandbags` lays that many more walls end
 ## to end after it (along its +x, as it's turned), joining into one row: in
 ## the editor it previews the whole row; in the game each extra is laid as a
@@ -42,14 +60,27 @@ extends StaticBody2D
 ## shadow is one unbroken band.
 
 const World = preload("res://scripts/world.gd")
+const UiStyle = preload("res://scripts/ui_style.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
 const ImpactSound = preload("res://scripts/impact_sound.gd")
+const Cover = preload("res://scripts/cover.gd")
 
 const TILES := {
 	"single": preload("res://assets/props/sandbags_single.png"),
 	"start": preload("res://assets/props/sandbags_start.png"),
 	"end": preload("res://assets/props/sandbags_end.png"),
 }
+const DAMAGED_TILES := {
+	"single": [preload("res://assets/props/sandbags_single_d1.png"), preload("res://assets/props/sandbags_single_d2.png")],
+	"start": [preload("res://assets/props/sandbags_start_d1.png"), preload("res://assets/props/sandbags_start_d2.png")],
+	"end": [preload("res://assets/props/sandbags_end_d1.png"), preload("res://assets/props/sandbags_end_d2.png")],
+	"mid_0": [preload("res://assets/props/sandbags_mid_0_d1.png"), preload("res://assets/props/sandbags_mid_0_d2.png")],
+	"mid_1": [preload("res://assets/props/sandbags_mid_1_d1.png"), preload("res://assets/props/sandbags_mid_1_d2.png")],
+	"mid_2": [preload("res://assets/props/sandbags_mid_2_d1.png"), preload("res://assets/props/sandbags_mid_2_d2.png")],
+}
+const COLLAPSED_TILE := preload("res://assets/props/sandbags_collapsed.png")
+## How tall it still stands at each damage stage, as a share of WALL_HEIGHT_M (for its shadow).
+const STAGE_HEIGHT := [1.0, 0.82, 0.6]
 const MID_TILES := [
 	preload("res://assets/props/sandbags_mid_0.png"),
 	preload("res://assets/props/sandbags_mid_1.png"),
@@ -74,6 +105,14 @@ const ZONE_EDGE := Color(World.COMMAND_COLOR, 0.55)
 ## The chance a shot fired from outside the box goes over the wall instead of
 ## stopping in it (0.1 = 10%).
 @export_range(0.0, 1.0, 0.01) var through_chance := 0.1
+## Up (solid, cover), or still a site waiting for its bags (see above).
+@export var built := true
+## How much shooting it takes (a rifle round does 2: 30 hits).
+@export_range(1.0, 1000.0, 1.0) var max_health := 60.0
+var health := 60.0
+## 0 whole, 1 and 2 damaged, 3 collapsed into a puddle.
+var damage_stage := 0
+var _tile_name := "single"   ## which tile it's showing: single, start, end, mid_0..2
 ## More walls laid end to end after this one (along its length, the way it's
 ## turned), joining into one row. Shown in the editor; laid in the game.
 @export_range(0, 60, 1) var extra_sandbags := 0:
@@ -83,6 +122,10 @@ const ZONE_EDGE := Color(World.COMMAND_COLOR, 0.55)
 			_preview.queue_redraw()
 
 var _preview: Node2D   ## editor only: draws the row extra_sandbags makes
+var _key: Label        ## a site's green F, when the player brings bags
+const SITE_GHOST := Color(0.55, 1.0, 0.55, 0.35)
+const DELIVER_M := 1.4      ## bags are brought in within this far of its middle
+const DELIVER_SIDE_M := 0.7 ## squadmates bring them to this far out to one side (clear of climbing)
 
 var _zone: Node2D
 var _joined_before := false   ## a wall joins on at -x
@@ -99,6 +142,7 @@ func _ready() -> void:
 		_preview.draw.connect(_draw_preview)
 		add_child(_preview)   # not owned: never saved into the scene
 		return
+	health = max_health
 	var ghost := process_mode == Node.PROCESS_MODE_DISABLED   # a placing ghost (command.gd)
 	if not ghost:
 		add_to_group("deployed_sandbags")
@@ -122,7 +166,73 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
-	_zone.visible = World.commanding()
+	_zone.visible = World.commanding() and built and damage_stage < 3
+	if _key:
+		var player = get_tree().get_first_node_in_group("player")
+		_key.visible = (not built and player != null and player.carrying == "sandbags"
+				and can_deliver_at(player.global_position))
+		_key.rotation = -global_rotation
+		_key.position = (-_key.size / 2.0).rotated(-global_rotation)
+
+
+# ---------------------------------------------------------- building --
+
+## Starts it as a site, its bags to come from `crate`.
+func start_site(crate: Node2D) -> void:
+	built = false
+	crate.reserve(self, 1)
+	add_to_group("build_sites")
+	_key = UiStyle.pad_key("F", Color(World.COMMAND_COLOR, 0.55))
+	_key.scale = Vector2.ONE * 0.6
+	add_child(_key)
+	_show_built()
+
+
+## Whether it still needs `part` (a part's worth of bags).
+func needs(part: String) -> bool:
+	return not built and part == "sandbags"
+
+
+func can_deliver_at(at: Vector2) -> bool:
+	return not built and at.distance_to(global_position) <= DELIVER_M * World.PX_PER_M
+
+
+## Where a squadmate bringing bags from world `from` heads for (squadmate.gd):
+## DELIVER_SIDE_M out from its middle, on `from`'s side of the row, so it
+## walks alongside the wall rather than climbing along its top.
+func deliver_spot(from: Vector2) -> Vector2:
+	var across := global_transform.y.normalized()   # the row runs along +x
+	var side := 1.0 if across.dot(from - global_position) >= 0.0 else -1.0
+	return global_position + across * side * DELIVER_SIDE_M * World.PX_PER_M
+
+
+## The bags have come: it's up, with a thud of sand (for now one of the
+## bullet-into-sand sounds, impact_sound.gd).
+func install(part: String) -> void:
+	if not needs(part):
+		return
+	built = true
+	remove_from_group("build_sites")
+	if _key:
+		_key.queue_free()
+		_key = null
+	_show_built()
+	thud()
+
+
+## The thud of the bags going down (also command.gd, laying walls that go
+## straight up).
+func thud() -> void:
+	var level := get_tree().current_scene
+	ImpactSound.play(level if level else get_parent(), global_position, "sand")
+
+
+## Up: as it is, solid, its shadow on. A site: a faint green ghost, no
+## shadow, not solid.
+func _show_built() -> void:
+	_body.modulate = Color.WHITE if built else SITE_GHOST
+	_shadow.visible = built
+	$Wall.set_deferred("disabled", not built)
 
 
 func _notification(what: int) -> void:
@@ -181,17 +291,87 @@ func _update_tile() -> void:
 		return
 	_joined_before = joined(-1) != null
 	_joined_after = joined(1) != null
+	if damage_stage >= 3:
+		return   # a puddle now: nothing to join up
 	if _joined_before and _joined_after:
 		# Which middle tile: fixed by where it is, so it doesn't flicker.
 		var cell := Vector2i((global_position / TILE_PX).round())
-		_body.texture = MID_TILES[posmod(cell.x * 7 + cell.y * 13, MID_TILES.size())]
+		_tile_name = "mid_%d" % posmod(cell.x * 7 + cell.y * 13, MID_TILES.size())
 	elif _joined_after:
-		_body.texture = TILES.start
+		_tile_name = "start"
 	elif _joined_before:
-		_body.texture = TILES.end
+		_tile_name = "end"
 	else:
-		_body.texture = TILES.single
+		_tile_name = "single"
+	_show_tile()
+
+
+## The tile it's showing, at its damage stage.
+func _show_tile() -> void:
+	if damage_stage >= 3:
+		_body.texture = COLLAPSED_TILE
+	elif damage_stage > 0:
+		_body.texture = DAMAGED_TILES[_tile_name][damage_stage - 1]
+	elif _tile_name.begins_with("mid_"):
+		_body.texture = MID_TILES[int(_tile_name.substr(4))]
+	else:
+		_body.texture = TILES[_tile_name]
 	_shadow.queue_redraw()
+
+
+# ------------------------------------------------------------ damage --
+
+func is_collapsed() -> bool:
+	return damage_stage >= 3
+
+
+## The share of shots from outside its box that it stops (all but
+## `through_chance`: 90%, cover class 3, scripts/cover.gd); none before it's
+## built or once it's shot down to a puddle.
+func cover_stop_chance() -> float:
+	return 0.0 if not built or is_collapsed() else 1.0 - through_chance
+
+
+func cover_class() -> int:
+	return Cover.class_of(self)
+
+
+## Shot: `amount` off its health; past each third it looks worse, and at
+## nothing it collapses.
+func take_damage(amount: float) -> void:
+	if not built or damage_stage >= 3 or amount <= 0.0:
+		return
+	health = maxf(health - amount, 0.0)
+	var stage := 3 if health <= 0.0 else (2 if health <= max_health / 3.0 else (1 if health <= max_health * 2.0 / 3.0 else 0))
+	if stage == damage_stage:
+		return
+	damage_stage = stage
+	if stage >= 3:
+		_collapse()
+	else:
+		_show_tile()
+
+
+## Down to a puddle of sand: not solid, no cover, no shadow, out of the
+## walls (the ones it joined finish their ends).
+func _collapse() -> void:
+	var neighbours := [joined(-1), joined(1)]
+	remove_from_group("deployed_sandbags")
+	add_to_group("sand_puddles")
+	$Wall.set_deferred("disabled", true)
+	_shadow.visible = false
+	_zone.visible = false
+	_show_tile()
+	for wall in neighbours:
+		if wall:
+			wall._update_tile()
+	# A last burst of sand.
+	var level := get_tree().current_scene
+	for k in 3:
+		var dust := HitDust.new()
+		dust.setup(global_position + Vector2.from_angle(global_rotation) * (k - 1) * TILE_PX * 0.35,
+				Vector2.from_angle(global_rotation + PI / 2 * (1 if k % 2 else -1)), 1.0, true)
+		(level if level else get_parent()).add_child(dust)
 
 
 ## A wall's arrived next to these: they look again.
@@ -218,7 +398,7 @@ func _on_leaving() -> void:
 ## joins on, the footprint is carried on past the join and the shadow cut
 ## off at it, so each tile draws its own stretch of one unbroken band.
 func _draw_shadow() -> void:
-	var d := (World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * WALL_HEIGHT_M
+	var d: Vector2 = (World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * WALL_HEIGHT_M * STAGE_HEIGHT[mini(damage_stage, 2)]
 			* World.PX_PER_M).rotated(-global_rotation)
 	var half := FOOT_PX / 2.0
 	var reach := absf(d.x) + 1.0   # how far past a join the footprint carries on
@@ -242,6 +422,8 @@ func _draw_shadow() -> void:
 
 ## Whether a world point is inside the proximity box.
 func in_zone(point: Vector2) -> bool:
+	if not built or damage_stage >= 3:
+		return false
 	var local := to_local(point)
 	return (absf(local.x) <= zone_length_m / 2.0 * World.PX_PER_M
 			and absf(local.y) <= zone_depth_m * World.PX_PER_M)
@@ -250,6 +432,8 @@ func in_zone(point: Vector2) -> bool:
 ## How far up the wall a square centred at world `point` is: 0 off it (or
 ## just touching), rising to 1 once it's well onto the top.
 func climb_at(point: Vector2) -> float:
+	if not built or damage_stage >= 3:
+		return 0.0
 	var local := to_local(point)
 	var past := Vector2(absf(local.x), absf(local.y)) - FOOT_PX / 2.0   # < 0 inside, per axis
 	var edge := maxf(past.x, past.y)   # how far outside the footprint (negative: inside)
@@ -263,13 +447,14 @@ func lets_bullet_through(bullet: Node2D) -> bool:
 
 
 ## A bullet stopped in the wall (bullet.gd): sand flies back out the way it
-## came, with the thud of a round into sand.
-func bullet_hit(point: Vector2, direction: Vector2) -> void:
+## came, with the thud of a round into sand, and it takes the damage.
+func bullet_hit(point: Vector2, direction: Vector2, damage := 0.0) -> void:
 	var dust := HitDust.new()
 	dust.setup(point, direction)
 	var level := get_tree().current_scene
 	(level if level else get_parent()).add_child(dust)
 	ImpactSound.play(level if level else get_parent(), point, "sand")
+	take_damage(damage)
 
 
 func _draw_zone() -> void:

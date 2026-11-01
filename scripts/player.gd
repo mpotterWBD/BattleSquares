@@ -24,7 +24,18 @@ extends "res://scripts/soldier.gd"
 ## Communications decide who can be commanded.
 
 const AimLine = preload("res://scripts/aim_line.gd")
+const CarryArt = preload("res://scripts/carry_art.gd")
 const RELOAD_RING_M := 0.36   ## the reload progress arc's radius
+## Carrying a station part (crate.gd, radio_station.gd): this much of walking
+## speed, and no rifle (hands full).
+const CARRY_SPEED := 0.65
+## Running on dirt: Mike's SprintOnDirt.mp3 (10.7 s of footfalls), looped
+## while it runs, from a random point each time; quiet on the road's
+## asphalt (road.gd covers()). It fades out over RUN_STEPS_FADE_S.
+const RUN_STEPS_SOUND := "res://assets/sfx/SprintOnDirt.mp3"
+const RUN_STEPS_DB := -6.0
+const RUN_STEPS_FADE_S := 0.15
+const RUN_STEPS_QUIET_DB := -40.0
 const UiStyle = preload("res://scripts/ui_style.gd")
 const AMMO_HUD_OFFSET := Vector2(48, 24)   ## the ammo panel, from the player's square on screen
 const EMPTY_COLOR := Color(1.0, 0.4, 0.35)
@@ -51,6 +62,10 @@ const DEATH_MENU_DELAY_S := 0.6   ## real seconds after coming to rest
 ## (-1 = unlimited). Ids match DEPLOYABLES in scripts/command.gd.
 ## Sandbags unlimited for now (2026-10-30; was 6).
 @export var deployables := {"radio_station": 1, "sandbags": -1}
+## Running (hold Shift): this fast, in metres per second (walking is
+## `speed_mps`, 1.6). Not while carrying a part, or in command mode (where
+## Shift adds to the selection).
+@export_range(0.5, 8.0, 0.1, "suffix:m/s") var run_speed_mps := 3.2
 ## How fast the squad's formation swings round to match the way this square
 ## faces, so sweeping the aim doesn't send followers running in circles.
 @export var formation_turn_dps := 90.0
@@ -75,10 +90,22 @@ var formation_heading := -PI / 2
 ## this square then keeps looking where it last aimed and won't fire.
 var busy := false
 
+
+## Not taking Mike's controls: something else has the mouse (`busy`), or
+## debug mode is on (Q; debug_overlay.gd), when it stands still too.
+func _hands_off() -> bool:
+	return busy or World.debug
+
 var _last_aim := Vector2.ZERO
 var _aim_line: Node2D
 var _flyby_ring: Node2D
 var _reload_ring: Node2D
+## The station part in its hands ("" for none), and the crate it came from.
+var carrying := ""
+var _carried_from: Node2D = null
+var _running := false               ## holding Shift and allowed to run (_move_intent())
+var _run_steps: AudioStreamPlayer2D   ## the running footfalls (null without the file)
+var _carry_view: Node2D
 ## The ammo panel, shown while the right mouse button is held: rounds in
 ## the magazine and spare magazines.
 var _ammo_hud: PanelContainer
@@ -91,10 +118,18 @@ func _ready() -> void:
 	add_to_group("player")
 	# A fresh start (statics and the time scale outlive a scene reload).
 	World.player_dead = false
+	World.placing = false
 	World.radio_commanding = false
 	World.radio_station = null
 	Engine.time_scale = 1.0
 	World.register_controls()
+	if ResourceLoader.exists(RUN_STEPS_SOUND):
+		var steps = load(RUN_STEPS_SOUND).duplicate()   # (an AudioStreamMP3: it has `loop`)
+		steps.loop = true
+		_run_steps = AudioStreamPlayer2D.new()
+		_run_steps.stream = steps
+		_run_steps.volume_db = RUN_STEPS_DB
+		add_child(_run_steps)
 	_last_aim = global_position + Vector2.from_angle(facing) * 10.0 * World.PX_PER_M
 	formation_heading = facing
 	_aim_line = AimLine.new()
@@ -116,6 +151,10 @@ func _ready() -> void:
 		_reload_ring.draw_arc(Vector2.ZERO, r, -PI / 2, -PI / 2 + TAU * _rifle.reload_progress, 48,
 				Color(1.0, 0.85, 0.3, 0.9), 3.0, true))
 	add_child(_reload_ring)
+	_carry_view = Node2D.new()
+	_carry_view.z_index = 2
+	_carry_view.draw.connect(func() -> void: CarryArt.draw(_carry_view, carrying, facing))
+	add_child(_carry_view)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	_ammo_hud = UiStyle.panel()
@@ -135,10 +174,18 @@ func _physics_process(delta: float) -> void:
 	super(delta)
 	formation_heading = wrapf(rotate_toward(formation_heading, facing,
 			deg_to_rad(formation_turn_dps) * delta), -PI, PI)
-	_aim_line.visible = Input.is_action_pressed("aim") and not World.commanding() and not busy and not dead
+	_aim_line.visible = Input.is_action_pressed("aim") and not World.commanding() and not _hands_off() and not dead
 	_aim_line.target = _last_aim
-	if Input.is_action_just_pressed("reload") and not dead and not busy and not World.commanding():
+	if Input.is_action_just_pressed("reload") and not dead and not _hands_off() and not World.commanding() and carrying == "":
 		_rifle.start_reload()
+	# Hands full: the part in front of it, no rifle.
+	_rifle.visible = carrying == "" or dead   # the fall (death_fall.gd) takes the rifle over
+	get_node("Shadows/RifleShadow").visible = _rifle.visible
+	_carry_view.visible = carrying != "" and not dead
+	if _carry_view.visible:
+		_carry_view.queue_redraw()
+	_tick_unstrap(delta)
+	_update_run_steps(delta)
 	_update_ammo_hud()
 	_reload_ring.visible = _rifle.reloading and not dead
 	if _reload_ring.visible:
@@ -146,11 +193,40 @@ func _physics_process(delta: float) -> void:
 		_reload_ring.queue_redraw()
 
 
+## Holding F with empty hands at a strapped crate: working its straps off
+## (crate.gd work_unstrap(); let go and it starts again).
+func _tick_unstrap(delta: float) -> void:
+	if dead or _hands_off() or World.commanding() or carrying != "" or not Input.is_action_pressed("interact"):
+		return
+	for crate: Node2D in get_tree().get_nodes_in_group("crates"):
+		if crate.has_method("can_unstrap") and crate.can_unstrap(self):
+			crate.work_unstrap(self, delta)
+			return
+
+
+## The running footfalls: on while it's running faster than it walks on
+## dirt, faded out otherwise.
+func _update_run_steps(delta: float) -> void:
+	if _run_steps == null:
+		return
+	var on_road := get_tree().get_nodes_in_group("roads").any(func(road): return road.covers(global_position))
+	var want := (_running and not dead and not on_road
+			and velocity.length() > speed_mps * World.PX_PER_M * 1.05)
+	if want:
+		_run_steps.volume_db = RUN_STEPS_DB
+		if not _run_steps.playing:
+			_run_steps.play(randf() * _run_steps.stream.get_length())
+	elif _run_steps.playing:
+		_run_steps.volume_db -= (RUN_STEPS_DB - RUN_STEPS_QUIET_DB) / RUN_STEPS_FADE_S * delta
+		if _run_steps.volume_db <= RUN_STEPS_QUIET_DB:
+			_run_steps.stop()
+
+
 ## Holding the right mouse button: the ammo panel beside the square, with
 ## the rounds left in the magazine (red when it's empty) and the spare
 ## magazines (and their rounds).
 func _update_ammo_hud() -> void:
-	_ammo_hud.visible = Input.is_action_pressed("aim") and not dead and not busy and not World.commanding()
+	_ammo_hud.visible = Input.is_action_pressed("aim") and not dead and not _hands_off() and not World.commanding()
 	if not _ammo_hud.visible:
 		return
 	var spares: int = _rifle.spare_count()
@@ -171,12 +247,15 @@ func _update_ammo_hud() -> void:
 ## mode shuts, the game slows to DEATH_TIME_SCALE while it falls, and once
 ## it's at rest the time goes back to normal and the death menu comes up.
 func _die(point: Vector2, direction: Vector2) -> void:
+	if carrying != "" and is_instance_valid(_carried_from):
+		_carried_from.return_part(carrying)   # it goes back on the crate
+	carrying = ""
 	World.player_dead = true
 	World.radio_commanding = false
 	World.radio_station = null
 	_aim_line.visible = false
 	super(point, direction)
-	_fall.lingers = true
+	_fall.drops_ammo = false   # nobody left to pick it up
 	_fall.came_to_rest.connect(_on_fall_at_rest)
 	Engine.time_scale = DEATH_TIME_SCALE
 
@@ -188,13 +267,45 @@ func _on_fall_at_rest() -> void:
 
 
 func _move_intent() -> Vector2:
+	_speed_scale = CARRY_SPEED if carrying != "" else 1.0
+	_running = false
+	if World.debug:
+		return Vector2.ZERO
+	if carrying == "" and Input.is_action_pressed("run") and not World.commanding():
+		_speed_scale = run_speed_mps / speed_mps
+		_running = true
 	return Input.get_vector("move_left", "move_right", "move_up", "move_down")
+
+
+## F: with empty hands at a supply crate that owes something a part, takes
+## one off it; carrying one, at a site that needs it (the nearest), puts it in.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("interact") or event.is_echo() or dead or _hands_off() or World.commanding():
+		return
+	if carrying != "":
+		var best: Node2D = null
+		for site: Node2D in get_tree().get_nodes_in_group("build_sites"):
+			if site.needs(carrying) and site.can_deliver_at(global_position):
+				if best == null or site.global_position.distance_to(global_position) < best.global_position.distance_to(global_position):
+					best = site
+		if best:
+			best.install(carrying)
+			carrying = ""
+			_carried_from = null
+			get_viewport().set_input_as_handled()
+		return
+	for crate: Node2D in get_tree().get_nodes_in_group("crates"):
+		if crate.has_method("can_take") and crate.can_take(self):
+			carrying = crate.take_part()
+			_carried_from = crate
+			get_viewport().set_input_as_handled()
+			return
 
 
 ## Where to aim: the mouse, except in command mode, when the mouse is busy
 ## giving orders. A gamepad stick or an AI could supply this instead.
 func _aim_point() -> Vector2:
-	if not World.commanding() and not busy:
+	if not World.commanding() and not _hands_off():
 		_last_aim = get_global_mouse_position()
 	return _last_aim
 
@@ -218,8 +329,10 @@ func _shot_distance_m() -> float:
 	return _rifle.muzzle_position().distance_to(_last_aim) / World.PX_PER_M
 
 
+## Not when the click is on a button on screen (the battle log's, the enemy spawner's).
 func _wants_to_fire() -> bool:
-	return Input.is_action_just_pressed("shoot") and not World.commanding() and not busy
+	return (Input.is_action_just_pressed("shoot") and not World.commanding() and not _hands_off() and carrying == ""
+			and get_viewport().gui_get_hovered_control() == null)
 
 
 ## Whether a squadmate at `point` can be commanded: it hears the player's

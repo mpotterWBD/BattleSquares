@@ -4,18 +4,21 @@ Run headless:
     blender --background --python radio_station.py
 
 Pieces (metres; +x = screen right, +y = screen up), compact: everything
-fits in a 2 m wide column, the platform on top and the dish under it:
-  - operator platform: a 2 m square plank deck, north of the origin; the
-    operator stands on it to work the radio
-  - field desk along the platform's east edge, facing the operator, with a
+fits in a 2 m wide column, the desk on top and the dish under it:
+  - the operator's spot: a 2 m square of ground north of the origin
+    (PLATFORM_AT, PLATFORM_M), where the operator stands to work the radio.
+    Until 2026-10-30 it was a raised plank deck; now the desk stands on the
+    ground (Mike: just the desk and the satellite)
+  - field desk along that spot's east side, facing the operator, with a
     field radio (controls on top, handset, 1.2 m whip antenna), the rugged
     laptop and mouse, a power unit, headset, notebook and pen, and a mug
-  - the antenna: a desert-tan flyaway satellite terminal just south of the
-    platform and no wider than it: four splayed outrigger legs on round
+  - the antenna: a flyaway satellite terminal just south of the operator's
+    spot and no wider than it, the dish desert tan on a stand the desk's
+    grey (since 2026-10-30): four splayed outrigger legs on round
     foot pads with braces up to a centre column, a pan/tilt head with a
     yoke holding a 1.2 m dish tilted up 40 degrees, a feed boom out of the
     dish's centre, and a black cable down from the head
-  - a cable from the desk across the deck to the dish
+  - a cable from the desk along the ground to the dish
 (Until 2026-10-29 there was also a 7 m guyed mast with stakes 4.5 m out.)
 
 It doesn't turn once set up, so unlike the helicopter it's lit by the
@@ -23,12 +26,17 @@ normal top-left sun (bs_common), with its shadow rendered separately (a
 shadow catcher) like the squares'. Rendered at RENDER_SCALE x the game's
 pixel density for the small parts; show it at 1/RENDER_SCALE in Godot.
 
-Outputs (all centred on the mast base):
-  assets/props/radio_station.png          the tall parts, drawn over squares
-  assets/props/radio_station_ground.png   the deck, ground cables and
-                                          stakes, drawn under squares
-  assets/props/radio_station_shadow.png   its shadow, normalised so an
-                                          open-ground shadow is fully opaque
+It's built in the game from a comms crate a part at a time (radio_station.gd
+build()), so each part is rendered on its own, with its own shadow (all
+centred on the station's middle, normalised so an open-ground shadow is fully
+opaque), and the game shows the ones that are in:
+  assets/props/radio_station_desk.png         the folding desk (PARTS "desk")
+  assets/props/radio_station_electronics.png  the kit on it ("electronics")
+  assets/props/radio_station_stand.png        the dish's stand ("legs")
+  assets/props/radio_station_dish.png         the dish, turning ("dish")
+  assets/props/radio_station_ground.png       the ground cable ("wiring"),
+                                              drawn under squares
+  assets/props/radio_station_shadow_<part>.png  desk, electronics, stand
   assets/previews/radio_station_preview.png  composited on grass, for review
 """
 
@@ -45,8 +53,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
 ROOT = bs.ROOT
-OUT_BODY = os.path.join(ROOT, "assets", "props", "radio_station.png")
-OUT_SHADOW = os.path.join(ROOT, "assets", "props", "radio_station_shadow.png")
+OUT_PART = os.path.join(ROOT, "assets", "props", "radio_station_{}.png")
+OUT_PART_SHADOW = os.path.join(ROOT, "assets", "props", "radio_station_shadow_{}.png")
+## The desk's own pieces; everything else on the desk is the electronics.
+DESK_FRAME_PARTS = {"DeskTop", "DeskLeg", "LegBar"}
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "radio_station.blend")
 
 RENDER_SCALE = 2
@@ -70,14 +80,13 @@ GUNMETAL = (0.24, 0.25, 0.26)
 RUBBER = (0.04, 0.04, 0.04)
 LED = (0.3, 1.0, 0.35)
 
-# Operator platform and desk. scenes/radio_station.tscn's desk collision and
-# operator zone must match these.
+# The operator's spot (no platform now: the ground) and the desk.
+# scenes/radio_station.tscn's desk collision and operator zone must match these.
 PLATFORM_AT = Vector((0.0, 1.05, 0.0))
 PLATFORM_M = 2.0
-PLATFORM_H = 0.12
-DESK_AT = PLATFORM_AT + Vector((0.65, 0.0, PLATFORM_H))   # desk centre, on the deck's east side
+DESK_AT = PLATFORM_AT + Vector((0.65, 0.0, 0.0))   # desk centre, on the ground at the spot's east side
 DESK_SIZE = (1.4, 0.6)                      # length across the operator, depth
-DESK_TOP_Z = 0.75                           # above the deck
+DESK_TOP_Z = 0.75                           # above the ground
 
 WOOD = (0.5, 0.41, 0.28)
 DESK_GREY = (0.3, 0.32, 0.27)
@@ -85,17 +94,17 @@ PAPER = (0.92, 0.9, 0.84)
 
 OUT_CLOSEUP = os.path.join(ROOT, "assets", "previews", "radio_station_desk_closeup.png")
 OUT_GROUND = os.path.join(ROOT, "assets", "props", "radio_station_ground.png")
-# Parts low enough for a square to walk over or onto (the deck and the
-# ground cable), rendered as their own image that the game draws under the
-# squares. Everything else is drawn over them.
-GROUND_PARTS = {"Joist", "Plank", "DeckEdge", "Cable"}
+# Parts low enough for a square to walk over (the ground cable), rendered as
+# their own image that the game draws under the squares. Everything else is
+# drawn over them.
+GROUND_PARTS = {"Cable"}
 # The dish turns in the game (it's aimed with the tuning wheel), so its
 # turning parts are left out of the station images and rendered on their
 # own, lit from straight overhead so the game can rotate them freely, like
 # the helicopter. Its tripod and post stay in the station.
 # scripts/radio_station.gd must match DISH_AT, and treats the dish as built
 # facing south (screen down).
-DISH_AT = Vector((0.0, -1.1, 0.0))   # just south of the platform
+DISH_AT = Vector((0.0, -1.1, 0.0))   # just south of the operator's spot
 DISH_PARTS = {"Dish", "DishRim", "FeedArm", "Feed", "Head", "Yoke"}
 DISH_FRAME_M = 2.4
 OUT_DISH = os.path.join(ROOT, "assets", "props", "radio_station_dish.png")
@@ -332,32 +341,10 @@ def build_laptop(at, rot_z, parent=None):
         obj.parent = root
 
 
-def build_platform():
-    """A 2 m square deck of planks on three joists, with a darker frame."""
-    rng = np.random.default_rng(3)
-    joist = material("Joist", (0.2, 0.17, 0.12), roughness=0.9)
-    frame = material("DeckFrame", (0.3, 0.25, 0.17), roughness=0.85)
-    half = PLATFORM_M / 2
-    for dy in (-0.75, 0.0, 0.75):
-        box("Joist", PLATFORM_AT + Vector((0, dy, 0.04)), (PLATFORM_M - 0.1, 0.09, 0.08), joist)
-    planks, gap = 10, 0.012
-    width = (PLATFORM_M - 0.12 - gap * (planks - 1)) / planks
-    for i in range(planks):
-        x = -half + 0.06 + width / 2 + i * (width + gap)
-        tint = rng.uniform(0.85, 1.1)
-        plank = material("Plank", tuple(c * tint for c in WOOD), roughness=0.85)
-        box("Plank", PLATFORM_AT + Vector((x, 0, PLATFORM_H - 0.02)), (width, PLATFORM_M - 0.12, 0.04),
-            plank, bevel=0.004)
-    for sx, sy, sizex, sizey in ((0, 1, PLATFORM_M, 0.06), (0, -1, PLATFORM_M, 0.06),
-                                 (1, 0, 0.06, PLATFORM_M), (-1, 0, 0.06, PLATFORM_M)):
-        box("DeckEdge", PLATFORM_AT + Vector((sx * (half - 0.03), sy * (half - 0.03), PLATFORM_H / 2)),
-            (sizex, sizey, PLATFORM_H), frame)
-
-
 def build_desk():
-    """A folding field desk on the deck with the radio, laptop and kit on it.
+    """A folding field desk on the ground with the radio, laptop and kit on it.
     Local frame: x along the desk, y away from the operator, z up from the
-    deck; the desk is turned so the operator faces it from the mast side."""
+    ground; the desk is turned so the operator faces it from the west."""
     black = material("DeskBlack", BLACK, roughness=0.6)
     olive_dark = material("RadioOlive", OLIVE_DARK, roughness=0.75)
     top_mat = material("DeskTop", DESK_GREY, roughness=0.8)
@@ -374,7 +361,7 @@ def build_desk():
 
     root = bpy.data.objects.new("Desk", None)
     root.location = DESK_AT
-    root.rotation_euler.z = -math.pi / 2   # operator side (-y) toward the deck's west side (-x)
+    root.rotation_euler.z = -math.pi / 2   # operator side (-y) toward the west (-x), where the operator stands
     bpy.context.scene.collection.objects.link(root)
     parts = []
     length, depth = DESK_SIZE
@@ -463,6 +450,7 @@ def build():
     tan = material("DishTan", DISH_TAN, roughness=0.55)
     tan_dark = material("DishTanDark", DISH_TAN_DARK, roughness=0.6)
     foot_grey = material("FootPad", FOOT_GREY, roughness=0.85)
+    stand = material("DishStand", DESK_GREY, roughness=0.8)   # the stand matches the desk (Mike, 2026-10-30)
 
     # --- The antenna: a flyaway satellite terminal, aimed up and to the south. ---
     # Base (stays put in the game): four outrigger legs in an X, sloping down
@@ -474,13 +462,13 @@ def build():
         a = math.radians(45 + 90 * k)
         out = Vector((math.cos(a), math.sin(a), 0))
         foot = da + out * 0.6
-        rod("DishLeg", da + out * 0.06 + Vector((0, 0, 0.2)), foot + Vector((0, 0, 0.08)), 0.032, tan)
-        rod("LegBrace", da + Vector((0, 0, 0.5)), da + out * 0.3 + Vector((0, 0, 0.15)), 0.016, tan)
+        rod("DishLeg", da + out * 0.06 + Vector((0, 0, 0.2)), foot + Vector((0, 0, 0.08)), 0.032, stand)
+        rod("LegBrace", da + Vector((0, 0, 0.5)), da + out * 0.3 + Vector((0, 0, 0.15)), 0.016, stand)
         rod("FootScrew", foot + Vector((0, 0, 0.02)), foot + Vector((0, 0, 0.14)), 0.012, metal)
         rod("FootPad", foot, foot + Vector((0, 0, 0.025)), 0.075, foot_grey, segs=20)
-    rod("DishColumn", da, da + Vector((0, 0, column_top)), 0.05, tan)
-    box("ColumnCollar", da + Vector((0, 0, 0.2)), (0.15, 0.15, 0.07), tan_dark, bevel=0.01)
-    box("ColumnCollar", da + Vector((0, 0, 0.5)), (0.13, 0.13, 0.06), tan_dark, bevel=0.01)
+    rod("DishColumn", da, da + Vector((0, 0, column_top)), 0.05, stand)
+    box("ColumnCollar", da + Vector((0, 0, 0.2)), (0.15, 0.15, 0.07), stand, bevel=0.01)
+    box("ColumnCollar", da + Vector((0, 0, 0.5)), (0.13, 0.13, 0.06), stand, bevel=0.01)
 
     # The turning parts (rendered on their own, rotated in the game): the
     # pan/tilt head on top of the column, a yoke up to the back of the dish,
@@ -532,17 +520,14 @@ def build():
     rod("DishCable", da + Vector((0.06, -0.06, head_z - 0.04)), da + Vector((0.09, -0.08, 0.35)), 0.016, black, segs=8)
     rod("DishCable", da + Vector((0.09, -0.08, 0.35)), da + Vector((0.07, -0.05, 0.02)), 0.016, black, segs=8)
 
-    # --- Operator platform and desk. ---
-    build_platform()
+    # --- The desk, on the ground. ---
     build_desk()
 
-    # --- Cable: down the desk across the deck, then over the ground to the
-    # dish. The deck run ends exactly where the ground run starts, at the
-    # deck's south edge.
+    # --- Cable: down from the desk and along the ground to the dish. ---
     dx, dy = DESK_AT.x, DESK_AT.y
     edge_y = PLATFORM_AT.y - PLATFORM_M / 2
-    cable("Cable", [(dx - 0.3, dy - 0.32), (dx - 0.45, dy - 0.7), (0.3, edge_y)], black, z=PLATFORM_H)
-    cable("Cable", [(0.3, edge_y), (0.35, edge_y - 0.3), (0.12, DISH_AT.y + 0.2), (DISH_AT.x + 0.04, DISH_AT.y + 0.03)], black)
+    cable("Cable", [(dx - 0.3, dy - 0.32), (dx - 0.45, dy - 0.7), (0.3, edge_y), (0.35, edge_y - 0.3),
+                    (0.12, DISH_AT.y + 0.2), (DISH_AT.x + 0.04, DISH_AT.y + 0.03)], black)
 
 
 def normalise_shadow(path):
@@ -556,63 +541,61 @@ def normalise_shadow(path):
     img.save()
 
 
+def _under_desk(obj):
+    """Whether obj hangs off the desk (any ancestor is the Desk empty)."""
+    while obj.parent is not None:
+        obj = obj.parent
+        if obj.name == "Desk":
+            return True
+    return False
+
+
 def main():
-    for path in (OUT_BODY, OUT_SHADOW, OUT_BLEND):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+    os.makedirs(os.path.dirname(OUT_PART), exist_ok=True)
+    os.makedirs(os.path.dirname(OUT_BLEND), exist_ok=True)
     scene = bs.new_scene(center=(0, 0), frame_m=FRAME_M, transparent=True, samples=SAMPLES,
                          px_per_m=bs.PX_PER_M * RENDER_SCALE)
     bpy.data.lights["Sun"].angle = math.radians(SUN_SOFTNESS_DEG)
     build()
-    dish = [o for o in scene.objects if o.name.split(".")[0] in DISH_PARTS]
-    for obj in dish:
-        obj.hide_render = True   # rendered on its own at the end
-    props = [o for o in scene.objects if o not in dish]
+    shapes = [o for o in scene.objects if o.type in {"MESH", "CURVE"}]
+    dish = [o for o in shapes if o.name.split(".")[0] in DISH_PARTS]
+    ground = [o for o in shapes if o.name.split(".")[0] in GROUND_PARTS]
+    desk_frame = [o for o in shapes if _under_desk(o) and o.name.split(".")[0] in DESK_FRAME_PARTS]
+    electronics = [o for o in shapes if _under_desk(o) and o not in desk_frame]
+    stand = [o for o in shapes if o not in dish + ground + desk_frame + electronics]
+    groups = {"desk": desk_frame, "electronics": electronics, "stand": stand, "ground": ground}
 
-    # The station in two layers. Hidden parts stay in the scene (just not
-    # seen by the camera), so they still cast and catch shadows: the deck
-    # keeps the desk's shadow on its planks.
-    ground = [o for o in props if o.type in {"MESH", "CURVE"} and o.name.split(".")[0] in GROUND_PARTS]
-    tall = [o for o in props if o.type in {"MESH", "CURVE"} and o not in ground]
-    for obj in ground:
-        obj.visible_camera = False
-    bs.render_to(scene, OUT_BODY)
-    for obj in ground:
-        obj.visible_camera = True
-    for obj in tall:
-        obj.visible_camera = False
-    bs.render_to(scene, OUT_GROUND)
-    for obj in tall:
-        obj.visible_camera = True
+    def only(keep):
+        for obj in shapes:
+            obj.hide_render = obj not in keep
 
-    # Its shadow alone, on a shadow catcher.
-    ground = bpy.data.meshes.new("Ground")
+    # Each part on its own, then its shadow alone on a shadow catcher.
+    for name, objs in groups.items():
+        only(objs)
+        bs.render_to(scene, OUT_PART.format(name))
+    catcher_mesh = bpy.data.meshes.new("Ground")
     s = FRAME_M
-    ground.from_pydata([(-s, -s, 0), (s, -s, 0), (s, s, 0), (-s, s, 0)], [], [(0, 1, 2, 3)])
-    ground_obj = bpy.data.objects.new("Ground", ground)
-    ground_obj.is_shadow_catcher = True
-    scene.collection.objects.link(ground_obj)
-    for obj in props:
-        if obj.type in {"MESH", "CURVE"}:
-            obj.visible_camera = False
-    bs.render_to(scene, OUT_SHADOW)
-    normalise_shadow(OUT_SHADOW)
+    catcher_mesh.from_pydata([(-s, -s, 0), (s, -s, 0), (s, s, 0), (-s, s, 0)], [], [(0, 1, 2, 3)])
+    catcher = bpy.data.objects.new("Ground", catcher_mesh)
+    catcher.is_shadow_catcher = True
+    scene.collection.objects.link(catcher)
+    for obj in shapes:
+        obj.visible_camera = False
+    for name in ("desk", "electronics", "stand"):
+        only(groups[name])
+        bs.render_to(scene, OUT_PART_SHADOW.format(name))
+        normalise_shadow(OUT_PART_SHADOW.format(name))
+    for obj in shapes:
+        obj.visible_camera = True
 
-    for obj in props:
-        if obj.type in {"MESH", "CURVE"}:
-            obj.visible_camera = True
-
-    # Close-up of the laptop for review, shadows included (still on the
-    # catcher), at much higher detail than the game uses.
+    # Close-up of the desk for review, shadows included (on the catcher).
+    only([o for o in shapes if o not in dish])
     bs.frame_camera(scene, (PLATFORM_AT.x, PLATFORM_AT.y), PLATFORM_M + 0.4, bs.PX_PER_M * CLOSEUP_SCALE)
     bs.render_to(scene, OUT_CLOSEUP)
 
     # The dish on its own: nothing else in the picture, sun straight overhead.
-    for obj in props:
-        if obj.type in {"MESH", "CURVE"}:
-            obj.hide_render = True
-    ground_obj.hide_render = True
-    for obj in dish:
-        obj.hide_render = False
+    only(dish)
+    catcher.hide_render = True
     sun = bpy.data.objects["Sun"]
     sun_rotation = tuple(sun.rotation_euler)
     sun.rotation_euler = (0, 0, 0)
@@ -621,9 +604,8 @@ def main():
 
     # Leave the saved file showing the whole station as it stands.
     sun.rotation_euler = sun_rotation
-    for obj in props:
-        obj.hide_render = False
-    ground_obj.hide_render = False
+    only(shapes)
+    catcher.hide_render = False
     bs.frame_camera(scene, (0, 0), FRAME_M, bs.PX_PER_M * RENDER_SCALE)
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
 

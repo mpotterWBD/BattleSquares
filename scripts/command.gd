@@ -13,8 +13,9 @@ extends Node2D
 ##     so a shaky click still works)
 ##   - click a squadmate in the circle to select just that one (Shift-click
 ##     adds/removes)
-##   - with squadmates selected, left click (or right click) the ground
-##     anywhere to send them there, spread out side by side
+##   - left click the ground anywhere to send the selection there (with
+##     nobody selected, everyone in the circle), spread out side by side; at a
+##     sandbag wall they dig in along it. A right click sends only a selection.
 ##   - or click an order in the ORDERS menu left of the player. It goes to
 ##     the selection, or with nobody selected to everyone who can hear.
 ##     Follow me / Lead (held, then a shape chosen from a pop-out) form them
@@ -34,7 +35,7 @@ extends Node2D
 ##     commanding, an orange line runs from each shooter to its target
 ##     (dashed while it's holding fire because someone is in the way).
 ##   - or deploy equipment from the DEPLOY menu right of the player: hold
-##     Equipment, choose an item from the pop-out, and a see-through ghost
+##     Build, choose an item from the pop-out, and a see-through ghost
 ##     follows the mouse. Click to place it; it must go within the player's
 ##     deploy reach (player.gd `deploy_reach_m`, a brighter ring while
 ##     placing; the ghost turns red outside it). The scroll wheel turns it,
@@ -56,11 +57,18 @@ extends Node2D
 ## the "player" group.
 
 const World = preload("res://scripts/world.gd")
+const BattleLog = preload("res://scripts/battle_log.gd")
+const DebugOverlay = preload("res://scripts/debug_overlay.gd")
 
 const DRAG_THRESHOLD_PX := 8.0   ## mouse travel (screen px) that makes a click a drag
 const PICK_RADIUS_M := 0.24      ## a click this close to a squadmate's centre picks it (about its body)
 const SPACING_M := 0.7           ## gap between squadmates sent to the same spot
 const RING_RADIUS_M := 0.34
+const CRATE_PICK_PX := 6.0        ## a click this far outside a crate's pallet still picks it
+## DEPLOY items that are built from supply crates (crate.gd `builds`) rather
+## than carried: there has to be one with stock somewhere on the map, and
+## what's laid is a site until its parts are brought from it.
+const CRATE_BUILT := ["radio_station", "sandbags"]
 const COVER_SPOT_M := 0.42        ## a sandbag spot is this far behind a wall's middle (as enemy.gd)
 const OVERFLOW_BACK_M := 1.2      ## units left over once a sandbag row is manned line up this far behind it
 const UNLIMITED_COUNT := 1000000   ## what _carried() reports for a deployable count of -1
@@ -83,6 +91,7 @@ const ORDERS := [
 	{id = "lead", text = "Lead", shapes = true},
 	{id = "attention", text = "Attention", shapes = true},
 	{id = "disperse", text = "Disperse"},
+	{id = "build", text = "Build", picks = true},   ## pick what, place it, and they build it (_open_build_popout())
 	{id = "fire", text = "Fire", color = World.FIRE_COLOR},
 	{id = "stop", text = "Stop", color = World.FIRE_COLOR},
 ]
@@ -151,6 +160,11 @@ var _ground_layer: Node2D
 var _shape_popout: HoldPopout
 var _shape_order := ""
 var _deploy_popout: HoldPopout
+## Build: what can be built (CRATE_BUILT, from supply crates), picked like
+## DEPLOY's equipment; and the squadmates who'll build what's placed (the
+## selection when it was picked, else everyone in earshot).
+var _build_popout: HoldPopout
+var _build_crew: Array = []
 
 ## Equipment placement: the deployable being placed ("" = none), its ghosts
 ## (one per spot it would go down, several while dragging out a row), and
@@ -188,6 +202,8 @@ func _ready() -> void:
 	_ground_layer.draw.connect(_draw_circles)
 	add_child(_ground_layer)
 	_hud = _build_hud()
+	add_child(BattleLog.new())   # the F9 battle log and its button (testing)
+	add_child(DebugOverlay.new())   # Q: debug mode, each square's log number over it
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -289,6 +305,11 @@ func _process(delta: float) -> void:
 			if not _hears(unit.global_position):
 				unit.selected = false   # walked out of earshot
 	_hud.visible = commanding
+	# Over the radio there's no DEPLOY: equipment is put down in person (the
+	# radio has its own Deploy, for troops and supply drops).
+	_deploy_menu.visible = not World.radio_commanding
+	if World.radio_commanding and _placing != "":
+		_stop_placing()
 	if commanding:
 		_place_menus()
 		if not _arming.is_empty():
@@ -297,6 +318,12 @@ func _process(delta: float) -> void:
 		elif not _attention_units.is_empty():
 			_banner.text = "ATTENTION   click where %d fall in (%s)   [scroll] turn   [right click] cancel" % [_attention_units.size(), _attention_shape]
 			_banner.add_theme_color_override("font_color", COLOR)
+		elif _placing != "":
+			var how := "click, or drag out a row," if _item().has("line_px") else "click"
+			var verb := "BUILD" if not _build_crew.is_empty() else "DEPLOY"
+			var crew := "   %d to build it" % _build_crew.size() if not _build_crew.is_empty() else ""
+			_banner.text = "%s %s   %s to put it down%s   [scroll] turn   [right click] cancel" % [verb, _item().text.to_upper(), how, crew]
+			_banner.add_theme_color_override("font_color", COLOR)
 		else:
 			_banner.text = ("RADIO COMMAND   radio operators in the dish beam, and anyone in their circle, can hear you   [F] hang up"
 					if World.radio_commanding else "COMMAND MODE   only squadmates inside your command circle can hear you")
@@ -304,6 +331,7 @@ func _process(delta: float) -> void:
 	else:
 		_shape_popout.close()
 		_deploy_popout.close()
+		_build_popout.close()
 		if _placing != "":
 			_stop_placing()
 	if _placing != "":
@@ -396,7 +424,7 @@ func _draw_circles() -> void:
 	var radius: float = speaker.command_circle_m() * World.PX_PER_M   # bigger over the radio
 	_ground_layer.draw_circle(origin, radius, Color(COLOR, AURA_FILL_ALPHA))
 	_ground_layer.draw_arc(origin, radius, 0.0, TAU, 96, Color(COLOR, CONE_EDGE_ALPHA), 1.5, true)
-	if _placing != "":
+	if _placing != "" and not _placing in CRATE_BUILT:   # crate-built things go anywhere
 		var reach: float = speaker.deploy_reach_m * World.PX_PER_M
 		_ground_layer.draw_circle(origin, reach, Color(COLOR, AURA_FILL_ALPHA))
 		_ground_layer.draw_arc(origin, reach, 0.0, TAU, 64, Color(COLOR, 0.8), 1.5, true)
@@ -476,8 +504,37 @@ func _click(point: Vector2, shift: bool) -> void:
 		else:
 			for unit in _squad():
 				unit.selected = unit == hit
-	elif not _selected().is_empty():
-		_order_move(point)
+	elif _crate_at(point) != null:
+		# A supply crate with parts owed to something already laid: the
+		# selection (nobody selected: everyone in the circle) go and build
+		# from it (it takes over what's owed by other crates of its kind,
+		# if that's the one picked).
+		var units := _order_targets()
+		if units.is_empty():
+			return
+		var crate := _crate_at(point)
+		if not crate.wanted():
+			crate.take_over()
+		for unit in units:
+			unit.order_build(crate)
+			_pings.append({pos = unit.global_position, age = 0.0})
+		_pings.append({pos = crate.global_position, age = 0.0})
+	else:
+		_order_move(point, _order_targets())   # nobody selected: everyone in the circle
+
+
+## The supply crate under `point` that owes parts to something being built,
+## or could give them in place of another crate of its kind (crate.gd
+## wanted(), could_take_over()), or null.
+func _crate_at(point: Vector2) -> Node2D:
+	for crate: Node2D in get_tree().get_nodes_in_group("crates"):
+		if not crate.has_method("wanted") or not (crate.wanted() or crate.could_take_over() > 0):
+			continue
+		var local: Vector2 = crate.to_local(point)
+		var half: Vector2 = crate.pallet_m * World.PX_PER_M / 2.0 + Vector2.ONE * CRATE_PICK_PX
+		if absf(local.x) <= half.x and absf(local.y) <= half.y:
+			return crate
+	return null
 
 
 ## Whether the box from `a` to `b` contains a squadmate that can hear.
@@ -499,9 +556,12 @@ func _box_select(a: Vector2, b: Vector2, shift: bool) -> void:
 ## side across the direction of travel (ordered so nobody has to cross over
 ## anyone else). The circle limits who hears the order, not where it sends them.
 ## A point in a sandbag wall's proximity box mans that wall's row instead
-## (_man_sandbags()).
-func _order_move(point: Vector2) -> void:
-	var units := _selected()
+## (_man_sandbags()). `units` (default: the selection) are who go: a left
+## click (_click()) passes _order_targets(), everyone in the command circle
+## when nobody's selected; a right click only ever moves the selection.
+func _order_move(point: Vector2, units: Array = []) -> void:
+	if units.is_empty():
+		units = _selected()
 	if units.is_empty():
 		return
 	if _man_sandbags(point, units):
@@ -540,11 +600,7 @@ func _send_in_line(units: Array, point: Vector2) -> void:
 ## row is full lines up OVERFLOW_BACK_M behind it. False if `point` isn't
 ## at a wall.
 func _man_sandbags(point: Vector2, units: Array) -> bool:
-	var clicked: Node2D = null
-	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
-		if wall.in_zone(point):
-			clicked = wall
-			break
+	var clicked := _sandbags_at(point)
 	if clicked == null:
 		return false
 	var px := World.PX_PER_M
@@ -572,6 +628,14 @@ func _man_sandbags(point: Vector2, units: Array) -> bool:
 		var area := World.ARENA.grow(-0.3 * px)
 		_send_in_line(left, behind.clamp(area.position, area.end))
 	return true
+
+
+## The sandbag wall whose proximity box `point` is in (sandbags.gd in_zone()), or null.
+func _sandbags_at(point: Vector2) -> Node2D:
+	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
+		if wall.in_zone(point):
+			return wall
+	return null
 
 
 ## The walls joined end to end with `wall` (sandbags.gd joined()), in the
@@ -613,7 +677,7 @@ func _spot_held(spot: Vector2, movers: Array) -> bool:
 	return false
 
 
-## Who a menu order goes to: the selection if there is one, otherwise
+## Who a menu order (or a left click on the ground) goes to: the selection if there is one, otherwise
 ## everyone who can hear (inside the command circle, or over the radio).
 func _order_targets() -> Array[Node]:
 	var units := _selected()
@@ -818,21 +882,46 @@ func _assign_formation_slots() -> void:
 ## How many of `id` the player carries; UNLIMITED_COUNT for a count of -1
 ## (player.gd `deployables`), which never runs out.
 func _carried(id: String) -> int:
+	if id in CRATE_BUILT:   # built from supply crates the player's near
+		return _supply_count(id)
 	var speaker = _speaker()
 	var count: int = speaker.deployables.get(id, 0) if speaker else 0
 	return UNLIMITED_COUNT if count < 0 else count
 
 
+## Supply crates `id` can be built from (anywhere on the map: no distance
+## limit, so where crates are dropped matters) with something left to give,
+## nearest to world `near` first.
+func _supply_crates(id: String, near := Vector2.ZERO) -> Array:
+	var out: Array = get_tree().get_nodes_in_group("crates").filter(func(crate):
+		return crate.builds == id and crate.can_set_up())
+	out.sort_custom(func(a, b):
+		return a.global_position.distance_to(near) < b.global_position.distance_to(near))
+	return out
+
+
+## How many `id` can be set up from all the crates on the map: a radio
+## station per full comms crate, a sandbag wall per bag part left.
+func _supply_count(id: String) -> int:
+	var count := 0
+	for crate in _supply_crates(id):
+		count += 1 if crate.single_site else crate.available()
+	return count
+
+
 func _start_placing(id: String) -> void:
-	if _carried(id) <= 0:
+	if _carried(id) <= 0 or World.radio_commanding:
 		return
 	_placing = id
+	World.placing = true   # command mode stays on with Space let go, until it's down or cancelled
 	_drag_from = Vector2.INF
 	_update_ghosts()
 
 
 func _stop_placing() -> void:
 	_placing = ""
+	_build_crew.clear()
+	World.placing = false
 	_drag_from = Vector2.INF
 	for ghost in _ghosts:
 		ghost.queue_free()
@@ -938,10 +1027,15 @@ func _occupied(point: Vector2) -> bool:
 	return false
 
 
-## Equipment has to go down within the player's deploy reach.
+## Equipment has to go down within the player's deploy reach; what's built
+## from supply crates (CRATE_BUILT) can go anywhere on the field.
 func _can_place_at(point: Vector2) -> bool:
 	var speaker = _speaker()
-	return speaker != null and speaker.global_position.distance_to(point) <= speaker.deploy_reach_m * World.PX_PER_M
+	if speaker == null:
+		return false
+	if _placing in CRATE_BUILT:   # its parts are carried in from a crate: anywhere on the field
+		return World.ARENA.grow(-0.5 * World.PX_PER_M).has_point(point)
+	return speaker.global_position.distance_to(point) <= speaker.deploy_reach_m * World.PX_PER_M
 
 
 func _spot_ok(point: Vector2) -> bool:
@@ -954,30 +1048,45 @@ func _spot_ok(point: Vector2) -> bool:
 func _place(spots: Array) -> void:
 	var item := _item()
 	var placed_any := false
+	var thudded := false
 	for spot in spots:
 		if _carried(_placing) <= 0:
 			break
 		if not _spot_ok(spot.pos):
 			_pings.append({pos = spot.pos, age = 0.0, color = REFUSE_COLOR})
 			continue
+		var supplies := _supply_crates(_placing, spot.pos) if _placing in CRATE_BUILT else []   # the crate nearest the spot
+		var crate: Node2D = supplies[0] if not supplies.is_empty() else null
 		var placed: Node2D = item.scene.instantiate()
 		placed.position = spot.pos
 		placed.rotation = spot.turn
 		placed.add_to_group("deployed_" + _placing)   # for snapping onto it
 		get_parent().add_child(placed)   # into the world, beside the squares
-		if _speaker().deployables[_placing] >= 0:   # -1: unlimited
-			_speaker().deployables[_placing] = _carried(_placing) - 1
+		if crate:
+			placed.start_site(crate)   # built from the crate's parts
+		else:
+			if _speaker().deployables[_placing] >= 0:   # -1: unlimited
+				_speaker().deployables[_placing] = _carried(_placing) - 1
+			if not thudded and placed.has_method("thud"):
+				placed.thud()   # up at once: one thud for the row, not one a tile
+				thudded = true
 		_pings.append({pos = spot.pos, age = 0.0})
 		placed_any = true
 	if placed_any:
 		_placing_turn = spots[0].turn   # the next one starts turned the same way
+		# Picked from Build: the crew get to work on it.
+		for unit in _build_crew:
+			if is_instance_valid(unit) and not unit.dead:
+				unit.order_build()
+				_pings.append({pos = unit.global_position, age = 0.0})
 		_stop_placing()
 
 
 # ------------------------------------------------------------------- menus --
 
 ## Keeps ORDERS just left of the player's square on screen and DEPLOY just
-## right of it, and dims buttons that would do nothing. While a click is
+## right of it (DEPLOY isn't shown in radio command mode), and dims buttons
+## that would do nothing. While a click is
 ## wanted on the field (an Attention spot, a Fire target, equipment), the
 ## menus fade and let the mouse through, so a click over them lands on the
 ## field instead of pressing a button.
@@ -1007,6 +1116,16 @@ func _place_menus() -> void:
 	_deploy_button.disabled = DEPLOYABLES.all(func(d): return _carried(d.id) <= 0)
 
 
+## Build's pop-out, beside its button: what can be built, with how many the
+## supply crates have for each (none: greyed out).
+func _open_build_popout(button: Button) -> void:
+	for item in DEPLOYABLES:
+		if item.id in CRATE_BUILT:
+			var count := _carried(item.id)
+			_build_popout.set_option(item.id, "%s  x%d" % [item.text, count], count <= 0)
+	_build_popout.open(button)
+
+
 func _open_deploy_popout() -> void:
 	for item in DEPLOYABLES:
 		var count := _carried(item.id)
@@ -1034,6 +1153,8 @@ func _build_hud() -> CanvasLayer:
 			button.button_down.connect(func():
 				_shape_order = id
 				_shape_popout.open(button, DEFAULT_SHAPE))
+		elif order.get("picks", false):
+			button.button_down.connect(_open_build_popout.bind(button))
 		else:
 			button.pressed.connect(_give_order.bind(order.id))
 		_menu.add_child(button)
@@ -1042,7 +1163,7 @@ func _build_hud() -> CanvasLayer:
 
 	# DEPLOY, right of the player.
 	_deploy_menu = UiStyle.menu_column("DEPLOY")
-	_deploy_button = UiStyle.menu_button("Equipment")
+	_deploy_button = UiStyle.menu_button("Build")
 	_deploy_button.button_down.connect(_open_deploy_popout)
 	_deploy_menu.add_child(_deploy_button)
 	layer.add_child(_deploy_menu)
@@ -1054,7 +1175,21 @@ func _build_hud() -> CanvasLayer:
 	_deploy_popout.setup(DEPLOYABLES, _draw_deploy_icon, 1.0)
 	_deploy_popout.chosen.connect(func(id, at):
 		_mouse_world = _to_world(at)
-		_start_placing(id))
+		# Built from a crate with squadmates selected: they build it (as the
+		# Build order); nobody selected, the player carries the parts in.
+		var crew := _selected().filter(func(u): return _hears(u.global_position)) if id in CRATE_BUILT else []
+		_start_placing(id)
+		if _placing == id:
+			_build_crew = crew)
+	_build_popout = HoldPopout.new()
+	_build_popout.setup(DEPLOYABLES.filter(func(d): return d.id in CRATE_BUILT), _draw_deploy_icon, -1.0)
+	_build_popout.chosen.connect(func(id, at):
+		_mouse_world = _to_world(at)
+		var crew := _order_targets()
+		_start_placing(id)
+		if _placing == id:
+			_build_crew = crew)
+	layer.add_child(_build_popout)
 	layer.add_child(_shape_popout)
 	layer.add_child(_deploy_popout)
 	add_child(layer)

@@ -5,10 +5,7 @@ extends CharacterBody2D
 ## so it can strafe and back up. The body turns toward the point it's aiming
 ## at, but loosely, like a person: it only swings quickly once the aim is
 ## more than `comfort_deg` off its nose, and otherwise eases round to face
-## the target squarely. Its front face is its line of sight, marked by the
-## see-through "Sight" triangle just in front of it, painted on the ground
-## (z_index -1 in scenes/soldier.tscn): under the shadows, the rifle and
-## every square, so the rifle reads as held over it.
+## the target squarely. Its front face is its line of sight.
 ##
 ## While walking it hops. Lifting off the ground moves it toward the overhead
 ## camera, so it grows slightly, and its shadow slides away in the direction
@@ -51,6 +48,7 @@ const World = preload("res://scripts/world.gd")
 const RadioPack = preload("res://scripts/radio_pack.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
 const DeathFall = preload("res://scripts/death_fall.gd")
+const BattleLog = preload("res://scripts/battle_log.gd")
 
 signal died
 
@@ -65,8 +63,6 @@ const TURN_FRAMES := 30
 ## the group as a whole is faded to this, so where they overlap the ground
 ## isn't darkened twice.
 const SHADOW_ALPHA := 0.71
-const SIGHT_GAP_M := 0.05      ## space between the front face and the triangle
-const SIGHT_DEPTH_M := 0.16    ## how far the triangle points out
 ## Climbing over cover (sandbags.gd climb_at(), the "deployed_sandbags"
 ## group): on top it goes at CLIMB_SPEED of its pace (75% slower), lifted
 ## CLIMB_LIFT_M (drawn bigger and its shadow further off, as for a hop), and
@@ -80,12 +76,18 @@ const CLIMB_JOLT_S := Vector2(0.09, 0.2)
 const CLIMB_JOLT_M := 0.035
 const CLIMB_JOLT_DEG := 8.0
 const CLIMB_NEAR_PX := 80.0        ## walls further than this from its centre aren't checked
+## Stepping over a body (death_fall.gd under_at(), the "bodies" group): like
+## a low sandbag, lifted up to BODY_LIFT (of CLIMB_LIFT_M) and slowed to
+## BODY_SPEED of its pace right on top.
+const BODY_LIFT := 0.4
+const BODY_SPEED := 0.7
 
 @export var speed_mps := 1.6          ## walking speed, metres per second
 @export var acceleration_mps2 := 10.0
 @export var friction_mps2 := 9.0
 @export var hop_height_m := 0.06
 @export var hop_length_m := 0.45      ## ground covered per hop
+@export var waddle_deg := 3.0         ## side-to-side sway while it walks, one sway every two hops
 @export var turn_speed_dps := 540.0   ## how fast it swings once the aim leaves the comfort zone
 @export var comfort_deg := 15.0       ## aim can be this far off the nose before it swings
 @export var settle_speed_dps := 60.0  ## how fast it eases round to face the aim squarely
@@ -137,7 +139,6 @@ var _jostle_turn_vel := 0.0
 @onready var _body: Sprite2D = $Body
 @onready var _shadows: CanvasGroup = $Shadows
 @onready var _shadow: Sprite2D = $Shadows/Shadow
-@onready var _sight: Polygon2D = $Sight
 @onready var _rifle = $Rifle
 var _radio_pack: Node2D
 var _fall: Node   ## the ragdoll (death_fall.gd), once it's dead
@@ -148,15 +149,6 @@ func _ready() -> void:
 	add_to_group("units")
 	var px := World.PX_PER_M
 	($CollisionShape2D.shape as RectangleShape2D).size = Vector2.ONE * SIZE_M * px
-	# Triangle drawn facing right (rotation 0): its base runs the full width
-	# of the front face, just in front of it, and its tip points forward.
-	var base_x := (SIZE_M / 2 + SIGHT_GAP_M) * px
-	var half_w := SIZE_M / 2 * px
-	_sight.polygon = PackedVector2Array([
-		Vector2(base_x, -half_w),
-		Vector2(base_x + SIGHT_DEPTH_M * px, 0),
-		Vector2(base_x, half_w),
-	])
 	if kit == "radio":
 		_radio_pack = RadioPack.new()
 		add_child(_radio_pack)   # after Body, so it's drawn over it
@@ -166,8 +158,10 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	var intent := Vector2.ZERO if dead else _move_intent().limit_length(1.0)
 	var px := World.PX_PER_M
-	_climb = 0.0 if dead else _cover_under()
-	var climb_scale := lerpf(1.0, CLIMB_SPEED, smoothstep(0.0, 0.3, _climb))
+	var cover := 0.0 if dead else _cover_under()
+	var body := 0.0 if dead else _body_under()
+	_climb = maxf(cover, body * BODY_LIFT)
+	var climb_scale := lerpf(1.0, CLIMB_SPEED, smoothstep(0.0, 0.3, cover)) * lerpf(1.0, BODY_SPEED, body)
 	if intent != Vector2.ZERO:
 		velocity = velocity.move_toward(intent * speed_mps * _speed_scale * climb_scale * px,
 				acceleration_mps2 * px * delta)
@@ -230,6 +224,7 @@ func _shot_distance_m() -> float:
 func take_hit(point: Vector2, direction: Vector2, damage := 0.0, by: Node2D = null) -> void:
 	if dead:
 		return
+	BattleLog.hit(self, by, 0.0 if invincible else damage)
 	if by != null:
 		last_hit_by = by
 	var px := World.PX_PER_M
@@ -276,7 +271,6 @@ func _die(point: Vector2, direction: Vector2) -> void:
 	set_deferred("collision_layer", 0)
 	velocity = Vector2.ZERO
 	_knock = Vector2.ZERO
-	_sight.visible = false
 	if _radio_pack:
 		_radio_pack.drop()
 	_fall = DeathFall.new()
@@ -360,10 +354,24 @@ func _update_hop(delta: float) -> void:
 
 ## How far up any cover it's on (0 = on the ground), from the nearby walls.
 func _cover_under() -> float:
+	return _cover_under_at(global_position)
+
+
+## How far up any cover a square centred at world `point` would be.
+func _cover_under_at(point: Vector2) -> float:
 	var most := 0.0
 	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
-		if wall.global_position.distance_to(global_position) < CLIMB_NEAR_PX:
-			most = maxf(most, wall.climb_at(global_position))
+		if wall.global_position.distance_to(point) < CLIMB_NEAR_PX:
+			most = maxf(most, wall.climb_at(point))
+	return most
+
+
+## How much it's on top of a body (0..1; death_fall.gd under_at()).
+func _body_under() -> float:
+	var most := 0.0
+	for fall: Node in get_tree().get_nodes_in_group("bodies"):
+		if fall != _fall:
+			most = maxf(most, fall.under_at(global_position))
 	return most
 
 
@@ -388,17 +396,15 @@ func _update_visuals() -> void:
 	_shadow.position = (World.SUN_DIR * lift * tan(deg_to_rad(World.SUN_TILT_DEG))
 			* World.PX_PER_M)
 	_shadows.self_modulate.a = SHADOW_ALPHA * (1.0 - _height_m * 2.5)
-	# A slight side-to-side waddle, one sway every two hops.
-	var waddle := deg_to_rad(3.0) * sin(_hop_phase) * signf(_height_m)
+	# A side-to-side waddle (waddle_deg), one sway every two hops.
+	var waddle := deg_to_rad(waddle_deg) * sin(_hop_phase) * signf(_height_m)
 	var turn := facing + waddle + _jostle_turn
 	var frame := _turn_frame(turn)
 	_body.frame = frame
 	_shadow.frame = frame
-	_sight.rotation = facing + _jostle_turn
 	# An anchored square's rocking moves only what's drawn, not the square.
 	_body.position = _jostle
 	_shadows.position = _jostle
-	_sight.position = _jostle
 	if _radio_pack:
 		_radio_pack.position = _jostle
 		_radio_pack.update_pose(turn, _height_m)

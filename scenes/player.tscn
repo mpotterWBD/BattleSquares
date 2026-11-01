@@ -13,9 +13,10 @@ deployables = {
 "sandbags": -1
 }
 formation_turn_dps = 90.0
+hop_height_m = 0.09
+waddle_deg = 5.0
 
 [node name="Rifle" parent="." index="1"]
-spare_mags = 6
 auto_reload = false
 aim_accurate_m = 3.0
 aim_falloff_m = 3.1

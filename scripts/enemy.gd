@@ -15,6 +15,15 @@ extends "res://scripts/ai_soldier.gd"
 ##            down again after its search if it finds nobody).
 ##        An alerted enemy wakes every calm enemy inside its own detection
 ##        circle, which can chain through a group.
+## SURPRISED  Attacked while calm (hit, or a round passing or landing
+##        within NEAR_MISS_M, ai_soldier.gd), it runs for cover from the
+##        attacker before it fights (_surprise(); ai_soldier.gd _find_hide(),
+##        _tick_hide()): sandbags, a crate, the dish, a helicopter, the
+##        nearest not toward the attacker (or one toward it only a couple of
+##        metres off). Over sandbags it fires from there; behind anything
+##        taller it peeks out to fire and back in. It stays until the attacker
+##        dies or the cover's no good (flanked with no other near), then
+##        ENGAGE. With no cover near it goes straight to ENGAGE.
 ## ENGAGE It fights the player and the squad. Every `rethink_s` it picks
 ##        where to stand by scoring spots around its target (_best_spot()):
 ##        inside its fighting range, round the target's side or back
@@ -29,7 +38,9 @@ extends "res://scripts/ai_soldier.gd"
 ##        close up, it sidesteps. It fires in short bursts after a moment to
 ##        react, as accurately as the rifle allows at that range
 ##        (rifle.gd spread_at()), worse on the move, and never through
-##        another enemy.
+##        another enemy. It goes for whoever it can actually hit first, and
+##        with class 3 cover on its line to everyone it's fighting it holds
+##        fire until it sees a window (ai_soldier.gd standoff).
 ## DIG IN Calm (at its post or on patrol), an open defensive spot inside
 ##        its detection circle with a wall between it and the way it's
 ##        facing draws it in (_dig_in_calm()): it leaves its patrol, goes
@@ -56,7 +67,7 @@ extends "res://scripts/ai_soldier.gd"
 ## walks across the field, and after SEARCH it goes straight back to CALM
 ## and rejoins the patrol instead of heading for a post.
 
-enum Mode { CALM, ENGAGE, SEARCH, RETURN }
+enum Mode { CALM, ENGAGE, SEARCH, RETURN, SURPRISED }
 
 const RangeRing = preload("res://scripts/enemy_ring.gd")
 
@@ -175,21 +186,52 @@ func alert(source: Node2D, from := Vector2.INF) -> void:
 		last_seen = source.global_position
 	elif from != Vector2.INF and not _alive(threat):
 		last_seen = from
-	if mode != Mode.ENGAGE:
+	if mode != Mode.ENGAGE and mode != Mode.SURPRISED:
 		_engage()
 	alerted = true
+	_wake_neighbours(source)
+
+
+## Every calm enemy inside its detection circle wakes too.
+func _wake_neighbours(source: Node2D) -> void:
 	var reach := detection_radius_m * World.PX_PER_M
 	for other: Node2D in get_tree().get_nodes_in_group("enemies"):
 		if other != self and not other.alerted and other.global_position.distance_to(global_position) <= reach:
 			other.alert(source, last_seen)
 
 
+## Attacked while calm (hit, or a round close by: _near_miss()): it's
+## SURPRISED, and runs for cover from `source` (or from `from`, where the
+## shot came from, if the shooter's gone) before it fights (ai_soldier.gd
+## _find_hide()). Already dug in behind a wall facing that way, or with no
+## cover near, it just fights as usual (alert()).
+func _surprise(source: Node2D, from: Vector2) -> void:
+	if dead:
+		return
+	var foe := source.global_position if _alive(source) else from
+	if (_in_cover() and _covered(cover_spot, foe)) or not _find_hide(foe):
+		alert(source, from)
+		return
+	cover_wall = null
+	mode = Mode.SURPRISED
+	alerted = true
+	threat = source if _alive(source) else null
+	attack_target = threat
+	last_seen = foe
+	_reaction_left = randf_range(reaction_s.x, reaction_s.y)
+	_burst_left = burst_shots
+	_wake_neighbours(source)
+
+
 ## A hit from the other side wakes it (friendly fire from another enemy
-## doesn't). The alarm goes up before the hit lands, so even a killing shot
-## wakes the enemies round it.
+## doesn't): calm, it's surprised. The alarm goes up before the hit lands,
+## so even a killing shot wakes the enemies round it.
 func take_hit(point: Vector2, direction: Vector2, damage := 0.0, by: Node2D = null) -> void:
 	if not dead and by != null and is_instance_valid(by) and not by.is_in_group("enemies"):
-		alert(by)
+		if mode == Mode.CALM:
+			_surprise(by, by.global_position)
+		else:
+			alert(by)
 	super(point, direction, damage, by)
 
 
@@ -202,6 +244,10 @@ func _is_hostile(other: Node) -> bool:
 func _move_intent() -> Vector2:
 	var delta := get_physics_process_delta_time()
 	_speed_scale = 1.0
+	if mode == Mode.CALM:
+		var miss := _near_miss()
+		if miss != null:
+			_surprise(miss.shooter if is_instance_valid(miss.shooter) else null, miss.origin)
 	_check_shots()
 	_think_in -= delta
 	if _think_in <= 0.0 and mode == Mode.CALM:
@@ -212,7 +258,12 @@ func _move_intent() -> Vector2:
 	if _think_in <= 0.0 and mode != Mode.CALM:
 		_think_in = THINK_S
 		_look_for_targets()
+	var run := _ammo_run()   # out of ammo: off to get some first
+	if run != Vector2.INF:
+		return run
 	match mode:
+		Mode.SURPRISED:
+			return _surprised(delta)
 		Mode.ENGAGE:
 			return _fight(delta)
 		Mode.SEARCH:
@@ -231,6 +282,27 @@ func is_calm() -> bool:
 	return mode == Mode.CALM
 
 
+func _is_surprised() -> bool:
+	return mode == Mode.SURPRISED
+
+
+## Surprised: into cover from whoever attacked it (or whoever it's seen
+## since), then fighting from there (ai_soldier.gd _tick_hide()). With
+## them dead or the cover no good any more and nothing else near, it fights
+## as usual (ENGAGE: moving about, searching once it's lost them).
+func _surprised(delta: float) -> Vector2:
+	if not _alive(threat):
+		_engage()
+		return Vector2.ZERO
+	attack_target = threat   # (behind tall cover it can't see it: it peeks to)
+	last_seen = threat.global_position
+	var move := _tick_hide(threat.global_position, delta)
+	if _hide_cover == null:
+		_engage()
+		return Vector2.ZERO
+	return move
+
+
 func _patrolling() -> bool:
 	return patrol != null and is_instance_valid(patrol)
 
@@ -245,16 +317,17 @@ func _keep_patrol_slot() -> Vector2:
 		return Vector2.ZERO
 	if dist > JOG_FROM_M / 2.0:
 		_speed_scale = JOG_SPEED
-	return _steer(to.normalized()) * clampf(dist / SLOW_DOWN_M, 0.0, 1.0)
+	return _steer(to) * clampf(dist / SLOW_DOWN_M, 0.0, 1.0)
 
 
 ## The player or a squadmate it can see wakes it: within `sight_m`, any
 ## direction, with nothing solid in the way (a station, a landed
-## helicopter, sandbags).
+## helicopter, sandbags). Someone manning a wall shows over it, though
+## (_clear_view() `seen_over`): only one hiding behind it, not at it, is unseen.
 func _check_intruders() -> void:
 	for hostile: Node2D in _hostiles():
 		if (hostile.global_position.distance_to(global_position) <= sight_m * World.PX_PER_M
-				and _clear_view(global_position, hostile.global_position)):
+				and _clear_view(global_position, hostile.global_position, false, true)):
 			alert(hostile)
 			return
 
@@ -276,18 +349,21 @@ func _check_shots() -> void:
 
 ## Awake: who can it see? Its threat if visible, otherwise the nearest
 ## player or squadmate in sight. Nobody for `lose_contact_s` and it searches.
-## Someone behind sandbags still counts (it sees over them): it keeps firing,
-## and some shots get over (sandbags.gd `through_chance`). Calm, it doesn't
+## Someone behind sandbags still counts (it sees over them), but with class
+## 3 cover on its line to them (ai_soldier.gd _shielded()) it goes for
+## anyone it can hit instead, or holds fire (the standoff). Calm, it doesn't
 ## notice anyone hidden behind them (_check_intruders()).
 func _look_for_targets() -> void:
 	var best: Node2D = null
-	var best_d := sight_m * World.PX_PER_M
+	var best_d := INF
 	for hostile: Node2D in _hostiles():
 		var d := global_position.distance_to(hostile.global_position)
 		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position, true):
 			continue
 		if hostile == threat:
 			d *= 0.7   # sticks with whoever it was fighting
+		if _shielded(hostile):
+			d *= 3.0   # anyone it can actually hit first (ai_soldier.gd standoff)
 		if d < best_d:
 			best_d = d
 			best = hostile
@@ -299,7 +375,7 @@ func _look_for_targets() -> void:
 		threat = best
 		last_seen = best.global_position
 		_unseen_s = 0.0
-		if mode != Mode.ENGAGE:
+		if mode != Mode.ENGAGE and mode != Mode.SURPRISED:
 			_engage()
 	else:
 		attack_target = null
@@ -313,6 +389,21 @@ func _look_for_targets() -> void:
 func _hostiles() -> Array[Node]:
 	var all := get_tree().get_nodes_in_group("player") + get_tree().get_nodes_in_group("squad")
 	return all.filter(func(h): return _alive(h))
+
+
+## Standoff (ai_soldier.gd): the player and the squad.
+func _foes() -> Array[Node]:
+	return _hostiles()
+
+
+## Standoff: a window on `foe`. It's who it's fighting now.
+func _take_window(foe: Node2D) -> void:
+	if foe != attack_target:
+		_reaction_left = randf_range(reaction_s.x, reaction_s.y)
+		_burst_left = burst_shots
+	attack_target = foe
+	threat = foe
+	last_seen = foe.global_position
 
 
 func _alive(node) -> bool:
@@ -360,8 +451,9 @@ func _fight(delta: float) -> Vector2:
 # ---------------------------------------------------------------- cover --
 
 func _in_cover() -> bool:
-	if cover_wall != null and (not is_instance_valid(cover_wall) or cover_wall.is_queued_for_deletion()):
-		_leave_cover()   # the wall's gone
+	if cover_wall != null and (not is_instance_valid(cover_wall) or cover_wall.is_queued_for_deletion()
+			or (cover_wall.has_method("is_collapsed") and cover_wall.is_collapsed())):
+		_leave_cover()   # the wall's gone (or shot down to a puddle)
 	return cover_wall != null
 
 
@@ -459,7 +551,7 @@ func _hold_cover(focus: Vector2, delta: float) -> Vector2:
 		return Vector2.ZERO
 	if to.length() > JOG_FROM_M * px:
 		_speed_scale = JOG_SPEED
-	return _steer(to.normalized()) * clampf(to.length() / (SLOW_DOWN_M * px), 0.3, 1.0)
+	return _steer(to) * clampf(to.length() / (SLOW_DOWN_M * px), 0.3, 1.0)
 
 
 ## Swinging round: if the straight way to `goal` would take it closer to
@@ -625,7 +717,7 @@ func _aim_point() -> Vector2:
 ## Its first shot at a new target waits for it to react.
 func _ready_to_fire() -> bool:
 	_reaction_left -= get_physics_process_delta_time()
-	return mode == Mode.ENGAGE and _reaction_left <= 0.0
+	return (mode == Mode.ENGAGE or mode == Mode.SURPRISED) and _reaction_left <= 0.0
 
 
 ## Bursts: `burst_shots` quick shots, then a pause.

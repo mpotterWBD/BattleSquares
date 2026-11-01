@@ -1,0 +1,49 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/crate.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/props/crate_comms.png" id="2_tex"]
+[ext_resource type="Texture2D" path="res://assets/props/pallet.png" id="3_pallet"]
+[ext_resource type="Texture2D" uid="uid://df77ojs32fgot" path="res://assets/props/crate_comms_open.png" id="9_open"]
+[ext_resource type="Texture2D" path="res://assets/props/crate_comms_1.png" id="4_stage1"]
+[ext_resource type="Texture2D" path="res://assets/props/crate_comms_2.png" id="5_stage2"]
+[ext_resource type="Texture2D" path="res://assets/props/crate_comms_3.png" id="6_stage3"]
+[ext_resource type="Texture2D" path="res://assets/props/crate_comms_4.png" id="7_stage4"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_load"]
+size = Vector2(61.44, 62.89)
+
+[node name="CommsCrate" type="StaticBody2D"]
+collision_mask = 0
+script = ExtResource("1_script")
+load_m = Vector2(0.72, 0.737)
+load_height_m = 0.422
+impact = "metal"
+open_texture = ExtResource("9_open")
+parts = Array[String](["desk", "electronics", "legs", "dish", "wiring"])
+stage_textures = Array[Texture2D]([ExtResource("2_tex"), ExtResource("4_stage1"), ExtResource("5_stage2"), ExtResource("6_stage3"), ExtResource("7_stage4")])
+builds = "radio_station"
+single_site = true
+
+[node name="Shadow" type="CanvasGroup" parent="."]
+z_index = -10
+
+[node name="Shape" type="Node2D" parent="Shadow"]
+
+[node name="Pallet" type="Sprite2D" parent="."]
+z_index = -6
+texture_filter = 4
+scale = Vector2(0.25, 0.25)
+texture = ExtResource("3_pallet")
+
+[node name="PalletShadow" type="CanvasGroup" parent="."]
+z_index = -5
+
+[node name="Shape" type="Node2D" parent="PalletShadow"]
+
+[node name="Body" type="Sprite2D" parent="."]
+texture_filter = 4
+scale = Vector2(0.25, 0.25)
+texture = ExtResource("2_tex")
+
+[node name="Collision" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_load")

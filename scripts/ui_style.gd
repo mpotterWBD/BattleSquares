@@ -91,16 +91,16 @@ static func panel() -> PanelContainer:
 ## box) while the player stands on it: F is the interact key. Add it as a
 ## child of the pad, centred on the pad's origin, and toggle `visible`.
 ## It draws over the squares so the player doesn't hide it.
-static func pad_key(text := "F") -> Label:
+static func pad_key(text := "F", color := Color.WHITE) -> Label:
 	var bold := FontVariation.new()
 	bold.base_font = ThemeDB.fallback_font
 	bold.variation_embolden = 1.2
 	var settings := LabelSettings.new()
 	settings.font = bold
 	settings.font_size = 64
-	settings.font_color = Color.WHITE
+	settings.font_color = color
 	settings.outline_size = 10
-	settings.outline_color = Color(0, 0, 0, 0.6)
+	settings.outline_color = Color(0, 0, 0, 0.6 * color.a)   # as see-through as the letter
 	var label := Label.new()
 	label.text = text
 	label.label_settings = settings

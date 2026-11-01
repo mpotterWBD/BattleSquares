@@ -37,14 +37,17 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 | Input | Action |
 |-------|--------|
 | WASD / arrows | Walk (screen directions; you can strafe) |
+| **Shift** (hold) | Run, at the Player's `run_speed_mps` (Inspector; 3.2 m/s, walking 1.6). Not while carrying a part or in command mode. Aim spreads more on the move, so running shots stray more |
 | Mouse | Aim: the square turns loosely toward the cursor, and the rifle aims within its sweep |
 | Left click | Fire (one shot per click). Dead-on within the rifle's accurate range (6 m) of the click; strays more the further past it you click |
 | **Right mouse** (hold) | Aim: shows the aiming line (solid = accurate range, then a red-shading spread wedge out to the mouse, labelled with the chance the shot goes into the ground) |
-| Scroll wheel | Zoom 0.5×–3× (while placing an Attention formation: turn it 15° a notch) |
+| **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left), DEPLOY menu (right), selection and orders. Left click a squadmate to select it; left click anywhere else orders the selection, or with nobody selected everyone in the circle: on open ground they go there, at a sandbag wall's box they dig in along it, on a supply crate they build from it |
 | **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left), DEPLOY menu (right), selection and move orders |
 | **F** | Interact: at a station's desk (platform box), open/close the RADIO menu or hang up radio command; in the dish box, open/close the dish tuning wheel |
 | Esc | Close the RADIO menu (or step back out of marking an LZ) |
-| Right click | In command mode: move order (or cancel equipment placement); while marking an LZ: back to the request |
+| **Q** | Debug mode on/off: each square's number over it (you 0, everyone else 1, 2...), the same numbers the battle log uses. Your square takes no controls while it's on (no moving, aiming, shooting, F, or command mode). Click a square to see its ammo and spare magazines; click open ground to clear it. Q again gives you control back |
+| **F9** | Start / stop the battle log (or the BATTLE LOG button, top left). Starting wipes the last log. Written to `logs/battle_log.txt`, for Claude to assess (the battle-log skill) |
+| Right click | In command mode: move order for the selection only (or cancel equipment placement). While marking an LZ: back to the request |
 
 ### What's in the game (`scenes/main.tscn`)
 
@@ -143,7 +146,11 @@ BattleSquares/
 │   ├── rifle.gd         ← mouse aim within a sweep, recoil, muzzle flash, firing
 │   ├── radio_pack.gd    ← radio operator's backpack + antenna (soldier `kit = "radio"`)
 │   ├── bullet.gd        ← tracer projectile
+│   ├── battle_log.gd    ← F9 battle log: records every square's actions to logs/battle_log.txt; numbers the squares
+│   ├── debug_overlay.gd ← Q debug mode: each square's log number over it
 │   └── sandbags.gd      ← deployable sandbag wall: solid cover, sand puffs, swept shadow
+├── logs/                ← battle logs (has a .gdignore; not in git)
+├── .claude/skills/battle-log/ ← Claude skill for reading a battle log and tuning the AI
 ├── blender/             ← ignored by Godot
 │   ├── scripts/         ← Python generators (source of truth for assets)
 │   │   ├── bs_common.py ← shared sun, sky, camera and pixel scale; all scripts use it
@@ -202,14 +209,16 @@ BattleSquares/
 |-------|--------|--------|-------|
 | Grass field tile (1024×1024, seamless) | Done (v3, 12× original distance) | `blender/scripts/field_grass.py` | Output `assets/textures/field_grass_tile.png`. The tile covers 12 × 12 m, with 2.52 M blades at 2× size, lush and dry patches, soil, about 3,400 daisies and buttercups, and pebbles; lit from the top-left. Takes about 57 s in total (mostly building the mesh). Older versions are in `assets/previews/` (`…closeup_v1`, `…3x_v2`). |
 | Asphalt road strips, 4 conditions (1024×512 each, tile end to end) | Done (v3: clean, ok, medium, bad), **in the game** (`scenes/road.tscn`, Condition) | `blender/scripts/road_asphalt.py` (`-- clean ok medium bad` to render only some) | `assets/textures/road_asphalt.png` (clean), `road_asphalt_ok.png`, `road_asphalt_medium.png` and `road_asphalt_bad.png`: each 12 m along the road × 6 m across, RGBA, all the same size so they swap freely. **Clean**, after Mike's reference picture: 5 m of even dark asphalt, straight crisp edges, solid white edge lines (0.12 m wide, 0.15 m in) and yellow centre dashes (1 m dash, 1 m gap). **Ok:** slightly faded paint, faint wheel tracks, a few hairline cracks at the edges, one repair patch with a sealed seam, oil stains, edges barely wavy. **Medium:** paint worn through in places, a broken crack down the middle and four across, a patch of crazed cracking, two patches, a small pothole, ragged edges with some gravel and dirt, and grass in a few cracks. **Bad:** paint mostly gone and flaking, cracks everywhere (7 across, a web along the edges, 3 crazed patches), 5 potholes with broken stone in them, crumbling edges with a gravel-and-dirt verge, broken asphalt chunks, and grass in the cracks. Damage is set per condition in `CONDITIONS`. Field grass (same colours, size and density as `field_grass.py`, whose `main()` is guarded so it can be imported) grows over each verge, then the strip is transparent so the real field shows through, and its outermost 10 px are faded to nothing. No shadow catcher: the field's grass already has its shadows, and doubling them left a dark band. All four render in about 40 s. Previews: `assets/previews/road_conditions_preview.png` (all four over the grass, clean at the top), `road_asphalt{,_ok,_medium,_bad}_preview.png`, `road_conditions_ingame.png` (all four in the game, Clean to Bad from left to right) and `road_ingame_preview.png`. |
-| Sandbag wall (deployable), 6 tiles | Done (v2: tiles that join into one wall), **in the game via DEPLOY** | `blender/scripts/sandbags.py` | `assets/props/sandbags_{single,start,end,mid_0,mid_1,mid_2}.png` (272 × 128 px = 0.797 × 0.375 m, **rendered at 4× density**, shown at 0.25 with mipmaps; each has a `.import` with mipmaps on). After Mike's reference photo: one stack of 3 courses, a single bag deep (the two-deep base of v1 is gone), 0.354 m high, 0.282 m wide at the foot, the courses stepping in 5% each as they rise. Big, boxy, lumpy tan burlap bags (0.4 × 0.256 × 0.136 m; 1.6× v2's) in a running bond: even courses two bags a tile, odd ones offset half a bag, so one bag straddles each join. Tiles are 0.797 m (68 game px, two squares) and join end to end seamlessly: each is rendered with the neighbours' bags that reach into it, and the bags at a join are keyed by position (`bag_rng()`) so every tile builds them the same, then cropped to the tile. **single:** both ends finished with half bags. **start / end:** finished at −x / +x. **mid_0–2:** joined at both ends, with different middle bags so long rows don't repeat. Lit by the standard sun; the game draws the shadow. Review: `assets/previews/sandbags_preview.png` (an angled run of five), `sandbags_tiles_preview.png` (the tiles laid edge to edge), `sandbags_rows_preview.png` and `sandbags_join_closeup.png` (in the game). All six render in about 15 s. |
+| Sandbag wall (deployable), 6 tiles | Done (v2: tiles that join into one wall), **in the game via DEPLOY** | `blender/scripts/sandbags.py` | `assets/props/sandbags_{single,start,end,mid_0,mid_1,mid_2}.png` (272 × 128 px = 0.797 × 0.375 m, **rendered at 4× density**, shown at 0.25 with mipmaps; each has a `.import` with mipmaps on). After Mike's reference photo: one stack of 3 courses, a single bag deep (the two-deep base of v1 is gone), 0.354 m high, 0.282 m wide at the foot, the courses stepping in 5% each as they rise. Big, boxy, lumpy tan burlap bags (0.4 × 0.256 × 0.136 m; 1.6× v2's) in a running bond: even courses two bags a tile, odd ones offset half a bag, so one bag straddles each join. Tiles are 0.797 m (68 game px, two squares) and join end to end seamlessly: each is rendered with the neighbours' bags that reach into it, and the bags at a join are keyed by position (`bag_rng()`) so every tile builds them the same, then cropped to the tile. **single:** both ends finished with half bags. **start / end:** finished at −x / +x. **mid_0–2:** joined at both ends, with different middle bags so long rows don't repeat. Lit by the standard sun; the game draws the shadow. Review: `assets/previews/sandbags_preview.png` (an angled run of five), `sandbags_tiles_preview.png` (the tiles laid edge to edge), `sandbags_rows_preview.png` and `sandbags_join_closeup.png` (in the game). All six render in about 15 s. **Damage** (since 2026-10-30): every tile also as `sandbags_<kind>_d1.png` and `_d2.png` (272 × 192 px, a taller frame for spilt sand, centred), and `sandbags_collapsed.png` (a puddle of sand with burlap scraps). |
 | Ammo crate (first of the supply crates) | Done, **scene ready to place** (`scenes/crate_ammo.tscn`) | `blender/scripts/crates.py` (`-- ammo`) | `assets/props/crate_ammo.png` (384 × 384 px = 1.125 m square, **rendered at 4× density**, shown at 0.25 with mipmaps; `.import` has mipmaps on). After Mike's reference photo (a tarped pallet), without the tarp: a 0.8 m square four-way wooden pallet (0.144 m high: bottom boards, nine blocks, stringers, seven deck boards, pine with grain) loaded with 24 olive-drab M2A1-size ammo cans in a square block (4 across × 2 deep × 3 high; each with a rimmed lid, folding handle, end latch and yellow stencil marks, a little out of true) under black ratchet straps both ways with buckles on top. Load 0.632 × 0.618 m, top at 0.732 m. Lit by the standard sun; the game draws the shadow (`scripts/crate.gd`). Review: `assets/previews/crate_ammo_preview.png` (angled). Other crate kinds will be added to `KINDS` in the same script. |
-| Sandbag crate | Done, **scene ready to place** (`scenes/crate_sandbags.tscn`) | `blender/scripts/crates.py` (`-- sandbags`) | `assets/props/crate_sandbags.png` (384 × 384 px = 1.125 m square, 4× density, mipmaps). The ammo crate's pallet and straps, loaded with 30 filled burlap sandbags (the wall's bag model and burlap from `sandbags.py`, a touch smaller: 0.37 × 0.235 m), 2 × 3 to a layer, 5 layers, each turned 90° from the one below. Straps as on the ammo crate. Load 0.768 × 0.772 m, top at 0.747 m. Review: `assets/previews/crate_sandbags_preview.png`. |
+| Sandbag crate | Done, **scene ready to place** (`scenes/crate_sandbags.tscn`) | `blender/scripts/crates.py` (`-- sandbags`) | `assets/props/crate_sandbags.png` (384 × 384 px = 1.125 m square, 4× density, mipmaps). The ammo crate's pallet and straps, loaded with 30 filled burlap sandbags (the wall's bag model and burlap from `sandbags.py`, a touch smaller: 0.37 × 0.235 m), 2 × 3 to a layer, 5 layers, each turned 90° from the one below. Straps as on the ammo crate. Load 0.768 × 0.772 m, top at 0.747 m. A supply of 10 sandbag walls; as they're used it shows smaller stacks: `crate_sandbags_1.png` … `_3.png` (24, 15 and 3 bags left, no straps; `SAND_STAGES`). Review: `assets/previews/crate_sandbags_preview.png`. |
+| Comms crate | Done, **in the game** (equipment drops; the radio station is built from it) | `blender/scripts/crates.py` (`-- comms`) | `assets/props/crate_comms.png` (full, strapped) and `crate_comms_1.png` … `_4.png` (1–4 parts taken, no straps), 384 × 384 px, 4× density, mipmaps. One item per station part, side by side so each shows from above, in the order they come off: the desk folded into a grey bundle (two panels, folded legs, webbing ties) along the north side; the electronics in a black rugged case; the dish's legs in an olive case; the dish in a rounded desert-tan case; the wiring on an olive cable reel. Load 0.720 × 0.737 m, top at 0.422 m. Review: `assets/previews/crate_comms_preview.png`. |
 | Ammo can (lone) | Done, **scene ready to place** (`scenes/ammo_can.tscn`) | `blender/scripts/crates.py` (`-- can`) | `assets/props/ammo_can.png` (128 × 128 px = 0.375 m square, 4× density, mipmaps). One of the ammo crate's cans on its own: olive drab, rimmed lid, folding handle, end latch, yellow stencils. 0.16 × 0.32 m, top at 0.207 m. Review: `assets/previews/ammo_can_preview.png`. |
+| Cargo parachute | Done, **in the game** (equipment drops) | `blender/scripts/parachute.py` | `assets/vehicles/parachute.png` (938 × 938 px = 5.5 m square, **rendered at 2×**, shown at 0.5 with mipmaps). A round 5 m cargo canopy, top-down: 16 gores in two olive drabs, sewn radial seam tapes, a darker hem, an apex vent, the skirt scalloped between the lines. Review: `assets/previews/parachute_preview.png` (on its lines over an ammo crate). |
 | Rifle | Done (v2, detailed) | `blender/scripts/rifle.py` | `assets/characters/rifle.png` (384 px, **rendered at 4× density**, shown at 0.25 scale with mipmaps so it stays sharp when zoomed in). 0.48 m from pivot to muzzle (0.28 m beyond the front face). Parts: gunmetal receiver, red-dot sight with a red lens, polymer handguard, front sight post, barrel, muzzle brake, and a forward-raked magazine. **Canted 30°** so the magazine shows from above (it pokes out to the gun's right). Lit from straight overhead so it can rotate; its shadow is drawn in Godot. v1 (plain bar) is in `assets/previews/rifle_v1_plain.png`. |
 | Radio pack (radio operator) | Done (v1) | `blender/scripts/radio_pack.py` | `assets/characters/radio_pack.png` (614 px = 1.8 m, **rendered at 4× density**, shown at 0.25 scale with mipmaps), centred on the square's centre, square facing +x. Brown canvas pack on the square's back (0.16 m deep, 0.3 m wide, top at 0.44 m, just above the square), darker top flap and side pouches, shoulder straps over the square's top, the radio's top with two knobs, and a 0.6 m whip antenna raked 32° back with a tip cap. Lit from straight overhead so it turns with the square; its shadow is drawn in Godot (`radio_pack.gd`). |
 | Helicopter (UH-60-style transport) | Done (v3, 0.55 scale, cockpit, flies insertions) | `blender/scripts/helicopter.py` | Modelled at real size, then shrunk by `SCALE` = 0.55 (`helicopter.gd SCALE` must match): fuselage 8.4 m, rotor 9 m. Cockpit (laid out for scale 0.5 and grown with `SCALE`): two red pilot squares, 0.44 m, corners rounded like the player's (upright edges only, top edges sharp), under dark tinted glass (alpha 0.85); an instrument panel with screens, switch strips and a centre console with lamps. `assets/vehicles/helicopter_body.png` (939 px = 11 m, nose to +x; cockpit interior without pilots or glass), `helicopter_pilot.png` (one pilot, lit as in the cockpit; the game draws two and animates them), `helicopter_glass.png` (glass only, drawn over the pilots) and `helicopter_rotor.png` (centred on the mast), both lit from straight overhead so they can face any heading. Plus 4 half-res shadow outlines `helicopter_shadow_{body,stabilator,fin,tailrotor}.png` (padded for sweeping). Olive drab, matte, no markings; black blades with yellow tip bands. Renders in about 15 s. |
-| Deployable comms station (platform, desk, laptop, small satellite dish) | Done, **in the game via DEPLOY** | `blender/scripts/radio_station.py` | Four images, all 2× density (show at scale 0.5): `radio_station.png` (tall parts, z 4), `radio_station_ground.png` (deck and cable, z −5), `radio_station_shadow.png` (1109 px = 6.5 m, centred on the station's middle), and `radio_station_dish.png` (2.4 m, centred on the dish post, lit from overhead, rotated in game). **Compact since 2026-10-29:** a 2 m square plank operator platform centred 1.05 m north of the origin, with a field desk along its east edge carrying a radio (whip antenna, handset), the detailed rugged laptop (lit mapping-app screen, mouse), a power unit, a headset, a notebook and a mug; the antenna (since 2026-10-30) is a desert-tan flyaway satellite terminal 1.1 m south of the origin, inside the platform's width: four splayed outrigger legs on round grey foot pads braced to a centre column, a pan/tilt head and yoke, a 1.2 m dish at 40° elevation with a rolled rim and a centre feed boom, and a black cable down the column. The head, yoke, dish, rim, boom and feed are the turning image; the base stays in the station image; one cable from the desk to the dish. The 7 m guyed mast and its stakes are gone. Lit by the normal top-left sun (it doesn't turn), with its shadow rendered separately and normalised like the squares'. Review images: `assets/previews/radio_station_preview.png` (an in-game screenshot) and `radio_station_dish_preview.png` (an angled close-up of the antenna). Renders in about 20 s. |
+| Deployable comms station (desk, laptop, small satellite dish; no platform since 2026-10-30) | Done, **in the game via DEPLOY** | `blender/scripts/radio_station.py` | Its parts rendered separately, all 2× density (show at scale 0.5), since 2026-10-30: `radio_station_desk.png`, `_electronics.png`, `_stand.png` (z −1), their shadows `radio_station_shadow_desk.png`, `_electronics.png`, `_stand.png` (z −10), `radio_station_ground.png` (the ground cable, z −5), `radio_station_shadow.png` (1109 px = 6.5 m, centred on the station's middle), and `radio_station_dish.png` (2.4 m, centred on the dish post, lit from overhead, rotated in game). **Compact since 2026-10-29:** a 2 m square plank operator platform centred 1.05 m north of the origin, with a field desk along its east edge carrying a radio (whip antenna, handset), the detailed rugged laptop (lit mapping-app screen, mouse), a power unit, a headset, a notebook and a mug; the antenna (since 2026-10-30) is a desert-tan flyaway satellite terminal 1.1 m south of the origin, inside the platform's width: four splayed outrigger legs on round grey foot pads braced to a centre column, a pan/tilt head and yoke, a 1.2 m dish at 40° elevation with a rolled rim and a centre feed boom, and a black cable down the column. The head, yoke, dish, rim, boom and feed are the turning image; the base stays in the station image; one cable from the desk to the dish. The 7 m guyed mast and its stakes are gone. Lit by the normal top-left sun (it doesn't turn), with its shadow rendered separately and normalised like the squares'. Review images: `assets/previews/radio_station_preview.png` (an in-game screenshot) and `radio_station_dish_preview.png` (an angled close-up of the antenna). Renders in about 20 s. |
 | Red square: player (body + shadow) | Done (v3, turning sheets) | `blender/scripts/character_square.py` | `assets/characters/red_square_sheet.png` (30 frames × 64 px; the block is about 34 px = 0.4 m) and `red_square_shadow_sheet.png` (30 × 128 px). Frame k = the block turned k × 3° clockwise; 30 frames cover 90°, because a square repeats every quarter turn. Pre-lit at every angle, so the highlight and the shadow's shape stay correct as it turns. Glossy red plastic with rounded edges. Renders in about 20 s. Older single images are in `assets/previews/`. |
 | Crash test dummy square (body) | Done (v1), `scenes/dummy.tscn` ready to place | `blender/scripts/dummy_square.py` | `assets/characters/dummy_square_sheet.png` (30 frames × 64 px, same layout, size, bevel and sun as the red square, so it drops into a soldier's Body sprite as-is). Crash-test yellow with a black ring-and-cross tracking target on top. Not the classic half-black quadrant target: the sheet covers only a quarter turn, and a quadrant target would swap black and yellow every time the frames wrap round. The shadow is the same shape, so it reuses `red_square_shadow_sheet.png`. Imports `character_square.py` for the block and render helpers (its `main()` is now guarded). Renders in about 8 s. Preview: `assets/previews/dummy_square_preview.png` (red square, then the dummy at 0°, 24° and 45°, 6×). |
 | Blue enemy square (body and fall sheets) | Done, **in the game** (`scenes/enemy.tscn`) | `blender/scripts/enemy_square.py`, `fall_square.py -- blue` | `assets/characters/blue_square_sheet.png` (same layout as the red sheet) and `blue_square_fall_sheet.png` (same layout as the red fall sheet). The same block in blue plastic, `bs.srgb(0.08, 0.32, 0.88)`; the shadow sheets are shared. `fall_square.py` now takes `-- red/dummy/blue/shadow` to render only some sheets. Preview: `assets/previews/enemy_fight_preview.png`. |
@@ -1850,3 +1859,485 @@ Major choices and the reasons behind them.
 - **`crate.gd bullet_hit()`:** "metal" gives sparks; any other `impact` gives the dust puff as before; both play the impact sound.
 - `crate_ammo.tscn` and `ammo_can.tscn` set `impact = "metal"` (the lone can is the same steel).
 
+### 2026-10-30 — Equipment requests: crates dropped by parachute
+- Mike: another Deploy item, **Equipment**, with a window like Troop Request but 2 × 2. For now it can hold an ammo crate or a sandbag crate. He also asked for a parachute model. When equipment is summoned, the helicopter drops it from a realistic height, the parachute deploys, and the crates land right where they were summoned. Placing it should show a ghost formation, like lining up troops.
+- **Parachute** (new `blender/scripts/parachute.py`; see the Asset List). It's 5 m across, a compromise: a real cargo chute is 10–20 m, which would fill the screen.
+- **`radio_terminal.gd`:**
+  - Deploy's pop-out is now Troops / **Equipment** / Vehicles.
+  - **The request:** Equipment opens the **EQUIPMENT REQUEST** panel: 4 slots in a 2 × 2 grid (`EQUIP_SLOTS`, `EQUIP_PER_ROW`). Each slot has a hold pop-out (`EQUIPMENT_TYPES`: Ammo crate or Sandbag crate, with drawn crate icons; a quick click gives an ammo crate), plus Send helicopter and Clear.
+  - **Readying:** the filled slots ready one after another, `seconds_per_crate` each (**1 s for testing**), alongside the troop request. The pad timer shows both, one line each.
+  - **The drop zone** (new screen DZ): the ghost (`_draw_dz_ghost()`) shows each crate as it will land (pallet and load sprites, see-through) in its grid position, `DROP_PITCH_M` 1.6 m apart.
+    - It follows the mouse, and the wheel turns it on the 15° grid (`_turned()`, a copy of command.gd's, since preloading command.gd here would be a cycle).
+    - A crate's spot is red if it's off the field or anything solid overlaps its `DROP_CLEAR_M` 0.85 m square (`_drop_spot_ok()`, a physics shape query).
+    - A click with every spot green sends the drop. Right click or Esc goes back.
+- **New `scripts/supply_drop.gd`:** the helicopter's run. It comes in from the west at 25 m along the line through the drops' middle, slowing to 8 m/s and letting down to 20 m over the last 30 m. It releases each crate as it passes over its spot (west to east), then speeds up, climbs and leaves east. The hull is never solid.
+- **New `scripts/air_drop.gd`:** a crate coming down.
+  - **Falling:** 0.9 s free fall, then the canopy blossoms open over 0.7 s (a little overshoot) and brakes it to 5 m/s. It sways ±4°.
+  - **On target:** it steers from where it was let go to its exact spot as it comes down.
+  - **In the air:** it grows 1% per metre up, like the helicopter. Its footprint and the canopy cast shadows on the ground, offset by their heights. It isn't solid, and it's drawn over everyone.
+  - **Touchdown:** exactly on the spot and turned as set. The crate becomes solid with its own shadows, there's a ring of dust and a thud (concrete on a road, dirt elsewhere), and the canopy flattens, drifts 2.2 m downwind and fades over 2.5 s.
+  - The crate is the real crate scene throughout (its collision and shadows off while airborne).
+- Tested (`test_airdrop.gd`):
+  - **Request:** the station's terminal opened Equipment with 4 slots; 3 were filled (ammo, sandbags, ammo).
+  - **Ghost:** laid out 1.6 m apart at 15°. Spots on the station's desk or on a crate were refused.
+  - **Drop:** the drop sent one helicopter. All 3 crates landed **0.000 m off** their spots, about 4 s after release, solid, at 15°. The parachutes and the helicopter cleared up afterwards.
+  - Screenshots: three canopies coming down together; the three crates down on the road with dust.
+- At 1.6 m apart the 5 m canopies overlap heavily on the way down. Smaller canopies or wider spacing would fix that if it bothers.
+
+### 2026-10-30 — Dropped crates draw under the helicopter
+- Mike: just as the helicopter lets a crate go, the crate looks like it's in front of (over) the helicopter.
+- **Verified** with a screenshot 8 ticks after release: the crate was drawn over the tail boom and a rotor blade. `air_drop.gd` drew the falling crate at z 40 and the canopy at z 41, over the helicopter's body (z 5) and rotor (z 19–20).
+- **Fix:** the falling crate is at `CRATE_Z` 3 and the canopy at `CANOPY_Z` 4: over the squares (z 0), under any helicopter. The crate drops back to z 0 on landing, as before.
+
+### 2026-10-30 — The canopy settles straight down onto the crate
+- Mike: instead of collapsing off to the side, the parachute should drift straight down, with a little physics if it's worth it.
+- **`air_drop.gd _settle_canopy()`:** after touchdown the canopy comes down on its own, straight down over its crate.
+  - **Physics:** its speed changes by g − drag·v|v|, where drag = g / `CANOPY_SINK_MPS`² × inflation, so fully open it sinks at 1.5 m/s. The load's gone, so it brakes hard from the 5 m/s it was doing and nearly floats.
+  - **Deflating:** it spills air as `_inflation` falls toward `DEFLATED` 0.4 over about `DEFLATE_S` 1 s. With less drag it sinks faster (≈2.4 m/s at 0.4).
+  - **Look:** drawn from 100% down to `DEFLATED_LOOK` 55% of its open size as it deflates. It ripples (`FLUTTER` ±6% at 1.6 Hz, fading as it deflates) and wanders up to 0.12 m over the crate, less as it gets lower. Its shadow closes in as its height drops.
+  - **Draping:** once it's down to the load's top (`crate.load_height_m`), it spreads 15% (`DRAPE_SPREAD`) and fades over `DRAPE_S` 1.6 s, then it's removed.
+- The sideways drift (`WIND`, `COLLAPSE_*`) is gone.
+
+### 2026-10-30 — Radio station: no wooden platform
+- Mike: what bothered him about the radio station was the wooden platform. It should just be the desk and the satellite.
+- **`radio_station.py`:**
+  - `build_platform()` (the plank deck, joists and edging) and `PLATFORM_H` are removed.
+  - The desk stands on the ground at the same spot (`DESK_AT` = `PLATFORM_AT` + (0.65, 0, 0)).
+  - The cable is one run along the ground from the desk to the dish.
+  - `GROUND_PARTS` is just the cable now.
+  - `PLATFORM_AT` and `PLATFORM_M` stay as the operator's spot (2 m square) so nothing else moves.
+- Re-rendered `radio_station.png`, `_ground.png`, `_shadow.png`, `_dish.png` and the desk close-up.
+- **Game:** no changes needed. The desk collision, the green operator box (OperatorZone and StandBox), the dish and its tuning box are all in the same places. Comments in `radio_station.gd` and `radio_terminal.gd` no longer mention the platform.
+- Checked in game (screenshot): the desk on the grass with its kit and shadow, the cable over the ground to the dish, the green boxes as before, and the player registers on the operator box.
+
+### 2026-10-30 — The settling canopy spreads instead of shrinking
+- Mike: when the parachute collapses after touchdown it shouldn't shrink. If anything it would get slightly bigger.
+- **`air_drop.gd _canopy_look()`:** going slack (as `_inflation` falls), the canopy is drawn growing from its open size to `SLACK_LOOK` 112% (the dome flattening and spreading), instead of shrinking to 55%. It spreads `DRAPE_SPREAD` 6% more as it drapes over the load (was 15%).
+- **Never smaller:** its on-screen size is held at the biggest it's been since touchdown (`_canopy_size`), so coming down (lower looks smaller) can't make it shrink.
+- The shadow uses the same size without the height factor.
+- The physics are unchanged: it still spills air and sinks faster.
+
+### 2026-10-30 — The station's desk: partial cover
+- Mike: give the desk collision like a sandbag's but with different odds: a 30% chance a bullet hits the desk, the rest go through, using the metal impact sound.
+- **New `scripts/partial_cover.gd`** (StaticBody2D):
+  - `lets_bullet_through()`: true 1 − `hit_chance` of the time (default 0.3).
+  - `bullet_hit()`: sparks (`hit_sparks.gd`) and the "metal" impact sound (`impact` export; another kind gives dust instead).
+  - `sees_through()`: true.
+- **`radio_station.tscn`:** the Desk shape moved off `Solid` onto its own `DeskBody` with that script. It stays on the squares' layer, so it's still solid to walk into. The Dish stays on `Solid`, solid to everything.
+- **`ai_soldier.gd _clear_view()`:** sight lines now look past anything that `sees_through()`. A desk doesn't hide a square standing behind it; sandbags still do while calm.
+- Bullets ask once per body (bullet.gd `_passed`), as with sandbags: 30% stop with sparks and a clang, 70% fly on.
+
+### 2026-10-30 — No green interaction squares at the station
+- Mike: get rid of the green interaction squares.
+- **`radio_station.tscn`:** `StandBox` (the operator's spot) and `DishStandBox` (the dish's tuning spot) were green Polygon2D squares with outlines. They're now plain Node2D anchors at the same places, with the outline Line2Ds gone. They still carry the "[F] Interact" prompt, the request timer and the "F" key on the dish spot.
+- The interaction areas (OperatorZone, DishZone) are unchanged, so standing in the same places works as before. The prompt still appears when you're on a spot.
+- Comments in `radio_terminal.gd` and `radio_station.gd` updated.
+
+### 2026-10-30 — No DEPLOY menu in radio command mode
+- Mike: when giving orders over the radio, remove Deploy.
+- **`command.gd`:** the DEPLOY menu is hidden while `World.radio_commanding`. Equipment is put down in person; the radio's own Deploy covers troops and supply drops.
+  - Switching to radio command mid-placement stops the placing.
+  - `_start_placing()` refuses in radio command mode.
+  - ORDERS is unchanged.
+
+### 2026-10-30 — Placing equipment no longer needs Space held
+- Mike: once something is picked from DEPLOY (Space), you should be able to let go of Space.
+- **`world.gd`:** new `World.placing`. `commanding()` is true while it's set, as well as with Space held or over the radio.
+- **`command.gd`:** `_start_placing()` sets it and `_stop_placing()` clears it, so command mode stays on through the placing until the item's put down (left click, or a dragged row on release) or cancelled (right click). Then it drops out if Space isn't held. The banner reads "DEPLOY SANDBAGS   click, or drag out a row, to put it down   [scroll] turn   [right click] cancel" meanwhile.
+- `player.gd _ready()` clears it with the other statics on a restart.
+
+### 2026-10-30 — Shots over and under the desk; the dish as partial cover
+- Mike: make shots go above and below the desk, and give the dish a similar hit statistic: 60% hit, 40% over.
+- **Bullets drawn over** (`bullet.gd go_over()`): a shot going over something tall is drawn at `OVER_Z` 6, over the station's body (z 4) and dish (z 5), for `OVER_CLEAR_M` 1.5 m past it, then back at z 0. Bullets were always at z 0, so every shot passing the desk was drawn under it.
+- **`partial_cover.gd`:**
+  - New `over_chance`: of the shots that get past, the share that go over (and are drawn over); the rest go under or through.
+  - New `see_through` export (`sees_through()` returns it).
+- **`radio_station.tscn`:**
+  - The desk: `over_chance` 0.5, so 30% hit, 35% over, 35% under.
+  - The **dish** moved off `Solid` onto its own `DishBody` (partial_cover): `hit_chance` 0.6, `over_chance` 1.0 (40% over) and `see_through` off (the 1.2 m dish hides whoever's behind it). Still solid to walk into.
+  - `Solid` is now empty and left in place.
+
+### 2026-10-30 — Station: rifle over the desk; green F prompts
+- Mike: close to the desk, the gun should be in front of it, not behind. Get rid of the "[F] Interact" and dish text prompts, and show a green F instead (like the big white one) in front of the desk or round the dish.
+- **Draw order:**
+  - The station's `Body` (the desk and the dish's stand) moves from z 4 to **−1**, under the squares, so a square at the desk has its rifle (and itself) drawn over the desk. The turning dish stays at z 5, over them.
+  - Bullets passing **under** the desk now dip to `UNDER_Z` −3 (`bullet.gd go_under()`, called by `partial_cover.gd` for the shots that don't go over). Over-the-top shots still rise to z 6.
+- **Prompts:**
+  - `ui_style.gd pad_key()` takes a colour.
+  - The terminal's "[F] Interact" label is now a big green F (`COMMAND_COLOR`, the white one's style) centred on the desk (`StandBox` moved to the desk's middle). It shows while the player is in the OperatorZone.
+  - The dish's "[F] Tune dish" label (`DishPrompt`, and its LabelSettings) is removed. Its big F is green and centred on the dish (`DishStandBox` moved there).
+  - The request timer sits just above the desk (`DESK_HALF_PX`).
+- **Dish zone:** `DishZone` is now a ring all round the dish (a 115 px, 1.35 m circle centred on it; the dish itself is solid to 0.6 m), instead of a box on its west side. You can tune it from any side.
+
+### 2026-10-30 — See-through F, a grey dish stand, and the comms crate
+- Mike: make the F more transparent; make the comms dish's legs the same colour as the table; and another crate, of desk tech and computer equipment, which will be used to build the comm station.
+- **F:**
+  - `ui_style.gd pad_key()` fades the outline with the letter's alpha.
+  - The desk's and dish's green F are at 0.55 alpha (`radio_terminal.gd PAD_KEY_ALPHA`).
+- **Dish stand** (`radio_station.py`): the legs, braces, column and collars use a new `DishStand` material in the desk's `DESK_GREY`. The dish, head and yoke stay tan, and the foot pads and screws as they were. Re-rendered.
+- **Comms crate** (`crates.py` `comms` kind; see the Asset List):
+  - New helpers `rugged_case()` (a Pelican-style case with a lid seam, latches on the long sides, a top handle and a label or stencil) and `cable_reel()`.
+  - The load's footprint and top are measured.
+  - `scenes/crate_comms.tscn`: `crate.gd`, load 0.728 × 0.724, top 0.654, impact "metal" (there's no plastic impact sound yet).
+  - It's the third option in the radio's Equipment request ("Comms crate", with a drawn icon), so it can be dropped by parachute.
+  - Building a station from it is still to come.
+
+### 2026-10-30 — Building the radio station from the comms crate
+- Mike: break the comm station into 5 pieces: the desk, the electronics on the desk, the dish, the legs and the wiring. You can only deploy a comm desk within a certain detection circle of the crate. Once you build, your character goes to the crate, grabs the desk and brings it to the spot where it's being built, and the same for every part, with parts disappearing from the crate as you go. (Units doing this comes later.)
+- **Art, `radio_station.py`:**
+  - The station renders as parts: the desk frame (`DESK_FRAME_PARTS`), the electronics (everything else under the Desk empty), the dish's stand, the dish (as before) and the ground cable.
+  - Each has its own shadow render (desk, electronics, stand), on the catcher.
+  - `radio_station.png` and `radio_station_shadow.png` are deleted.
+- **Art, `crates.py` comms:** re-laid as one item per part, all visible from above (`COMMS_PARTS`, `COMMS_OBJECTS`). Stages 1–4 are rendered with the straps cut and that many parts hidden.
+- **`crate.gd`** gains generic build-from support:
+  - `parts` (taken in order), `stage_textures` and `build_radius_m`.
+  - `site` (what's being built from it) and `taken`.
+  - `take_part()` and `return_part()`. The sprite follows the stage; empty, the Body is hidden, it stops being solid and its load shadow goes, leaving just the pallet.
+  - In command mode a faint green circle shows round a crate that's ready (`can_set_up()`).
+  - A see-through green F shows on it when the player is within `TAKE_M` 1.25 m with empty hands and something's being built from it.
+- **`crate_comms.tscn`:** `parts` desk, electronics, legs, dish, wiring; the five stage textures; `build_radius_m` **8 m**; load 0.72 × 0.737, top 0.422.
+- **`radio_station.tscn`:** the Body and Shadow sprites are replaced by Desk, Electronics and Stand sprites (z −1) and ShadowDesk, ShadowElectronics and ShadowStand (z −10).
+- **`radio_station.gd`:**
+  - New `built` export (default true, for hand-placed stations), `installed`, `site_crate`, `PARTS` and `PART_NODES`.
+  - `start_site(crate)` makes it a site: parts not yet in are drawn as faint green ghosts (`GHOST`), with no shadows and not solid.
+  - `needs()`, `can_deliver_at()` (within `DELIVER_M` 2.6 m of its middle) and `install()`. With all five in, it's `built`.
+  - A see-through green F over its middle shows when the player brings a part it needs.
+  - Unbuilt, there's no dish tuning, no beam, and the terminal doesn't answer (`radio_terminal.gd _player_on_box()` checks `built`).
+- **`command.gd`:**
+  - "Radio station" in DEPLOY is available only while the player is inside an unused comms crate's build circle (`_build_crate()`, used by `_carried()`).
+  - Placing it calls `start_site(crate)` instead of using up a carried station.
+- **`player.gd`, carrying:**
+  - F at a crate with empty hands takes the next part (`carrying`). F at a site that needs it installs it.
+  - While carrying it moves at `CARRY_SPEED` 0.65, has no rifle (hidden, can't fire or reload), and shows the part held 0.36 m in front (`_draw_carried()`: grey desk bundle, black, olive or tan case, or the cable reel).
+  - Killed while carrying, the part goes back on its crate.
+- Tested (`test_build_station.gd`):
+  - **Circle:** no radio station at 12 m from the crate, one at 5 m.
+  - **Site:** placed, linked to the crate, ghosts at 0.3 alpha, desk not solid, terminal dead.
+  - **Five trips:** each took the right part with the F on the crate, at 0.65× speed with no rifle, delivered with the F on the site; the crate counted down 4, 3, 2, 1, 0.
+  - **Built:** desk and dish solid, terminal working, rifle back. The crate is just a pallet, not solid.
+  - **Death:** a part taken from a second crate went back on it when the player was killed.
+  - Screenshots: mid-build (two parts in, carrying the legs, the crate down to two items) and finished (the station, the empty pallet).
+
+### 2026-10-30 — The Build order; sandbag walls come from sandbag crates
+- Mike: a new order, **Build**. If the right container is near, things can be built, so a unit can build the comm tower or a sandbag wall. Each sandbag crate has 10 sandbag walls. The stack needn't change every time, but have 3 or 4 versions so it looks like it's getting smaller.
+- **Supply crates** (`crate.gd`, generalised from the comms crate's build support):
+  - New exports: `builds` (the DEPLOY id it supplies), `single_site` (one station takes all five parts) and `stage_heights` (the load's shadow height per stage).
+  - `reserve(site, count)` promises parts when something's laid. `available()` is what's left to promise. `wanted()` (some taken < reserved) is whether a part is worth fetching. `site_for(part, at)` finds the nearest site of its own that needs it.
+  - The `site` field is now `sites` and `reserved`.
+  - Returned parts (`return_part()`, a carrier killed or called off) go on a stack and are taken again first, so the comms crate copes with parts coming back out of order.
+  - Stage pictures spread over the parts (stage = taken × pictures / parts), so 4 pictures cover 10 walls.
+- **Sandbag crate** (`crate_sandbags.tscn`): `builds` "sandbags", 10 "sandbags" parts, 4 stage pictures (`crates.py` renders the smaller stacks), `stage_heights` 0.747 / 0.638 / 0.529 / 0.311 m, `build_radius_m` 8.
+- **Comms crate:** `builds` "radio_station", `single_site`.
+- **`command.gd`:**
+  - `CRATE_BUILT` (radio_station, sandbags) are counted from supply crates in reach (`_supply_crates()`, `_supply_count()`): a station per comms crate, a wall per bag part not yet promised.
+  - Laying one starts it as a site on the nearest crate. Sandbags are no longer carried (the unlimited count no longer applies).
+  - New **Build** order in ORDERS (`order_build()` on the selection, or everyone in earshot).
+- **Sandbag walls** (`sandbags.gd`):
+  - New `built` export. `start_site(crate)` makes it a site: a faint green ghost, no shadow, not solid, no proximity box, no climbing (`in_zone()` and `climb_at()` say no).
+  - It's in "build_sites" with `needs()`, `can_deliver_at()` (1.4 m) and `install()`. A smaller green F shows on it when the player brings bags.
+  - Hand-placed walls start built.
+- **Radio station:** `start_site()` reserves all five parts and joins "build_sites"; it leaves the group once built.
+- **New `scripts/carry_art.gd`:** how a carried part looks (`draw()`), shared by the player and squadmates. Adds a sandbag bundle.
+- **Player:** delivers to the nearest site in "build_sites" that needs what it carries; takes from any supply crate that owes a part.
+- **`squadmate.gd`, State BUILD:**
+  - **Fetching:** it heads for the nearest crate within `BUILD_RANGE_M` 30 m that's `wanted()` and takes a part (`_crate_with_work()`).
+  - **Delivering:** it carries the part (`CARRY_SPEED` 0.65, rifle away, no firing or returning fire, the part shown in front) to its crate's nearest site needing it, else any site (`_site_needing()`), and installs it. Then it repeats.
+  - **Finishing:** with nothing left it goes idle where it is.
+  - **Stopping:** move, follow, lead, attention and disperse stop it (`_stop_building()`), and so does being killed; a part it holds goes back on its crate.
+  - It looks where it's walking while building.
+- Tested:
+  - **`test_build_order.gd`:**
+    - **Supply:** near both crates there were 10 sandbag walls and 1 station available. Laying 3 walls left 7; they were ghosts and not solid.
+    - **Building:** a station site was placed, then Build was ordered for 2 squadmates. Everything was built in **16.2 s**, both carrying at once at times.
+    - **After:** the walls were solid, the station built, the sandbag crate at stage 1 with 7 left, the comms crate down to its pallet. The squadmates were idle with rifles back.
+    - **Interrupted:** a squadmate called away while carrying put its bag back (taken 4 → 3).
+  - **`test_build_station.gd`** (the player building alone) still passes.
+  - Screenshots: mid-build (one loading bags at the crate, the first wall up, two ghosts) and done.
+
+### 2026-10-30 — No distance limit from supply crates
+- Mike: no limit on how far something can be from its crate; it encourages smart drop locations.
+- **`command.gd`:** sandbag walls and radio stations can be laid anywhere while some crate on the map has stock (`_supply_crates()` no longer checks the player's distance). DEPLOY's count is the total over every crate. Each site draws from the crate **nearest the spot it's laid on**.
+- **`crate.gd`:** `build_radius_m` and the command-mode build circle are removed (and from both crate scenes).
+- **`squadmate.gd`:** Build fetches from the nearest crate that owes a part, however far (`BUILD_RANGE_M` removed).
+
+### 2026-10-30 — Fix: the player couldn't turn
+- Mike: his character can't turn any more.
+- **Cause:** the Build-order change moved the carried-part drawing out of `player.gd` (into `carry_art.gd`) by cutting from `_draw_carried()` to `_wants_to_fire()`. That cut also took out the four player functions between them:
+  - `_aim_point()`: aiming at the mouse. Without it the soldier default kept the current facing, so the player couldn't turn.
+  - `_turn_toward()`: holding still in command mode.
+  - `_shot_spread_deg()` and `_shot_distance_m()`: the player's own accuracy and ground-hit distance. The AI defaults were being used.
+- **Fix:** all four restored verbatim from `209c91e` (unchanged since).
+- **Checked:**
+  - Every script's function list matches `209c91e`'s apart from intended changes; nothing else was lost.
+  - In a test the player turned from 115° off the mouse to on it within 1.5 s.
+  - Spread inside the accurate line is 0 again.
+
+### 2026-10-30 — Build picks and places like DEPLOY
+- Mike: Build should work like the equipment menu: show the options and place it anywhere. If he has units selected, they're the ones who build it.
+- **`command.gd`:**
+  - The Build order (`picks = true`) opens its own hold pop-out (`_build_popout`, to the left like the formation pop-out). It lists what's built from supply crates (`CRATE_BUILT`: Radio station, Sandbags) with DEPLOY's icons and how many the crates can supply (greyed at 0).
+  - Choosing one notes the crew, the selection or else everyone in earshot (`_order_targets()`), as `_build_crew`, and starts the usual placing: ghost, scroll to turn, drag a sandbag row, anywhere on the map.
+  - When it's down the crew get `order_build()` and set to work. Cancelling (right click) or placing clears the crew.
+  - The banner reads "BUILD SANDBAGS   … to put it down   2 to build it …".
+  - DEPLOY is unchanged: it still lays sites for the player to build himself.
+- **Anywhere:** what's built from supply crates (`CRATE_BUILT`) ignores the player's `deploy_reach_m` and can be laid anywhere on the field (`_can_place_at()`), through Build or DEPLOY. The reach ring isn't drawn while placing it. Carried equipment keeps the reach.
+
+### 2026-10-30 — Click a crate to build from it
+- Mike: if the thing is already laid, select a unit, then click the crate, and the unit starts building.
+- **`command.gd _click()`:** with squadmates selected, a left click on a supply crate that owes parts (`wanted()`; the pallet's footprint plus `CRATE_PICK_PX` 6 px, `_crate_at()`) sends them to build from it (`order_build(crate)`), with pings on them and the crate. A click anywhere else is the usual move.
+- **`squadmate.gd order_build(from)`:** given a crate, it only fetches that crate's parts (to that crate's sites, or any site that needs them), and stands down once that crate owes nothing. Without one (from the Build order), it fetches from the nearest crate with work, as before. `_stop_building()` clears it.
+
+### 2026-10-30 — Destructible sandbags; two spare magazines each
+- Mike: sandbags need to be destructible, with 3 stages of damage, the last collapsing into a puddle of sand. A unit behind a wall that goes should try to fill another available spot, or else stay defensive where it is. Walls are pretty strong: full health 60, divided between the stages. Also, everyone only has two magazines.
+- **Art (`sandbags.py`, `--damage` renders just these):**
+  - `apply_damage()` damages each built tile, deterministically per tile (`bag_rng("damage", kind, stage)`):
+    - **d1:** one of the top course's own bags gone, the rest torn and slumped (z 0.6–0.78), two spills of sand.
+    - **d2:** the whole top course gone, the middle slumped with one bag burst (1.12 × 1.2 × 0.42), four spills and two burlap scraps.
+    - **Collapsed:** every bag gone; three lumpy sand heaps along the tile, two side spills and five scraps lying on the sand.
+  - Only a tile's own bags are taken, never those shared at a join.
+  - Sand: `sand_material()` (blotchy tan, fine grain bump) and `sand_mound()` (icosphere, so there's no pole pinch; noisy edge and height). Scraps: `burlap_scrap()`.
+  - Damaged frames are `DAMAGE_FRAME_H_M` 0.5625 m (192 px) so spills aren't cut off; the heaps stay inside the tile's width so the puddle tapers off.
+- **`sandbags.gd`:**
+  - `max_health` 60 (30 rifle hits), `health`, `damage_stage` (0 whole, 1, 2, 3 collapsed).
+  - `bullet_hit(point, direction, damage)` now takes the bullet's damage, via `take_damage()` (bullet.gd passes it; crate.gd and partial_cover.gd accept and ignore it). Shots that go over do none.
+  - Past 2/3 health it shows d1, past 1/3 d2, at 0 it collapses. The tile name is kept (`_tile_name`) so the damaged version matches its single, start, end or mid tile (`DAMAGED_TILES`, `_show_tile()`).
+  - Its shadow shortens with each stage (`STAGE_HEIGHT` 1, 0.82, 0.6).
+  - **Collapsed** (`_collapse()`): not solid, no shadow, no proximity box, no climbing. It moves from "deployed_sandbags" to "sand_puddles", the walls it joined retile as ends, and a burst of dust goes up. The puddle stays.
+- **`squadmate.gd`:** dug in behind a wall that collapses (`_cover_lost()`), it moves to the nearest free spot (`_free_cover_spot()`) behind a standing wall facing out the same way, within `RESPOT_M` 10 m, and digs in there. With none, it stays where it is, still defending, without cover.
+- **`enemy.gd`:** a collapsed wall counts as gone (`_in_cover()`), so it leaves cover and finds other cover or fights as usual.
+- **Magazines:** `rifle.gd spare_mags` defaults to **2** for everyone (it was unlimited for the AI), and `player.tscn` is 6 → 2. So 30 in the rifle and 2 × 30 spare. The AI still reloads by itself but now runs dry.
+- Tested (`test_sand_damage.gd`):
+  - **Damage:** a mid wall showed `_d1` at 10 hits (health 40), `_d2` at 20 (health 20), collapsed at 30. Collapsed it wasn't solid, had no cover box and was out of the group; its two neighbours became single tiles.
+  - **Defenders:** the defender behind it dug in behind the neighbouring wall, south side, 0.44 m from its middle. A defender behind a lone wall stayed put (moved 0.00 m), still defending, with no cover.
+  - **Enemy:** an enemy in cover left it when its wall collapsed.
+  - **Magazines:** player, squadmate and enemy each have 2 spares. A squadmate fired until dry, then had 0 spares and 0 rounds.
+  - Screenshot: the four stages side by side.
+
+
+### 2026-10-30 — Facing arrow removed
+- Mike: remove the arrow in front of the characters. The see-through "Sight" triangle in front of every square is gone: the node from `soldier.tscn` (and its hidden override in `dummy.tscn`), and its constants and code from `soldier.gd`. A square's facing still shows from its body and rifle.
+
+### 2026-10-30 — Sending units to any sandbag crate
+- Mike: selecting a unit and clicking a crate didn't work for sandbags. A wall reserves its bag from the sandbag crate nearest to where it's placed, so clicking a *different* sandbag crate found nothing owed there and became a move order.
+- `crate.gd could_take_over()` / `take_over()`: a crate of the same kind with bags to spare takes over what other crates owe to walls still waiting (the parts not yet taken off them), and those crates get the bags back. Not for single-site crates (a radio station's parts come from its own comms crate).
+- `command.gd _crate_at()` accepts a crate that could take over, and a click on it calls `take_over()` before the order.
+- Tested: 3 walls placed by crate A, a unit sent to crate B: B took over all 3 (A back to 10 free), and the unit built them all from B in 17.6 s. With nothing waiting, a click on a crate is still a move order.
+
+### 2026-10-30 — Looking ahead to go round obstacles; parachute and landing sounds
+- Mike: obstacle avoidance needs upgrading. Walking in front of something like the desk, units get stuck and wait, or slide along it; they need to see it in advance and go round it. And use the new sounds for the parachute and the boxes dropping.
+- **Avoidance (`ai_soldier.gd`, so squadmates and enemies):** `_steer()` only bent round other squares; solid things weren't seen at all.
+  - `_avoid_obstacles()` (from `_steer()`, every `AVOID_EVERY_S` 0.1 s): sweeps a circle of its room (`CLEAR_RADIUS_M` 0.3, its half-diagonal and a little) up to `LOOK_AHEAD_M` 3 m along the way (layer 1: crates, the desk and dish, helicopters; squares left to `_steer()`, sandbags left to climbing).
+  - Something there: it turns off further and further (`SWERVE_DEG` 15…150) on the side it's committed to (first time: the side away from the obstacle), only then the other side, and takes the first heading clear for `SKIRT_M` 1.2 m. It keeps that side until the straight way is clear again, so it hugs round the corner without dithering.
+  - What it's walking up to doesn't count (`_at_goal()`: the goal point is in it or within its room of it, e.g. a crate it's fetching from), nor what it's already against unless it would walk into it.
+  - `_is_stuck()`: going round something while moving freely doesn't count as no progress (up to `DETOUR_LIMIT_S` 8 s), so it no longer flips sides or gives up halfway round.
+  - `_steer()` now takes the vector to the goal (not just a direction), so callers in `squadmate.gd` and `enemy.gd` pass `to`.
+- **Sounds (`air_drop.gd`):** `assets/sfx/parachuteFlapping.mp3` (18.9 s) loops on the canopy from a random point (first 80%; the end has one loud snap), fading in as it opens, out over `FLAP_FADE_S` 0.8 s after touchdown. `assets/sfx/HittingGround.mp3` is the crate landing (+4 dB, pitch ±6%), in place of the dirt/concrete impact. Heard to 40 m.
+- Tested (`test_avoid.gd`): a squadmate walked across the desk both ways, across the dish, down past the desk's end, across an ammo crate, to a spot just behind the desk and right across the station: never once touching anything, at most 0.9 s slower than a straight line (before: slid along the desk, and the spot behind it was given up 1.3 m short). Build order (fetching from crates), the crate click and sandbag defence tests still pass. A supply drop: flapping silent in free fall, in at 1.0–1.5 s, steady to touchdown at 4.0 s, out by 4.8 s; the landing sound played.
+
+### 2026-10-30 — DEPLOY's button renamed Build
+- Mike: change my menu from Equipment to Build. The DEPLOY menu's one button (right of the player) now reads **Build** (`command.gd`); what it does is unchanged (pick an item, place it, carry its parts in). The radio terminal's Equipment drop request is unchanged.
+
+### 2026-10-30 — Bodies stay on the field; ammo from a dead square's rifle
+- Mike: bodies should stay on the field when they die, in the darker colour they have now. A little circle round their gun makes it a source of ammo: walking over it you only get its magazine and the ammo that was in it.
+- **`death_fall.gd`:** every body now darkens (`DARKEN_TO`, as before) and stays; the fade-out and removal (`LIE_S`, `FADE_S`) and the player-only `lingers` flag are gone. Once body and rifle have come to rest (`came_to_rest`), `_offer_ammo()` puts an ammo pickup on the rifle if it's showing and its magazine has rounds. `drops_ammo` (off for the player's own, `player.gd`).
+- **`ammo_pickup.gd` (new):** a green circle (`RADIUS_M` 0.32, breathing slightly) painted on the ground (z −1) round the gun, in the "ammo_pickups" group. The player's centre within `REACH_M` 0.32 m of the gun takes the magazine: `rifle.gd take_magazine()` empties the dead gun and shows it without a magazine (`rifle_no_mag.png`); `add_spare()` puts a magazine with those rounds in the player's spares; "+1 MAG (n)" floats up and fades. Only the magazine in the gun, not the dead square's spares.
+- **`rifle.gd abandon_reload()`:** dying mid-reload after the old magazine dropped out and before the new one seated leaves the gun with no magazine (0 rounds, nothing to pick up).
+- Tested (`test_bodies.gd`): two enemies killed, one with 17 rounds in its magazine, one empty: one pickup, at the 17-round gun. 13 s later both bodies were still there, darkened to 0.55. The player walked over both guns: spares 2 (60 rounds) → 3 (77); both dead guns 0 rounds; no pickups left; the gun shows no magazine. Screenshots checked: the circle round the loaded gun only, then "+1 MAG (17)".
+
+### 2026-10-30 — Squadmates and enemies go for ammo when they run out
+- Mike: squadmates and enemies can and should try to get more ammo if they run out.
+- **`ai_soldier.gd`:** `is_out_of_ammo()` (nothing in the rifle, no spare with rounds, not reloading, limited spares). `_ammo_run()`, called first in `squadmate.gd` / `enemy.gd _move_intent()` (a squadmate carrying a part finishes first): while out, every `AMMO_LOOK_S` 0.5 s it looks for the nearest ammo pickup within `AMMO_SEARCH_M` 40 m that no live square has claimed, claims it, and jogs there (`AMMO_RUN_SPEED` 1.35, steering round obstacles). There it takes it (`give_to()`) and reloads, then its usual state takes over again (a defender goes back to its spot behind the wall, an enemy to its cover, formation to its slot). With nothing in reach it carries on as before. Dying drops its claim.
+- **`ammo_pickup.gd`:** `claimed_by` (so two don't go for the same magazine); `give_to(square)` works for anyone, the "+1 MAG" note only for the player. The player can still take one an AI is heading for; it then looks again.
+- Tested (`test_ammo_run.gd`): a squadmate dug in behind a wall ran dry with two magazines on the field (21 and 9 rounds): had the nearer 21 in its rifle 6.3 s later, then was back defending, 0.03 m from its spot. Two squadmates dry at once with one magazine left: one claimed it and got 9 rounds, the other stayed put, then claimed the next one dropped. An enemy ran dry next to a body: 30 rounds 2.8 s later.
+
+### 2026-10-30 — The right-hand Build menu hands the job to selected units
+- Mike (issues_features_report.txt): picking a crate-built item (e.g. sandbags) from Build with units selected, they didn't build it; it just went down, and he had to click the crate. Since the DEPLOY button was renamed Build there are two Build menus: the orders one (left) gave the job to `_order_targets()`, the DEPLOY one (right) never set `_build_crew`.
+- `command.gd`: the DEPLOY pop-out's pick now sets `_build_crew` to the selected squadmates in earshot when the item is crate-built (`CRATE_BUILT`); nobody selected, it's as before (the player carries the parts). The left one still falls back to everyone in earshot.
+- Tested (`test_deploy_crew.gd`): one squadmate selected, Sandbags from the right-hand Build: it went to build at once and the wall was up in 3.0 s. Nobody selected: nobody went; the wall waited for the player.
+
+### 2026-10-30 — Dead squares' guns drawn under the living
+- Mike: guns of dead folks should be below characters, not on top. The rifle stayed a child of its dead square at z 0, so it could draw over a square standing on it.
+- `death_fall.gd`: once the rifle has come down (`_gun_down`) it goes to absolute z `GUN_DOWN_Z` −4 (on the ground, as a dropped magazine): under every square and their shadows. Its own shadow is hidden then (it's flat; drawn in the square's shadow group it would darken the gun). `ammo_pickup.gd`: the circle drops to z −5, under the gun.
+- Checked (`test_gun_under.gd`, screenshot): both dead guns at z −4, shadow off; the player and a squadmate standing on them are drawn over the guns.
+- Mike: yes, bodies should be on the ground too. `death_fall.gd _land()` puts the dead square at z `BODY_DOWN_Z` −3 once it first hits the ground: under every living square and their shadows, over its own gun (−4) and the ammo circle (−5). A body that settles on its first touch (too gentle to bounce) now goes through `_land()` too, so it also darkens (it didn't before). Checked: bodies at z −3; a squadmate standing on a body is drawn over it, with its shadow.
+- Mike: don't move the bodies, you just walk over them, kind of like sandbags. A dead square was still a CharacterBody2D masking layer 1, so a square stepping onto it got it pushed aside (depenetration). `death_fall.gd`: from death it has a collision exception with every square (it still bounces off solid things as it skids); at rest its `collision_mask` is 0. Once down it's in the "bodies" group with `under_at(point)` (1 within `BODY_REACH_M` 0.22 m of where it lies, easing to 0 over `BODY_EDGE_M` 0.14). `soldier.gd _body_under()`: on a body a square is lifted `BODY_LIFT` 0.4 of a sandbag climb (with its clambering jolts) and slowed to `BODY_SPEED` 0.7.
+- Tested (`test_walk_over.gd`): bodies at rest have mask 0. A squadmate walked straight across one: lifted 0.40, 1.12 m/s on it (walks 1.60), the body moved 0.000 m. The player put down on another: lifted 0.40, body moved 0.000 m. `test_ammo_run.gd` still passes.
+
+### 2026-10-30 — Everyone starts with half a magazine
+- Mike: give all of us half a mag. Asked: start with 15 rounds and no spares, and enemies too.
+- `rifle.gd`: new `start_rounds` (15; −1 for a full magazine) is what's in the rifle at the start; `spare_mags` defaults to 0 (was 2), and `player.tscn`'s own `spare_mags = 2` is gone. So everyone (player, squadmates, enemies) has 15 rounds and nothing to reload with: more ammo has to come off the dead (`ammo_pickup.gd`). Magazines still hold 30 (`mag_size`), so a picked-up one can be full.
+- Checked: player, squadmate and enemy each start with 15 rounds, 0 spares, and can't reload; `test_ammo_run.gd` still passes.
+
+### 2026-10-30 — Short of ammo, they pick it up without waiting to run dry
+- Mike: the enemies don't seem to do it: 3 dead and one not, and he didn't take their ammo. Reproduced: an AI only went for ammo once completely out (rifle and spares empty), so one with a few rounds left walked past loaded guns, and with everyone starting on 15 the dead often have nothing left in theirs anyway (no circle).
+- `ai_soldier.gd`: `is_short_of_ammo()` (less than a full magazine in rifle and spares together). Short, it picks up any ammo within `AMMO_TOPUP_M` 12 m; out, it still searches `AMMO_SEARCH_M` 40 m. `_may_top_up()` (default yes) lets a subclass hold off topping up; given an order that rules it out, it drops the claim.
+- `squadmate.gd _may_top_up()`: not while walking somewhere it was sent (MOVE), holding a wall (DEFEND) or building. Out of ammo it goes regardless. Enemies always top up.
+- Tested (`test_ammo2.gd`, each case in a fresh scene): an enemy with 6 rounds took both nearby guns (12 and 7) within 5.4 s of their circles appearing. A squadmate with 15 ordered behind a wall dug in and stayed (3 s later still there, still 15) although a 21-round gun lay 8 m off; run dry, it had the 21 in 6.2 s and was dug in at its spot again 2.4 s later. An idle squadmate with 15 topped up from a 20-round gun 6 m off (35 after 3.7 s). Two dry squadmates, one magazine: one took it, the other didn't move. An enemy run dry went for the nearest guns.
+
+### 2026-10-31 — Crates arrive strapped; hold F to undo the straps
+- Mike: every crate gets a model without the straps. Either the player or a unit has to undo the straps by going up to the crate and holding F for 2 s; after that it can be used to build. He'll find a sound for it. (A break-away animation of the straps flying off was tried and removed at Mike's request: the straps just disappear.)
+- **Art:** `crates.py` already rendered `crate_<kind>_open.png` (the full load, straps hidden) for ammo, comms and sandbags in an earlier session that was cut short; Godot had imported them with mipmaps off, now on (their `.import` files) like the other crate textures.
+- **`crate.gd`:** `strapped` (default true) and `open_texture` (none: no straps, e.g. the lone ammo can). While strapped, `can_take()` is false. `work_unstrap(who, delta)`, called every physics tick by whoever's at it (`can_unstrap()`: empty hands, within `TAKE_M`, nobody else on it), adds up to `UNSTRAP_S` 2 s; a tick missed (let go, walked off, died) resets it (`_physics_process()`). A yellow ring (`UNSTRAP_RING_M` 0.62 m) round the crate fills meanwhile; the green F shows while the player could start. Done: `strapped` off, the load shows `open_texture` (stage 0; the smaller stages were already strapless), `unstrapped` is emitted, and `UNSTRAP_SOUND` plays (now `res://assets/sfx/BandBreak.mp3`, see 2026-11-01). `in_reach()` and `unstrapping_by_other()` are shared helpers.
+- **`player.gd _tick_unstrap()`:** holding F (`interact`) with empty hands at a strapped crate works it. A fresh F press after that takes a part, as before.
+- **`squadmate.gd _tick_build()`:** at a strapped crate it's sent to (Build order or crate click), it faces the crate and works the straps; others wait by it.
+- Scenes: `crate_ammo.tscn`, `crate_comms.tscn`, `crate_sandbags.tscn` get `open_texture`. The ammo crate can be unstrapped but nothing comes off it yet.
+- Tested (`test_unstrap.gd`, scratch copy, headless): sandbag and ammo crates start strapped, the ammo can doesn't. Strapped: can't take, can unstrap, F shows. Held 1 s: progress 1.02, ring on; let go: back to 0, still strapped. Held again: off at 2.02 s, `crate_sandbags_open.png`, and an F press took a part (the open texture stays at stage 0). Two squadmates on Build at a strapped comms crate: the nearer began at 0.92 s, straps off at 2.92 s (2.00 s of work, never handed over), part delivered at 5.60 s, crate now `crate_comms_1.png`.
+
+### 2026-10-31 — Fix: two sides dug in behind sandbags never saw each other
+- Mike: the two sides don't see each other if they're both behind sandbags. Reproduced (`test_wall_sight.gd`): a squadmate dug in behind a wall and a calm enemy behind another wall 15 m (and 25 m) away, facing each other: 8 s and no shot. A calm enemy only wakes on seeing someone (`enemy.gd _check_intruders()`), and `_clear_view()` let a viewer see over the wall *it* was at but not over the other wall; squadmates only shoot alerted enemies. So nobody started it.
+- **`ai_soldier.gd _clear_view()`:** new `seen_over` flag: cover that whoever's at `to` is manning (they're in its proximity box) doesn't hide them, since they're looking over the top. Only `_check_intruders()` uses it, so enemies still score spots that see a dug-in target only over its wall as worse (`_best_spot()`), and only someone behind a wall but not at it (further back than its `zone_depth_m`, 0.8 m) is hidden from a calm enemy.
+- Tested: at 15 m the enemy woke and the fight started at once (enemy killed, squadmate unhurt); at 25 m both were firing. Control: a squadmate 1.5 m behind its wall (not at it) stayed unseen for 8 s. `test_unstrap.gd` still passes.
+- (A mistake in the first version of this edit left `ai_soldier.gd` failing to parse for a few minutes; fixed. If the editor showed errors for it, they should clear on its own; otherwise reopen the script.)
+
+### 2026-10-31 — Surprised state: attacked while idle, run for cover, then fight from it
+- Mike: a non-player character that's idle and then attacked should seek cover behind anything close and away from the enemy (sandbags, crates, anything on the field), unless the only thing is a couple of metres toward the enemy; once behind it, it starts engaging. Called the surprised state. Asked: the trigger is a hit or a near miss (a round passing or landing within 2–3 m); behind cover too tall to shoot over, they peek out to fire and step back; for squadmates, only idle ones.
+- **`ai_soldier.gd`** (shared):
+  - `_near_miss()`: a hostile round whose path (from its last step to where it goes into the ground, or its 1 s range) comes within `NEAR_MISS_M` 2.5 m. Judged on the whole path, so a shot at it counts the moment it's fired. Without that, a calm enemy *hears* the shot (40 m) and goes to ENGAGE before the round arrives.
+  - `_find_hide(foe)`: anything on mask 1|4 (solid things and sandbags) within `HIDE_SEARCH_M` 8 m that isn't a square, a see-through desk, an unbuilt or collapsed wall, or narrower than a square across the line of fire (`HIDE_MIN_WIDTH_M` 0.4 m; the lone ammo can). Spot: behind a sandbag wall's middle (`WALL_SPOT_M` 0.42 m, in its box, so it can shoot over), or `HIDE_GAP_M` 0.32 m off anything else's far side from the attacker (`_footprint()` from its collision shapes). The spot must be on the field, clear (`HIDE_ROOM_M`), not taken (`_hide_taken()`: someone on it, or a surprised square heading there), and have that cover as the first thing toward the attacker within 1.5 m (`_hide_covers()`). It takes the nearest spot that isn't closer to the attacker; only with none, one toward it within `HIDE_TOWARD_M` 2.5 m.
+  - `_tick_hide(foe)`: runs there (`HIDE_RUN_SPEED` 1.4). Behind sandbags (`_hide_low`) it fires from the spot. Behind anything taller, every `HIDE_S` 1–2 s (a quick 0.3–1 s first look) it steps out sideways to the nearest spot with room and a clear view (`_peek_spot_for()`, up to `PEEK_MAX_M` 1.5 m, either way), fires `PEEK_SHOTS` 3 (or `PEEK_S` 3 s), and steps back; it stays in to reload. `_may_fire_hidden()` gates `_wants_to_fire()`. Flanked for `HIDE_FLANK_S` 0.8 s: other cover, or `_hide_cover` goes null for the subclass to handle.
+- **`enemy.gd`:** new `Mode.SURPRISED`. Calm, a hit (`take_hit()`) or `_near_miss()` (checked before `_check_shots()`) calls `_surprise()`: with cover, SURPRISED (alerted, wakes its neighbours as before, `threat` = the attacker); already dug in behind a wall facing that way, or no cover near, it's `alert()` as before. `_surprised()` keeps the attacker as its target and runs `_tick_hide()`; the attacker dead or no cover left: ENGAGE. `alert()` and `_look_for_targets()` don't knock it out of SURPRISED; `_ready_to_fire()` allows it.
+- **`squadmate.gd`:** new `State.SURPRISED`. Idle (IDLE or SHUFFLE), a hit or near miss calls `_surprise()`: it shoots back (not on a near miss after Stop), and takes cover if there's any. In cover it fights the target it has, or anyone it picks up by returning fire, and stays until given an order. With no cover left it's IDLE where it stands. No topping up of ammo while surprised (out of ammo it still goes).
+- **Fixed a regression from the strapped crates (earlier today):** `crate.gd _show_stage()` now ran for the ammo crate, which has no parts, and with 0 of 0 left it hid the load and turned its collision off: the ammo crate was invisible and not solid. With no parts it now only swaps the straps texture.
+- Tested (`test_surprised.gd`, an idle square shot at from 12 m, both on 1000 health):
+  - **away** (enemy; a crate 2 m behind it and one 1.5 m in front): surprised at 0.15 s, took the one behind, in cover at 1.72 s; the crate between it and the shooter. It peeked 4 times and fired 10 shots, all while peeking; not hit while tucked in.
+  - **toward2** (only a crate 1.8 m toward the shooter): took it, in cover at 0.85 s; 4 peeks, 11 shots.
+  - **toward4** (only a crate 4 m toward the shooter): no cover, straight to ENGAGE.
+  - **wall** (a sandbag wall 2 m behind): in cover at 1.22 s at 0.42 m from its middle; 18 shots over it from the spot, no peeking.
+  - **squad** (a squadmate shot at by an enemy, a crate behind it): SURPRISED at 0.23 s, in cover at 1.90 s; 4 peeks, 10 shots.
+  - Ammo crate visible and solid again, before and after unstrapping. `test_unstrap.gd` and `test_wall_sight.gd` still pass.
+- Two typing slips in this work stopped `ai_soldier.gd` and then `squadmate.gd` from parsing for a few minutes each; both fixed, and every edited script was checked to load.
+
+### 2026-10-31 — Cover classes
+- Mike: give every object a cover class, by how much of the fire it stops: 40% or less class 1, over 40% up to 60% class 2, above that class 3 (a desk class 1, sandbags and crates class 3). For the AI in later development; nothing uses it yet.
+- **`scripts/cover.gd` (new):** `NONE` 0, `LIGHT` 1, `MEDIUM` 2, `HEAVY` 3; `class_for(stops)` (`LIGHT_MAX` 0.4 and `MEDIUM_MAX` 0.6, both inclusive); `stop_chance(node)` (the node's `cover_stop_chance()`; a square 0; any other solid body 1.0, e.g. a helicopter's hull); `class_of(node)`.
+- `cover_stop_chance()` and `cover_class()` on `partial_cover.gd` (`hit_chance`), `sandbags.gd` (1 − `through_chance`; 0 unbuilt or collapsed) and `crate.gd` (1.0 with a load on it, 0 once it's down to the bare pallet).
+- Tested (`test_cover_class.gd`): desk 30% class 1; dish 60% class 2; sandbag wall 90% class 3, class 0 once shot down; ammo, comms and sandbag crates, the lone ammo can and a helicopter's hull 100% class 3; a squadmate class 0. Boundaries: 0.4 → 1, 0.41 → 2, 0.6 → 2, 0.61 → 3.
+
+### 2026-10-31 — Pinned state (squadmates)
+- Mike: a new non-player state, pinned. If the enemy is behind class 3 cover and there are more enemies than our units, our units are pinned: they stop shooting and take cover, since shooting at solid cover wastes ammo. Asked: it's judged on each squadmate's own target; the count is alerted enemies within 35 m against every live squadmate plus the player; it ends once it no longer applies; orders still work, and a Fire order is carried out even pinned.
+- **`squadmate.gd`:** new `State.PINNED`. Every `PIN_CHECK_S` 1 s (`_check_pinned()`), a squadmate fighting on its own account (IDLE, SHUFFLE, DEFEND or SURPRISED, its target not from a Fire order) is pinned when `_pinned_down()`: its target is an enemy with class 3 cover between them within `PIN_COVER_M` 1.5 m of the enemy (`_behind_heavy_cover()`: the first thing on a ray from the enemy toward it, `Cover.class_of()`; so its own wall doesn't count), and `_outnumbered()`: more alerted enemies within `PIN_ENEMY_M` 35 m than live squadmates and player.
+  - Pinned (`_tick_pinned()`): no firing (`_wants_to_fire()`), still facing its target. From DEFEND it holds its spot behind the wall; from SURPRISED it stays tucked in (no peeking); from the open it runs for cover from its target (`_find_hide()`) or stays put with none.
+  - `_unpin()` when the check fails (numbers even, target out of heavy cover, e.g. stepped out to peek, or dead): back to what it was doing (`_unpinned_state`); from the open, if it got into cover, SURPRISED (fighting from it).
+  - Orders: any order sets its state, so it's out; `order_attack(target, ordered := true)`: the player's Fire order (command.gd) sets `_fire_ordered` and unpins, and it's never pinned over that target; its own picks (shooting back, surprised, return fire) pass `false`. Stop also unpins. No ammo top-ups while pinned.
+- **`ai_soldier.gd`:** `_is_pinned()` (default false); `_hide_taken()` counts a pinned square's cover spot as taken.
+- Tested (`test_pinned.gd`; enemies held still behind crates 15 m off, alerted):
+  - **wall** (dug in, 2 enemies v 1): PINNED within a second; 0 shots over the next 2.5 s. One enemy killed: back to DEFEND, firing again (3 shots in 2.5 s).
+  - **even** (1 v 1): never pinned, kept firing.
+  - **exposed** (2 v 1, its target in the open): never pinned.
+  - **fire** (pinned, then a Fire order on its target): DEFEND, 5 shots in 2.5 s.
+  - **open** (in the open, a crate 3 m behind it): PINNED, went 3.7 m to behind the crate (cover between it and its target), 0 shots.
+  - `test_surprised.gd` (away, wall, squad) still passes.
+
+### 2026-10-31 — Standoff: hold fire until there's a window (both sides)
+- Mike: if all the units on the other side are behind class 3 cover, hold fire until there's a window.
+- **`ai_soldier.gd`** (squadmates and enemies alike): `_in_standoff()`, run every tick from `_wants_to_fire()` and looking again every `STANDOFF_CHECK_S` 0.25 s. If its target is dug in (`_dug_in()`: class 3 cover between them within `DUG_IN_M` 1.5 m of the target; this replaces squadmate.gd's `_behind_heavy_cover()`/`PIN_COVER_M`, and `const Cover` moved here), it looks over its foes in the fight (`_foes()`, within `STANDOFF_FOE_M` 35 m). If it can see one out of class 3 cover (a window), it switches to that foe (`_take_window()`) and fires; otherwise it holds fire. Nothing else changes: it stays where it is, still aiming. `_fire_on_order()` skips the standoff.
+- **`squadmate.gd`:** foes are the alerted enemies; a window is taken like shooting back (`order_attack(foe, false)`) and also unpins it. A Fire order (`_fire_ordered`) shoots regardless. `_wants_to_fire()` now always calls `super()`, so a pinned squadmate still watches for a window.
+- **`enemy.gd`:** foes are the player and the squad; a window makes that foe its target and threat (with a fresh reaction delay). `_look_for_targets()` weighs dug-in hostiles as 3x as far away, so it goes for anyone in the open first and doesn't flip back to a dug-in one.
+- Tested (`test_standoff.gd`):
+  - **walls** (both sides dug in behind sandbags 15 m apart, live AI): both target each other, 0 shots from either in 8 s.
+  - **peek** (squadmate dug in, 1 enemy held still behind a crate): 0 shots in 3 s; the enemy steps 1.5 m out: 5 shots in 2.5 s; back behind the crate: 0.
+  - **window** (2 enemies, one behind a crate, one in the open 3 m to the side; started on the dug-in one): switched to the open one, 7 shots in 3 s.
+  - **order** (as peek, but a Fire order): 6 shots in 3 s at the crate.
+  - `test_pinned.gd` all as before, except that after unpinning, "wall" now holds fire (0 shots) because the remaining enemy is dug in too. `test_surprised.gd` unchanged: units peeking out from cover are a window, so they still get shot at.
+- First try's bugs, fixed before the above: the window check only counted down on ticks a shot was due (so it re-checked far too rarely), and a pinned squadmate never looked for a window.
+
+### 2026-11-01 — Battle log (F9) and the battle-log skill
+- Mike: a HUD control to start and stop a log of everything every character does (both sides, numbered 1.. as they turn up). Starting a log wipes the last one. The log is for Claude to assess a test, and a skill should explain how to read it and how the AI should change.
+- **`scripts/battle_log.gd` (new):**
+  - **Controls:** a BATTLE LOG panel at the top left. Its button and **F9** (`battle_log` in `world.gd KEY_CONTROLS`) start and stop it. While recording, the button shows the running time in red; after stopping, the line count and path.
+  - **Created by:** `command.gd _ready()` creates it, so there's no scene change.
+  - **Output:** plain text, tab-separated, one line per thing, in metres and seconds, with a legend at the top. It's readable as is, and only about 1 KB per second of fighting. Written to `logs/battle_log.txt` when run from the editor (`logs/` gets a `.gdignore` and is in `.gitignore`), `user://battle_log.txt` otherwise.
+  - **What's recorded:**
+    - **Line codes:** `U` turned up, `P` position and facing (every 0.2 s, once moved 0.05 m or turned 5°), `~` changes in what it's doing (checked every tick), `F`/`X` each shot and where it ended, `H` hits taken, `O` squadmate orders, `M`/`G` solid objects with their cover class (scanned every 1 s).
+    - **Keys in `~` lines:** state/mode, target, threat, alert, cover, hide phase, the enemy's fighting spot, holding fire (blocked or standoff), Stop, Fire-ordered, carrying, follow, reloading (with rounds), the player's command mode/busy, dead.
+  - Flushed every second. The log stops when the level restarts.
+- **Hooks:**
+  - `bullet.gd`: `_ready()` logs the shot, after the rifle has set its range, and its hit, ground and spent endings are logged.
+  - `soldier.gd take_hit()`.
+  - `squadmate.gd order_*()`: a Fire order, but not targets it picks itself, which show as target changes.
+- **`player.gd _wants_to_fire()`:** no shot when the click is on a button on screen (the log's, the enemy spawner's). Before this, clicking a HUD button also fired the rifle.
+- **`.claude/skills/battle-log/` (new):**
+  - `SKILL.md`: where the log is; summarise first, then pull out windows; compare with the AI scripts' doc comments and Mike's rules; report what happened, what's wrong, what to change, what's right.
+  - `summarize.awk`: per-unit shots and outcomes, hits, deaths, time in each state, standoff/blocked time, and a "looks wrong" list (friendly fire, no hits, shots into class 3 cover, alerted but silent, surprised but never in cover, stood still while moving, target flip-flopping), plus a timeline.
+  - `ai-reference.md`: log keys → code, behaviours → tunables.
+- Tested (`test_battle_log.gd` on the scratch copy, the main level with Arrival off, 4 spawned enemies, 6 squadmates: 3 sent forward, 3 given a Fire order, 15 s):
+  - F9 started the log, and stopping saved it. About 500 lines and 16 KB.
+  - A second run overwrote the file (lines on disk = lines saved).
+  - Every line type appeared. The objects came out with the right class: desk 1, dish 2, sandbags and crates 3, with their straps. Shapeless bodies are skipped.
+  - The summary script ran on the log.
+- **Findings from that test log, for Mike (not changed):**
+  1. A Fire-ordered squadmate standing idle drops its Fire order on a near miss. `_surprise()` calls `order_attack(by, false)` even when no cover is found, which goes against "orders override".
+  2. With the order gone, the standoff's window-switching made it change target 26 times in 7 s. Enemies behind sandbags go in and out of "dug in" as they move, and `_take_window()` has no hysteresis.
+
+### 2026-11-01 — Debug mode (Q): unit numbers over the squares
+- Mike: Q toggles a debug mode. For now it shows each unit's battle-log number next to it, 0 up to however many are on the field including the player, so he can ask "why did 4 do that?".
+- **Numbering moved from per-log to per-level (`battle_log.gd`):**
+  - Every square is numbered as soon as it's in the level, whether or not a log is running (`_number()`, every physics tick). The player is always **0**; everyone else gets 1, 2... in the order they turn up. Enemies from the spawner and troops off a helicopter take the next numbers.
+  - `number_of(unit)` gives a square's number to anything else (static; `_level` is this level's battle log).
+  - A log no longer restarts the numbers at 1: it introduces the squares alive when it starts (`_introduced`) under their level numbers. A missing number is a square that died before the log started. The legend says so.
+- **`scripts/debug_overlay.gd` (new), made by `command.gd`:**
+  - **Q** (`debug` in `world.gd KEY_CONTROLS`) toggles `World.debug` (new static, off at level start).
+  - While it's on, each live, visible square's number is drawn just past its top-right corner: green for our side, red for enemies, black outline. A small "DEBUG (Q)" shows bottom left.
+  - It's drawn on a CanvasLayer at screen positions, so the numbers stay the same size at any zoom. The player isn't numbered on screen while still in the arrival helicopter (hidden).
+- Skill: `SKILL.md` now says the numbers match what Mike sees with Q (player 0) and how to answer "why did N do that?".
+- Tested (`test_debug_numbers.gd`, scratch copy, main level with Arrival off):
+  - Q turned debug on (overlay showing) and off again.
+  - The numbers were Player 0, Squadmate…Squadmate6 1–6; 3 enemies spawned afterwards got 7, 8, 9.
+  - Squadmate 1 was killed, then a log was started. Its `U` lines used the same numbers (0, 2–9, with 1 missing), matching `number_of()` for every square.
+  - Drawing with debug on raised no errors. Every edited script loads. The summary script handles unit 0.
+  - The look of the numbers on screen hasn't been checked in a window (headless only).
+
+### 2026-11-01 — Builders walk beside a sandbag wall, one carrier per tile
+- Mike (battle log, unit 3): building a 10-tile wall, Squadmate3 walked along the top of the bags already laid, at climbing speed (about 0.37 m/s instead of 1.45 m/s), to get to the far end. Units shouldn't walk on the wall; they'd walk alongside it.
+- Two causes:
+  - Carriers headed for a tile's middle, and squares don't collide with sandbags (they climb them), so the straight way to a tile further along the row runs along the wall's top.
+  - Several carriers were sent to the same tile (the nearest that still needed bags). Whoever got there first built it, and the others retargeted to the next tile along, so one carrier chased the row up its whole length (5 retargets in the test).
+- **`sandbags.gd deliver_spot(from)`** (new, `DELIVER_SIDE_M` 0.7 m): the spot beside a tile on the carrier's side of the row, clear of climbing (which starts within about 0.3 m of the row's middle line). Bags still go in within `DELIVER_M` (1.4 m) of the middle, so it delivers from there.
+- **`squadmate.gd _tick_build()`:** heads for the site's `deliver_spot()` if it has one, else its middle as before (radio station). **`_site_needing()`** (now used for the first pick too) and **`crate.gd site_for(part, at, claimed)`** prefer the nearest site no other squadmate is carrying a part to (`_sites_claimed()`), falling back to the nearest anyway (so a radio station's many parts still all go to it).
+- Tested (`test_build_beside.gd`, scratch copy, headless): the log's setup (strapped sandbag crate at 15.6, 19.3, 10 tiles at x 19.5, six squadmates where they stood). Before: wall up in 14.3 s, mate 3 on the bags for 6.85 s, 2–5 retargets each. After: wall up in 9.7 s, no one on the bags, no retargets. `test_unstrap.gd` unchanged (comms part delivered at 5.60 s).
+
+### 2026-11-01 — Walkers slip past a manned wall on the ground side, not over the bags
+- Mike (battle log 00:52, units 1 and 6): six squadmates sent to man a 10-tile wall (move with cover). The four with near spots dug in within 1.3 s. 1 and 6, with spots at the far end, walked down the top of the wall at climbing speed and took 8.5 s and 10.7 s.
+- Cause: `ai_soldier.gd _steer()` slips past a square in the way on the side it's already offset to. Walking down a manned row, they were a little on the wall side of each squadmate dug in there, so every sidestep pushed them up onto the bags.
+- **`_steer()`:** if that side would put it on a sandbag wall (`soldier.gd _cover_under_at()`, new, split out of `_cover_under()`) and the other side wouldn't, it passes on the other side. It's shared, so enemies get it too. Climbing over a wall on purpose is unchanged.
+- Tested (`test_man_wall.gd`, scratch copy, headless, the log's positions and order): before, 1 dug in at 8.98 s (7.9 s on the bags) and 6 at 12.47 s (11.4 s on the bags). After: 3.13 s and 4.35 s, no time on the bags; the other four unchanged (0.7–1.3 s). Re-run: `test_build_beside.gd` (wall up in 10.05 s, nobody on the bags), `test_surprised.gd` (away, wall, squad), `test_standoff.gd` (walls, peek), `test_pinned.gd` (wall, fire, open), `test_wall_hidden.gd`: all as before.
+
+### 2026-11-01 — Band-break sound on crate straps
+- Mike added `assets/sfx/BandBreak.mp3` (0.70 s) for the straps coming off a crate. `crate.gd UNSTRAP_SOUND` now points at it (it was waiting on a `StrapsBreak.mp3` that never came). It plays at the crate, at `UNSTRAP_DB` 0 dB, heard up to `SOUND_HEARING_M` 30 m, whoever undoes the straps (the player or a squadmate).
+- Tested (`test_band_break.gd`, scratch copy, headless): the file loads, and breaking the straps starts a player at the crate with BandBreak.mp3. `test_unstrap.gd` unchanged.
+
+### 2026-11-01 — Debug mode locks the player and shows a clicked square's ammo
+- Mike: with Q on, debug mode takes over: no control of his square. A click on a unit shows its info (for now ammo and magazines). Q again hands control back.
+- **`player.gd _hands_off()`** (new): `busy` or `World.debug`. It replaces `busy` in every input gate (aim line, reload, F, unstrapping, ammo panel, aim point, firing), and `_move_intent()` stands still in debug.
+- **`world.gd commanding()`:** false in debug, so command mode (Space) won't open and its clicks don't go to `command.gd`.
+- **`debug_overlay.gd`:** a left click (not on a button) picks the live, numbered square within `PICK_M` 0.4 m; a yellow ring goes round it and a panel beside it (as the player's ammo panel) shows `#n  name  (side)`, `AMMO rounds / mag size` (RELOADING while it reloads, red when empty) and `MAGS count (rounds)` or `unlimited`, every frame. Open ground, its death, or Q drops it. The corner tag reads "DEBUG (Q)  click a square for its details". Spawned squares (no node name) show just their number and side.
+- Tested (`test_debug_inspect.gd`, scratch copy, main level, Arrival off): in debug, holding right and shoot for 0.5 s moved the player 0.00 m and fired nothing, and holding Space left command mode off. A click beside Squadmate3 picked it: "#3  Squadmate3  (squad) | AMMO 7 / 30 | MAGS 0 (0 rounds)", updating to 3 / 30 when its rounds changed; the click didn't fire the player's rifle. Clicking the player showed #0; open ground cleared it. Q again: debug off, pick cleared, and the player moved 0.69 m in 0.5 s. `test_debug_numbers.gd` unchanged.
+
+### 2026-11-01 — Any class 3 cover on the line of fire protects: no shooting into walls
+- Mike (battle logs 01:12 and 01:19): enemies 7–10 targeted the player the whole fight and emptied their magazines (15 rounds each) into the squad's sandbag wall, with the player 5.7 m behind it. The standoff only held fire when the target had class 3 cover within 1.5 m of it (`_dug_in()`), so a player standing well back from a wall didn't count, although the wall stops 90% of shots at any distance (`sandbags.gd lets_bullet_through()`). Mike: any wall on the line protects.
+- **`ai_soldier.gd _shielded(foe)`** (new): class 3 cover anywhere on the line from its muzzle to the foe, skipping a sandbag wall it's at (`in_zone()` of the muzzle: its shots go over that one, as the bullets judge it). **`_in_standoff()`** uses it for the target and for windows; **`enemy.gd _look_for_targets()`** weighs shielded hostiles ×3 by it. Both sides. `_dug_in()` stays for PINNED (cover right in front of the enemy).
+- Knock-on: a surprised square peeking past a crate picked a spot where its body saw past the edge but its muzzle (about 0.14 m to one side) didn't, so its shots went into the crate; now they'd be held. **`_peek_spot_for()`** also needs a clear view `PEEK_RIFLE_M` (0.2 m) to either side.
+- Tested (`test_shielded.gd`, scratch copy, the 01:19 setup: player 5.7 m behind the squad's wall at x 19.1, squad dug in, four enemies arriving at their wall in the north-east, 25 s, battle log recorded): before, three enemies emptied their rifles at the player (60+ shots, none hitting him); after, 0 enemy shots, all 15 rounds kept, all four in standoff, target a squadmate. The squad fired 1–3 shots each while the enemies ran in, then held. Re-run: `test_surprised.gd` away/wall/squad (peek shots 9 and 9, against 10 and 11 before, the shooter now hit; wall unchanged), `test_standoff.gd` walls/peek, `test_pinned.gd` wall/fire/open, `test_wall_hidden.gd`, `test_wall_sight.gd`: as before.
+- Open: two sides dug in at walls now simply hold fire on each other (a stalemate) until someone moves; enemies have no move to break it yet.
+
+### 2026-11-01 — Sand thud when sandbags go up (placeholder)
+- Mike: use one of the sand hit sounds for placing sandbags for now. **`sandbags.gd thud()`** (new) plays an `impact_sound.gd` "sand" sound (one of the eight bullet-into-sand cuts at random, pitched a little, never the same twice running) at the wall. **`install()`** calls it when the bags are brought in (player or squadmate). **`command.gd _place()`** calls it once per placement for walls that go straight up with no crate to build from (one thud for a dragged row, not one a tile). Walls placed by hand in a scene stay silent.
+- Tested (`test_sandbag_thud.gd`, scratch copy): a site makes no sound; `install()` started `sand_impact_1.wav` at the wall. The main level still loads (`test_debug_inspect.gd`).
+
+### 2026-11-01 — Shift to run, adjustable speed
+- Mike: Shift to run faster, at an adjustable speed. **`world.gd`** registers `run` (Shift). **`player.gd run_speed_mps`** (Inspector on the Player, 0.5–8 m/s, default 3.2, double the 1.6 walk): holding Shift, `_move_intent()` scales the speed to it. Not while carrying a part (stays at `CARRY_SPEED`), nor in command mode (Shift adds to the selection there), nor in debug mode. The rifle's steadiness already goes by speed, so shots on the run stray more.
+- Tested (`test_run.gd`, scratch copy, main level, measured over 1 s at full speed): walk 1.60 m/s; Shift 3.20; with `run_speed_mps` 5.0, 5.00; Shift while carrying 1.04 (the carry speed); Shift in command mode 1.60.
+
+### 2026-11-01 — Running footfalls on dirt
+- Mike added `assets/sfx/SprintOnDirt.mp3` (10.7 s, mono, a footfall about every 0.35 s, no long silence at either end). **`player.gd`**: loaded at `_ready()` (if the file's imported) as a looping copy on an `AudioStreamPlayer2D` on the player, at `RUN_STEPS_DB` -6 dB. **`_update_run_steps()`**: on while `_running` (Shift held and allowed, set in `_move_intent()`), faster than walking, alive and off the road's asphalt (`road.gd covers()`); it starts from a random point in the loop each time so short sprints don't all start on the same step; let go, it fades out over `RUN_STEPS_FADE_S` 0.15 s.
+- Tested (`test_run_steps.gd`, scratch copy, main level): loaded, looping, 10.67 s. Walking: silent. Running on dirt: playing (from 6.85 s in, at -6 dB). Shift let go: fading (-17.3 dB 3 ticks later), stopped within 0.5 s. Running on the road: silent.
+
+### 2026-11-01 — Player hops and waddles a little more
+- Mike: make my character jostle a little more. (The code's `jostle_m` is the rocking of an anchored square when hit, e.g. the dummy; what shows while walking is the hop and the waddle.) **`soldier.gd waddle_deg`** (new export, default 3, was a fixed 3°): the side-to-side sway, one every two hops. **`scenes/player.tscn`**: the Player's `hop_height_m` 0.09 (squares 0.06) and `waddle_deg` 5.0, both in its Inspector. Squadmates and enemies unchanged. (Setting them in `_init()` didn't work: loading the scene put the defaults back.)
+- Tested (`test_waddle.gd`, scratch copy, main level, walking 2 s): player hop 0.090 m and sway 5.0°; a squadmate still 0.06 m / 3.0°.
+
+
+### 2026-11-01 — Left click with nobody selected orders everyone in the circle
+- Mike: in command mode, a left click anywhere with no unit selected applies to everyone in the circle: on open ground a plain "go here", on a sandbag wall's box (the dig-in square) everyone in the circle tries to dig in. (A first go had put the dig-in on the right click; that's undone.)
+- **`command.gd _click()`**: not on a squadmate (that still selects it), the click goes to `_order_targets()` (the selection, or everyone who hears): a supply crate owing parts, they build from it; anywhere else `_order_move(point, units)`, which mans a wall's row at a wall (`_man_sandbags()`) and otherwise lines them up there. **`_order_move()`** takes who goes (default the selection), so a **right click** still only ever moves a selection. **`_sandbags_at()`** (new) finds the wall whose box a point is in.
+- Tested (`test_click_orders.gd`, scratch copy, main level, command mode, a 6-tile wall, five squadmates in the circle and one 16 m off): nobody selected, a left click on open ground sent the five there side by side, the far one stayed; at the wall the five went and were all dug in within 5 s; right clicks on ground and wall moved nobody; a left click on squadmate 3 selected it without moving anyone; then a left click at the wall sent only 3.

@@ -15,10 +15,19 @@ extends Node
 ##   rifle   let go, it flies free under gravity: dropped out to the side
 ##           when it falls on its front or side, flung out to the side and
 ##           spinning when it goes over backwards. It bounces and skids too.
+##           Once it's down it lies on the ground (GUN_DOWN_Z), drawn under
+##           the squares walking over it.
 ##
-## Then it lies there, darkening, and finally fades away and is removed
-## (unless `lingers`: the player stays down). `came_to_rest` fires once the
-## body and rifle have both stopped moving.
+## Then it lies there, darkening, and stays on the field, on the ground
+## (BODY_DOWN_Z). Living squares walk over it and never push it: from the
+## moment it dies it ignores every square (it only bounces off solid
+## things as it skids), and once it's at rest it collides with nothing.
+## Stepping over it lifts a square a little and slows it (soldier.gd, the
+## "bodies" group, under_at()), like a low sandbag. `came_to_rest`
+## fires once the body and rifle have both stopped moving; then, if the
+## rifle still has rounds in its magazine (and it isn't the player's), a
+## little circle round it marks it as ammo to pick up (ammo_pickup.gd).
+## Off for the player (`drops_ammo`).
 ## An anchored square (the dummy) only topples and spins: it doesn't skid.
 ##
 ## The toppling block is pre-rendered (blender/scripts/fall_square.py): one
@@ -31,6 +40,7 @@ extends Node
 const World = preload("res://scripts/world.gd")
 const Rifle = preload("res://scripts/rifle.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
+const AmmoPickup = preload("res://scripts/ammo_pickup.gd")
 
 const FALL_DIRS := 30          ## matches DIRS in fall_square.py
 const FALL_FRAMES := 12        ## matches TIPS in fall_square.py
@@ -65,8 +75,9 @@ const SKID_DUST_S := 0.09       ## ...a puff this often
 
 const DARKEN_TO := Color(0.55, 0.55, 0.55)
 const DARKEN_S := 1.5
-const LIE_S := 5.0             ## after landing, before it fades
-const FADE_S := 1.0
+const BODY_DOWN_Z := -3        ## once down, on the ground: under every living square, over its gun (GUN_DOWN_Z)
+const BODY_REACH_M := 0.22     ## a square's centre this close to the body's middle is right on it...
+const BODY_EDGE_M := 0.14      ## ...easing off to nothing this much further out
 
 ## The rifle, flying free. Speeds in metres per second.
 const GUN_HELD_M := 0.22       ## its height when it's let go (rifle.gd HOLD_HEIGHT_M)
@@ -81,12 +92,13 @@ const GUN_BOUNCE := 0.3        ## keeps this much of its fall speed bouncing up
 const GUN_REST_MPS := 0.5      ## landing slower than this, it stays down
 const GUN_SKID_MPS2 := 6.0
 const GUN_SPIN_DAMP := 6.0     ## spin dies away this fast on the ground
+const GUN_DOWN_Z := -4         ## once down it's on the ground, under every square (as a dropped magazine, rifle.gd)
 
 ## Fired once, when the body has settled and stopped skidding and the rifle is down.
 signal came_to_rest
 
-## Stays lying there (darkened) instead of fading away and being removed.
-var lingers := false
+## Whether its rifle's magazine is left as ammo to pick up (not the player's own).
+var drops_ammo := true
 
 var _square: CharacterBody2D
 var _body: Sprite2D
@@ -139,6 +151,10 @@ func setup(square: CharacterBody2D, body_sheet: Texture2D, point: Vector2, direc
 	var lever := clampf((point - square.global_position).cross(direction) / (SIZE_M / 2 * px), -1.0, 1.0)
 	_spin = deg_to_rad(lever * SPIN_DPS + randf_range(-SPIN_RANDOM_DPS, SPIN_RANDOM_DPS))
 	_tip_vel = deg_to_rad(TIP_KICK_DPS) * shove
+	# Squares walk over it: none of them pushes it, or is pushed by it.
+	for unit in square.get_tree().get_nodes_in_group("units"):
+		if unit is PhysicsBody2D and unit != square:
+			square.add_collision_exception_with(unit)
 
 	for sprite in [_body, _shadow]:
 		sprite.hframes = FALL_FRAMES
@@ -176,7 +192,19 @@ func _physics_process(delta: float) -> void:
 	_update_gun(delta)
 	if not _at_rest and _settled and _gun_down and _vel == Vector2.ZERO:
 		_at_rest = true
+		_square.collision_mask = 0   # lying there: nothing moves it now
 		came_to_rest.emit()
+		_offer_ammo()
+
+
+## The magazine left in its rifle, for the player to pick up.
+func _offer_ammo() -> void:
+	if not drops_ammo or not _rifle.visible or _rifle.rounds <= 0:
+		return
+	var pickup := AmmoPickup.new()
+	pickup.setup(_rifle)
+	var level := get_tree().current_scene
+	(level if level else _square.get_parent()).add_child(pickup)
 
 
 ## Gravity pulls it over its edge; it bounces off the ground until it's
@@ -193,6 +221,9 @@ func _topple(delta: float) -> void:
 	if impact < deg_to_rad(TIP_REST_DPS):
 		_settled = true
 		_tip_vel = 0.0
+		if not _landed:   # went over gently enough to settle on first touch
+			_landed = true
+			_land()
 		return
 	_tip_vel = -impact * TIP_BOUNCE
 	if not _landed:
@@ -237,22 +268,26 @@ func _set_frame() -> void:
 	_shadow.frame = _body.frame
 
 
-## Thump: dust bursts out from under the edges it lands on, then it darkens,
-## lies there, fades and is removed.
+## Thump: dust bursts out from under the edges it lands on, then it darkens
+## and lies there, on the ground under the living.
 func _land() -> void:
+	_square.z_index = BODY_DOWN_Z
+	add_to_group("bodies")
 	var px := World.PX_PER_M
 	var centre := _lying_centre()
 	var side := _fall_dir().orthogonal()
 	# HitDust sprays back against the direction it's given.
 	for out in [_fall_dir(), side, -side]:
 		_dust(centre + out * LAND_DUST_M * px, -out, 1.0)
-	var after := create_tween()
-	after.tween_property(_body, "modulate", DARKEN_TO, DARKEN_S)
-	if lingers:
-		return
-	after.tween_interval(LIE_S - DARKEN_S)
-	after.tween_property(_square, "modulate:a", 0.0, FADE_S)
-	after.tween_callback(_square.queue_free)
+	create_tween().tween_property(_body, "modulate", DARKEN_TO, DARKEN_S)
+
+
+## How much a square at `point` (world) is on top of the body: 1 right on
+## it, easing to 0 off its edge.
+func under_at(point: Vector2) -> float:
+	var px := World.PX_PER_M
+	var d := point.distance_to(_lying_centre()) / px
+	return 1.0 - smoothstep(BODY_REACH_M, BODY_REACH_M + BODY_EDGE_M, d)
 
 
 ## Into the level, not the square, so the dust stays where it was thrown up.
@@ -279,6 +314,11 @@ func _update_gun(delta: float) -> void:
 			else:
 				_gun_vh = 0.0
 				_gun_down = true
+				# Lying on the ground: under the squares, and flat, so no shadow
+				# of its own (it would be drawn over it).
+				_rifle.z_as_relative = false
+				_rifle.z_index = GUN_DOWN_Z
+				_rifle_shadow.visible = false
 	else:
 		_gun_vel = _gun_vel.move_toward(Vector2.ZERO, GUN_SKID_MPS2 * delta)
 		_gun_spin *= exp(-GUN_SPIN_DAMP * delta)

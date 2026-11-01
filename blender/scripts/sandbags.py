@@ -27,6 +27,15 @@ The courses step in slightly as they rise (BATTER), so from above the lower
 bags peek out and it reads as a stack. Tan burlap with a woven bump and
 blotchy tone; lumpy, boxy bags.
 
+Damage (scripts/sandbags.gd, a wall shot to pieces): every tile is also
+rendered at two damage stages, sandbags_<kind>_d1.png and _d2.png
+(apply_damage()): d1 has one of the top course's own bags blown off and the
+rest torn and slumped, with sand spilt at its foot; d2 has the whole top
+course gone, the middle course sagging with a bag burst open, and more sand
+about. Only a tile's own bags are taken (not the ones it shares with a
+neighbour), so joins with undamaged walls still meet. Collapsed, a wall is
+sandbags_collapsed.png: a puddle of sand with a few burlap scraps.
+
 Rendered at RENDER_SCALE x the game's pixel density so it stays sharp zoomed
 in (the game shows it at 1 / RENDER_SCALE), lit by the standard sun
 (bs_common.py), transparent. The game draws the wall's shadow itself
@@ -207,13 +216,146 @@ def build_tile(kind, mat, x_offset=0.0, skip_right_join=False):
     return (COURSES - 1) * BAG_H * SETTLE + BAG_H
 
 
-def render_tile(kind):
+SAND = srgb(0.80, 0.70, 0.50)
+DAMAGE_FRAME_H_M = 0.5625          # damaged and collapsed tiles: 192 rendered px tall
+
+
+def sand_material():
+    """Loose sand: a pale, blotchy tan, very rough."""
+    mat = bpy.data.materials.new("Sand")
+    nt = bs.node_tree_of(mat)
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Roughness"].default_value = 1.0
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    noise_tex = nt.nodes.new("ShaderNodeTexNoise")
+    noise_tex.inputs["Scale"].default_value = 60.0
+    nt.links.new(coord.outputs["Object"], noise_tex.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].color = (*(Vector(SAND) * 0.85), 1)
+    ramp.color_ramp.elements[1].color = (*(Vector(SAND) * 1.08), 1)
+    nt.links.new(noise_tex.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    # Grain: a fine bump.
+    grain = nt.nodes.new("ShaderNodeTexNoise")
+    grain.inputs["Scale"].default_value = 900.0
+    nt.links.new(coord.outputs["Object"], grain.inputs["Vector"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.35
+    bump.inputs["Distance"].default_value = 0.002
+    nt.links.new(grain.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return mat
+
+
+def sand_mound(name, x, y, rx, ry, h, mat, seed):
+    """A low, lumpy heap of spilt sand centred at (x, y) on the ground."""
+    bm = bmesh.new()
+    bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)   # even all over: no poles to pinch
+    off = Vector((seed * 7.1, seed * 3.3, seed * 1.7))
+    for v in bm.verts:
+        vx, vy, vz = v.co
+        edge = noise.noise(Vector((vx * 2.5, vy * 2.5, 0)) + off) * 0.35
+        lump = 0.55 + noise.noise(Vector((vx * 3.0, vy * 3.0, 1.0)) + off) * 0.6 + noise.noise(Vector((vx * 9.0, vy * 9.0, 2.0)) + off) * 0.2
+        v.co = Vector((vx * rx * (1 + edge), vy * ry * (1 + edge), max(vz, 0) ** 0.6 * h * max(lump, 0.15)))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.shade_smooth()
+    me.materials.append(mat)
+    obj = bpy.data.objects.new(name, me)
+    obj.location = (x, y, 0.0)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def burlap_scrap(name, x, y, size, turn, mat, lift=0.0):
+    """A torn-off piece of empty sack lying flat (`lift` up off the ground, on sand)."""
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=4, y_segments=3, size=1.0)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * size, v.co.y * size * 0.6, lift + 0.004 + abs(v.co.x * v.co.y) * 0.015))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    obj = bpy.data.objects.new(name, me)
+    obj.location = (x, y, 0.0)
+    obj.rotation_euler = (0, 0, turn)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def apply_damage(kind, stage, burlap, sand):
+    """Damages a built tile (its bags are in the scene): stage 1 or 2 (see
+    the docstring), or 3 for the collapsed puddle (every bag gone)."""
+    rng = bag_rng("damage", kind, stage)
+    half = TILE_M / 2
+    bags = [o for o in bpy.data.objects if o.name.startswith(f"Bag_{kind}_")]
+    def course(o):
+        return int(o.name.split("_")[-2])
+    def own(o):
+        # Inside this tile and not a bag it shares with a neighbour.
+        return abs(o.location.x) < half - BAG_L * 0.3
+    top = [o for o in bags if course(o) == COURSES - 1]
+    middle = [o for o in bags if course(o) == COURSES - 2]
+    removed = []
+    if stage >= 3:
+        removed = bags
+    elif stage == 2:
+        removed = top
+    else:
+        mine = [o for o in top if own(o)] or top
+        removed = [mine[int(rng.integers(len(mine)))]]
+    for o in removed:
+        bpy.data.objects.remove(o)
+    left = [o for o in bpy.data.objects if o.name.startswith(f"Bag_{kind}_")]
+    # Torn and slumped.
+    slumped = [o for o in left if course(o) == COURSES - 1] if stage == 1 else [o for o in left if course(o) == COURSES - 2]
+    for o in slumped:
+        o.scale = (1.0 + rng.uniform(0.0, 0.08), 1.0 + rng.uniform(0.0, 0.08), rng.uniform(0.6, 0.78))
+        o.location.z -= BAG_H * 0.15
+        o.rotation_euler.y += rng.normal(0, 0.08)
+    if stage == 2:
+        burst = [o for o in left if course(o) == COURSES - 2 and own(o)]
+        if burst:
+            b = burst[int(rng.integers(len(burst)))]
+            b.scale = (1.12, 1.2, 0.42)
+            b.location.z -= BAG_H * 0.3
+    # Spilt sand, more the worse it is.
+    if stage == 1:
+        spots = [(rng.uniform(-0.2, 0.2), side * rng.uniform(0.1, 0.14), 0.12, 0.06, 0.03) for side in (-1, 1)]
+    elif stage == 2:
+        spots = [(rng.uniform(-0.3, 0.3), side * rng.uniform(0.1, 0.15), rng.uniform(0.13, 0.18), 0.07, 0.04)
+                 for side in (-1, 1, -1, 1)]
+    else:
+        spots = [(x, rng.uniform(-0.02, 0.02), rng.uniform(0.15, 0.18), rng.uniform(0.12, 0.15), rng.uniform(0.07, 0.1))
+                 for x in (-0.19, 0.0, 0.19)]   # kept inside the tile's width, so it tapers off instead of being cut
+        spots += [(rng.uniform(-0.3, 0.3), side * 0.12, 0.1, 0.05, 0.03) for side in (-1, 1)]
+    for k, (x, y, rx, ry, h) in enumerate(spots):
+        sand_mound(f"Spill_{kind}_{stage}_{k}", x, y, rx, ry, h, sand, seed=k + 3 * stage)
+    if stage >= 2:
+        for k in range(2 if stage == 2 else 5):
+            burlap_scrap(f"Scrap_{kind}_{stage}_{k}", rng.uniform(-0.32, 0.32), rng.uniform(-0.12, 0.12),
+                         rng.uniform(0.07, 0.11), rng.uniform(0, math.pi), burlap,
+                         lift=0.05 if stage >= 3 else 0.0)
+
+
+def render_tile(kind, stage=0):
+    """One tile; `stage` 1 or 2 for its damaged looks, 3 for the collapsed puddle."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bs.new_scene(center=(0.0, 0.0), frame_m=TILE_M, transparent=True, samples=SAMPLES,
                          px_per_m=bs.PX_PER_M * RENDER_SCALE)
     scene.render.resolution_x = round(TILE_M * bs.PX_PER_M * RENDER_SCALE)
-    scene.render.resolution_y = round(FRAME_H_M * bs.PX_PER_M * RENDER_SCALE)
-    top = build_tile(kind, burlap_material())
-    bs.render_to(scene, os.path.join(OUT_DIR, f"sandbags_{kind}.png"))
+    # Damaged, the frame is taller so spilt sand isn't cut off (centred, so it
+    # still lines up with the wall).
+    scene.render.resolution_y = round((DAMAGE_FRAME_H_M if stage else FRAME_H_M) * bs.PX_PER_M * RENDER_SCALE)
+    burlap = burlap_material()
+    top = build_tile(kind, burlap)
+    if stage:
+        apply_damage(kind, stage, burlap, sand_material())
+    name = {0: f"sandbags_{kind}.png", 1: f"sandbags_{kind}_d1.png", 2: f"sandbags_{kind}_d2.png",
+            3: "sandbags_collapsed.png"}[stage]
+    bs.render_to(scene, os.path.join(OUT_DIR, name))
     return top
 
 
@@ -243,11 +385,18 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(os.path.dirname(OUT_BLEND), exist_ok=True)
     top = 0.0
+    only_damage = "--damage" in sys.argv
     for kind in KINDS:
-        top = render_tile(kind)
-    print(f"Tile {TILE_M} m, top at {top:.3f} m, foot {FOOT_M:.3f} m wide"
-          " (sandbags.gd WALL_HEIGHT_M, FOOT_PX)")
-    render_review()
+        if not only_damage:
+            top = render_tile(kind)
+        render_tile(kind, 1)
+        render_tile(kind, 2)
+    render_tile("single", 3)
+    if not only_damage:
+        print(f"Tile {TILE_M} m, top at {top:.3f} m, foot {FOOT_M:.3f} m wide"
+              " (sandbags.gd WALL_HEIGHT_M, FOOT_PX)")
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        render_review()
 
 
 if __name__ == "__main__":

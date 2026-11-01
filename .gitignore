@@ -9,3 +9,6 @@
 blender/source/field_grass.blend
 # Python caches from the Blender scripts
 __pycache__/
+
+# Battle logs (scripts/battle_log.gd): test output, not source
+logs/

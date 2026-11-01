@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b7g2rn5hkry7i"
-path="res://.godot/imported/radio_station_shadow.png-98a6d7a3bf876fa40fd50981a170465f.ctex"
+uid="uid://dhhoc0j8hfpbp"
+path="res://.godot/imported/radio_station_shadow_electronics.png-fdeb971d705d0b76db46874a4691cec1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/props/radio_station_shadow.png"
-dest_files=["res://.godot/imported/radio_station_shadow.png-98a6d7a3bf876fa40fd50981a170465f.ctex"]
+source_file="res://assets/props/radio_station_shadow_electronics.png"
+dest_files=["res://.godot/imported/radio_station_shadow_electronics.png-fdeb971d705d0b76db46874a4691cec1.ctex"]
 
 [params]
 

@@ -42,6 +42,9 @@ const KEY_CONTROLS := {
 	"command": [KEY_SPACE],   ## hold for command mode (scripts/command.gd)
 	"interact": [KEY_F],      ## use what you're standing at (e.g. tune a station's dish)
 	"reload": [KEY_R],        ## reload the rifle (rifle.gd start_reload())
+	"battle_log": [KEY_F9],    ## start / stop the battle log (scripts/battle_log.gd)
+	"debug": [KEY_Q],          ## debug mode: each square's log number over it (scripts/debug_overlay.gd)
+	"run": [KEY_SHIFT],         ## hold to run (player.gd run_speed_mps)
 }
 const MOUSE_CONTROLS := {
 	"shoot": [MOUSE_BUTTON_LEFT],
@@ -88,10 +91,23 @@ static var player_aboard := false
 ## Cleared when a level starts again.
 static var player_dead := false
 
+## Debug mode, toggled with Q (scripts/debug_overlay.gd): each square's
+## battle-log number shown over it, and a click on one shows its details.
+## The player takes no controls meanwhile, and command mode stays shut.
+static var debug := false
 
-## True while Space is held or radio command mode is on: the mouse gives
-## squad orders instead of aiming. Never while the player is aboard.
+
+## True while equipment picked from command mode's DEPLOY menu is being
+## placed (command.gd): command mode then stays on with Space let go, until
+## it's put down or cancelled.
+static var placing := false
+
+
+## True while Space is held, radio command mode is on, or equipment is being
+## placed: the mouse gives squad orders instead of aiming. Never while the
+## player is aboard.
 static func commanding() -> bool:
-	if player_aboard or player_dead:
+	if player_aboard or player_dead or debug:
 		return false
-	return radio_commanding or (InputMap.has_action("command") and Input.is_action_pressed("command"))
+	return (radio_commanding or placing
+			or (InputMap.has_action("command") and Input.is_action_pressed("command")))

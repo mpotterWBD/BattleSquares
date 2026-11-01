@@ -14,14 +14,25 @@ on it and black ratchet straps over the load, both ways, buckled on top
          LAYERS high: lid with a raised rim, folding carry handle on top,
          latch on one end, yellow stencil marks on the sides; after Mike's
          reference photo (2026-10-30), without its tarp.
+  comms  the kit a radio station is built from (scripts/radio_station.gd),
+         one item per part, side by side so each shows from above
+         (COMMS_PARTS, in the order they're taken): the field desk folded
+         into a bundle (panels with the legs strapped on), the electronics
+         in a black rugged case, the dish's legs in an olive case, the dish
+         in a rounded desert-tan case, and the wiring on a cable reel. As
+         the station is built the game swaps in a sprite with one fewer
+         (crate_comms_1..4.png, no straps); crate_comms.png is it full.
   sandbags  filled burlap sandbags (the same bags as the sandbag wall,
          blender/scripts/sandbags.py), SAND_ACROSS x SAND_ALONG to a layer,
          SAND_LAYERS high, each layer turned 90 degrees from the one below.
+         The crate holds 10 walls' worth; as they're used the game swaps in
+         a smaller stack (SAND_STAGES: crate_sandbags_1..3.png, no straps).
 
 Also a lone ammo can (`-- can`; render_can()): one of the same cans, on
 its own, for assets/props/ammo_can.png (CAN_FRAME_M square) and its review.
 
-Output, per kind: assets/props/crate_<kind>.png, the load and straps only
+Output, per kind: assets/props/crate_<kind>.png, the load and straps only,
+and crate_<kind>_open.png, the same load with the straps cut off
 (no pallet), top-down, rendered at RENDER_SCALE x the game's pixel density
 in a FRAME_M square, lit by the standard sun (bs_common.py), transparent.
 The pallet is its own sprite, assets/props/pallet.png (`-- pallet`;
@@ -66,6 +77,10 @@ CAN_GAP = 0.004
 # Sandbags: bags per layer (two along their length, three side by side),
 # layers high. Each layer is turned 90 degrees from the one below.
 SAND_ALONG, SAND_ACROSS, SAND_LAYERS = 2, 3, 5
+## The smaller stacks as the bags are used: how many bags are left in each
+## (from the bottom up), for crate_sandbags_1..3.png.
+SAND_STAGES = [24, 15, 3]
+SAND_BAG_OBJECTS = []   # every bag, bottom layer first (filled by build_sandbag_load())
 SAND_BAG_L, SAND_BAG_W = 0.37, 0.235   # a touch smaller than the wall's bags, so they sit on the pallet
 
 STRAP_W, STRAP_T = 0.035, 0.003
@@ -276,6 +291,7 @@ def build_sandbag_load(seed):
                 if turned:
                     obj.rotation_euler.z += math.pi / 2
                 bags.append(obj)
+                SAND_BAG_OBJECTS.append(obj)
     bpy.context.view_layer.update()
     lo = Vector((1e9, 1e9, 1e9))
     hi = Vector((-1e9, -1e9, -1e9))
@@ -287,8 +303,127 @@ def build_sandbag_load(seed):
     return (hi.x - lo.x, hi.y - lo.y), hi.z
 
 
+DESK_GREY = srgb(0.3, 0.32, 0.27)   # radio_station.py's desk
+POLYMER = srgb(0.06, 0.06, 0.06)
+DISH_TAN = srgb(0.80, 0.72, 0.58)   # radio_station.py's dish
+
+
+def rugged_case(name, center, size, body, trim, label=None, bevel=0.014, handles="top"):
+    """A rugged equipment case (Pelican-style) standing on `center` (x, y,
+    z of its base): a bevelled shell, the lid's seam a little proud round it
+    near the top, latches along its long sides, a carry handle on top, and
+    a label plate or stencil (`label`: a material) on the long sides."""
+    w, d, h = size
+    x, y, z = center
+    block(name, (x, y, z + h / 2), size, body, bevel=bevel)
+    seam_z = z + h * 0.72
+    block(name + "Seam", (x, y, seam_z), (w + 0.008, d + 0.008, 0.012), trim, bevel=0.003)
+    long_x = w >= d
+    for side in (-1, 1):
+        for k in (-1, 1):
+            offset = k * (w if long_x else d) * 0.28
+            if long_x:
+                at, latch = (x + offset, y + side * (d / 2 + 0.006), seam_z), (0.05, 0.012, 0.045)
+            else:
+                at, latch = (x + side * (w / 2 + 0.006), y + offset, seam_z), (0.012, 0.05, 0.045)
+            block(f"{name}Latch{side}{k}", at, latch, trim, bevel=0.003)
+        if label is not None:
+            if long_x:
+                block(f"{name}Label{side}", (x, y + side * (d / 2 + 0.001), z + h * 0.38), (w * 0.35, 0.002, h * 0.18), label)
+            else:
+                block(f"{name}Label{side}", (x + side * (w / 2 + 0.001), y, z + h * 0.38), (0.002, d * 0.35, h * 0.18), label)
+    if handles == "top":
+        top = z + h
+        along = (0.14, 0.025, 0.012) if long_x else (0.025, 0.14, 0.012)
+        block(name + "Handle", (x, y, top + 0.012), along, trim, bevel=0.004)
+        for k in (-1, 1):
+            pivot = (x + k * 0.075, y, top + 0.006) if long_x else (x, y + k * 0.075, top + 0.006)
+            block(f"{name}Pivot{k}", pivot, (0.02, 0.03, 0.012) if long_x else (0.03, 0.02, 0.012), trim)
+
+
+def cable_reel(name, center, radius, height, flange, cable):
+    """A cable reel standing on end: two flanges and a drum wound with cable."""
+    x, y, z = center
+    for k, fz in enumerate((z + 0.008, z + height - 0.008)):
+        bpy.ops.mesh.primitive_cylinder_add(vertices=40, radius=radius, depth=0.016, location=(x, y, fz))
+        obj = bpy.context.active_object
+        obj.name = f"{name}Flange{k}"
+        obj.data.materials.append(flange)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=40, radius=radius * 0.86, depth=height - 0.03, location=(x, y, z + height / 2))
+    wound = bpy.context.active_object
+    wound.name = name + "Cable"
+    wound.data.materials.append(cable)
+    # Turns of cable showing as ridges round the drum.
+    for k in range(6):
+        bpy.ops.mesh.primitive_torus_add(major_radius=radius * 0.86, minor_radius=0.009,
+                                         location=(x, y, z + 0.03 + k * (height - 0.06) / 5))
+        ring = bpy.context.active_object
+        ring.name = f"{name}Turn{k}"
+        ring.data.materials.append(cable)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=0.03, depth=0.01, location=(x, y, z + height + 0.002))
+    hub = bpy.context.active_object
+    hub.name = name + "Hub"
+    hub.data.materials.append(flange)
+
+
+## The comms crate's parts, in the order they're taken off it (radio_station.gd
+## PARTS), and the objects that make up each (filled by build_comms_load()).
+COMMS_PARTS = ["desk", "electronics", "legs", "dish", "wiring"]
+COMMS_OBJECTS = {}
+
+
+def build_comms_load(seed):
+    """The radio station's kit, centred on the pallet, each part its own item
+    and all showing from above: the folded desk along the north side, and
+    in front of it the electronics case and the legs case, then the dish
+    case and the cable reel. Returns the load's footprint (x, y) and top
+    height, measured. Fills COMMS_OBJECTS."""
+    desk = paint_material("DeskGrey", DESK_GREY, 0.8, 0.1)
+    polymer = paint_material("Polymer", POLYMER, 0.55, 0.0, wear=False)
+    trim = paint_material("CaseTrim", srgb(0.2, 0.2, 0.2), 0.45, 0.4, wear=False)
+    olive = paint_material("Olive", OLIVE)
+    tan = paint_material("DishTan", DISH_TAN, 0.6, 0.0)
+    stencil = paint_material("Stencil", STENCIL, 0.7, 0.0, wear=False)
+    plate = paint_material("Plate", srgb(0.75, 0.75, 0.72), 0.5, 0.3, wear=False)
+    cable = paint_material("Cable", srgb(0.04, 0.04, 0.04), 0.7, 0.0, wear=False)
+    z = PALLET_H
+    black = paint_material("LegBundle", srgb(0.05, 0.05, 0.05), 0.5, 0.3, wear=False)
+
+    def part(name, make):
+        before = set(bpy.data.objects)
+        make()
+        COMMS_OBJECTS[name] = [o for o in bpy.data.objects if o not in before]
+
+    def desk_bundle():
+        # The desk's two top halves, stacked, with its folded legs and a
+        # webbing strap round them.
+        for k in range(2):
+            block(f"DeskHalf{k}", (0, 0.24, z + 0.0175 + k * 0.036), (0.72, 0.24, 0.035), desk, bevel=0.006)
+        for k in range(4):
+            block(f"DeskLegFolded{k}", (0, 0.17 + k * 0.045, z + 0.082), (0.66, 0.022, 0.022), black, bevel=0.004)
+        for x in (-0.22, 0.22):
+            block(f"DeskTie{x:+.2f}", (x, 0.24, z + 0.05), (0.035, 0.25, 0.104), trim)
+
+    part("desk", desk_bundle)
+    part("electronics", lambda: rugged_case("ElectronicsCase", (-0.18, -0.02, z), (0.35, 0.22, 0.26), polymer, trim, label=plate))
+    part("legs", lambda: rugged_case("LegsCase", (0.18, -0.02, z), (0.35, 0.22, 0.26), olive, trim, label=stencil))
+    part("dish", lambda: rugged_case("DishCase", (-0.18, -0.25, z), (0.35, 0.22, 0.26), tan, trim, bevel=0.045))
+    part("wiring", lambda: cable_reel("Reel", (0.18, -0.25, z), 0.11, 0.24, olive, cable))
+    bpy.context.view_layer.update()
+    lo = Vector((1e9, 1e9, 1e9))
+    hi = Vector((-1e9, -1e9, -1e9))
+    for obj in bpy.data.objects:
+        if obj.type == "MESH" and obj.matrix_world.translation.z > PALLET_H - 0.001:
+            for corner in obj.bound_box:
+                w = obj.matrix_world @ Vector(corner)
+                lo = Vector(map(min, lo, w))
+                hi = Vector(map(max, hi, w))
+    return (hi.x - lo.x, hi.y - lo.y), hi.z
+
+
 KINDS = {
     "ammo": build_ammo_load,
+    "comms": build_comms_load,
     "sandbags": build_sandbag_load,
 }
 
@@ -305,8 +440,39 @@ def render_kind(kind):
     scene = bs.new_scene(center=(0.0, 0.0), frame_m=FRAME_M, transparent=True, samples=SAMPLES,
                          px_per_m=bs.PX_PER_M * RENDER_SCALE)
     footprint, top = KINDS[kind](seed=7)
+    straps_from = set(bpy.data.objects)
     build_straps(footprint, top)
+    straps = [o for o in bpy.data.objects if o not in straps_from]
     bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}.png"))   # the load only
+    # The same load with its straps cut off (the game swaps it in, crate.gd).
+    for obj in straps:
+        obj.hide_render = True
+    bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_open.png"))
+    for obj in straps:
+        obj.hide_render = False
+    if kind == "comms":
+        # As the station's built: the straps cut, then one part fewer each time.
+        for obj in straps:
+            obj.hide_render = True
+        for k, name in enumerate(COMMS_PARTS[:-1]):
+            for obj in COMMS_OBJECTS[name]:
+                obj.hide_render = True
+            bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_{k + 1}.png"))
+        for name in COMMS_PARTS:
+            for obj in COMMS_OBJECTS[name]:
+                obj.hide_render = False
+        for obj in straps:
+            obj.hide_render = False
+    if kind == "sandbags":
+        # As the walls are used: the straps cut, and smaller stacks.
+        for obj in straps:
+            obj.hide_render = True
+        for k, left in enumerate(SAND_STAGES):
+            for i, obj in enumerate(SAND_BAG_OBJECTS):
+                obj.hide_render = i >= left
+            bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_{k + 1}.png"))
+        for obj in SAND_BAG_OBJECTS + straps:
+            obj.hide_render = False
     build_pallet(wood_material())   # for the .blend and the review
     blend = os.path.join(ROOT, "blender", "source", f"crate_{kind}.blend")
     os.makedirs(os.path.dirname(blend), exist_ok=True)

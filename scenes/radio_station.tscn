@@ -1,12 +1,17 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=17 format=3]
 
-[ext_resource type="Texture2D" path="res://assets/props/radio_station.png" id="1_body"]
-[ext_resource type="Texture2D" path="res://assets/props/radio_station_shadow.png" id="2_shadow"]
+[ext_resource type="Texture2D" path="res://assets/props/radio_station_desk.png" id="1_desk"]
+[ext_resource type="Texture2D" path="res://assets/props/radio_station_electronics.png" id="1_electronics"]
+[ext_resource type="Texture2D" path="res://assets/props/radio_station_stand.png" id="1_stand"]
+[ext_resource type="Texture2D" path="res://assets/props/radio_station_shadow_desk.png" id="2_shadow_desk"]
+[ext_resource type="Texture2D" path="res://assets/props/radio_station_shadow_electronics.png" id="2_shadow_electronics"]
+[ext_resource type="Texture2D" path="res://assets/props/radio_station_shadow_stand.png" id="2_shadow_stand"]
 [ext_resource type="Texture2D" path="res://assets/props/radio_station_ground.png" id="3_ground"]
 [ext_resource type="Script" path="res://scripts/radio_station.gd" id="4_script"]
 [ext_resource type="Texture2D" path="res://assets/props/radio_station_dish.png" id="5_dish"]
 [ext_resource type="Shader" path="res://shaders/shadow_sweep.gdshader" id="6_sweep"]
 [ext_resource type="Script" path="res://scripts/radio_terminal.gd" id="7_terminal"]
+[ext_resource type="Script" path="res://scripts/partial_cover.gd" id="8_cover"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_desk"]
 size = Vector2(51.2, 119.5)
@@ -17,28 +22,37 @@ radius = 51.2
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_zone"]
 size = Vector2(93.9, 145)
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_dish_zone"]
-size = Vector2(85.3, 76.8)
+[sub_resource type="CircleShape2D" id="CircleShape2D_dish_zone"]
+radius = 115.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_dish_shadow"]
 shader = ExtResource("6_sweep")
 shader_parameter/opacity = 0.71
 
-[sub_resource type="LabelSettings" id="LabelSettings_prompt"]
-font_size = 16
-font_color = Color(0.75, 1, 0.75, 1)
-outline_size = 5
-outline_color = Color(0, 0, 0, 0.8)
 
 [node name="RadioStation" type="Node2D"]
 script = ExtResource("4_script")
 
-[node name="Shadow" type="Sprite2D" parent="."]
+[node name="ShadowDesk" type="Sprite2D" parent="."]
 z_index = -10
 modulate = Color(1, 1, 1, 0.71)
 texture_filter = 4
 scale = Vector2(0.5, 0.5)
-texture = ExtResource("2_shadow")
+texture = ExtResource("2_shadow_desk")
+
+[node name="ShadowElectronics" type="Sprite2D" parent="."]
+z_index = -10
+modulate = Color(1, 1, 1, 0.71)
+texture_filter = 4
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_shadow_electronics")
+
+[node name="ShadowStand" type="Sprite2D" parent="."]
+z_index = -10
+modulate = Color(1, 1, 1, 0.71)
+texture_filter = 4
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("2_shadow_stand")
 
 [node name="DishShadow" type="Sprite2D" parent="."]
 z_index = -10
@@ -53,35 +67,29 @@ texture_filter = 4
 scale = Vector2(0.5, 0.5)
 texture = ExtResource("3_ground")
 
-[node name="StandBox" type="Polygon2D" parent="."]
-z_index = -4
-position = Vector2(-25.6, -89.6)
-color = Color(0.55, 1, 0.55, 0.22)
-polygon = PackedVector2Array(-46.95, -72.5, 46.95, -72.5, 46.95, 72.5, -46.95, 72.5)
+[node name="StandBox" type="Node2D" parent="."]
+position = Vector2(55.5, -89.6)
 
-[node name="StandEdge" type="Line2D" parent="StandBox"]
-points = PackedVector2Array(-46.95, -72.5, 46.95, -72.5, 46.95, 72.5, -46.95, 72.5)
-closed = true
-width = 2.0
-default_color = Color(0.65, 1, 0.65, 0.75)
+[node name="DishStandBox" type="Node2D" parent="."]
+position = Vector2(0, 93.9)
 
-[node name="DishStandBox" type="Polygon2D" parent="."]
-z_index = -4
-position = Vector2(-132.3, 93.9)
-color = Color(0.55, 1, 0.55, 0.22)
-polygon = PackedVector2Array(-42.65, -38.4, 42.65, -38.4, 42.65, 38.4, -42.65, 38.4)
-
-[node name="DishStandEdge" type="Line2D" parent="DishStandBox"]
-points = PackedVector2Array(-42.65, -38.4, 42.65, -38.4, 42.65, 38.4, -42.65, 38.4)
-closed = true
-width = 2.0
-default_color = Color(0.65, 1, 0.65, 0.75)
-
-[node name="Body" type="Sprite2D" parent="."]
-z_index = 4
+[node name="Desk" type="Sprite2D" parent="."]
+z_index = -1
 texture_filter = 4
 scale = Vector2(0.5, 0.5)
-texture = ExtResource("1_body")
+texture = ExtResource("1_desk")
+
+[node name="Electronics" type="Sprite2D" parent="."]
+z_index = -1
+texture_filter = 4
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("1_electronics")
+
+[node name="Stand" type="Sprite2D" parent="."]
+z_index = -1
+texture_filter = 4
+scale = Vector2(0.5, 0.5)
+texture = ExtResource("1_stand")
 
 [node name="Dish" type="Sprite2D" parent="."]
 z_index = 5
@@ -94,24 +102,24 @@ texture = ExtResource("5_dish")
 visible = false
 z_index = 30
 
-[node name="DishPrompt" type="Label" parent="."]
-visible = false
-z_index = 30
-offset_left = -202.3
-offset_top = 135.2
-offset_right = -62.3
-offset_bottom = 159.2
-text = "[F] Tune dish"
-label_settings = SubResource("LabelSettings_prompt")
-horizontal_alignment = 1
 
 [node name="Solid" type="StaticBody2D" parent="."]
 
-[node name="Desk" type="CollisionShape2D" parent="Solid"]
+[node name="DeskBody" type="StaticBody2D" parent="."]
+script = ExtResource("8_cover")
+over_chance = 0.5
+
+[node name="Desk" type="CollisionShape2D" parent="DeskBody"]
 position = Vector2(55.5, -89.6)
 shape = SubResource("RectangleShape2D_desk")
 
-[node name="Dish" type="CollisionShape2D" parent="Solid"]
+[node name="DishBody" type="StaticBody2D" parent="."]
+script = ExtResource("8_cover")
+hit_chance = 0.6
+over_chance = 1.0
+see_through = false
+
+[node name="Dish" type="CollisionShape2D" parent="DishBody"]
 position = Vector2(0, 93.9)
 shape = SubResource("CircleShape2D_dish")
 
@@ -123,11 +131,11 @@ monitorable = false
 shape = SubResource("RectangleShape2D_zone")
 
 [node name="DishZone" type="Area2D" parent="."]
-position = Vector2(-132.3, 93.9)
+position = Vector2(0, 93.9)
 monitorable = false
 
-[node name="Box" type="CollisionShape2D" parent="DishZone"]
-shape = SubResource("RectangleShape2D_dish_zone")
+[node name="Ring" type="CollisionShape2D" parent="DishZone"]
+shape = SubResource("CircleShape2D_dish_zone")
 
 [node name="Terminal" type="Node" parent="."]
 script = ExtResource("7_terminal")

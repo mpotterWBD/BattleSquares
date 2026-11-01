@@ -7,11 +7,13 @@
 [ext_resource type="Script" uid="uid://b855wxv55g82y" path="res://scripts/command.gd" id="6_command"]
 [ext_resource type="Script" uid="uid://es3uswkipqpt" path="res://scripts/arena_edge.gd" id="7_edge"]
 [ext_resource type="Script" uid="uid://cv0kyjeypajvj" path="res://scripts/arrival.gd" id="8_arrival"]
-[ext_resource type="PackedScene" path="res://scenes/crate_ammo.tscn" id="10_choun"]
+[ext_resource type="PackedScene" path="res://scenes/sandbags.tscn" id="10_choun"]
 [ext_resource type="PackedScene" path="res://scenes/road.tscn" id="10_road"]
 [ext_resource type="Script" uid="uid://dxy4uq0gvepac" path="res://scripts/enemy_spawner.gd" id="11_spawner"]
-[ext_resource type="PackedScene" path="res://scenes/crate_sandbags.tscn" id="11_ya4ey"]
-[ext_resource type="PackedScene" path="res://scenes/ammo_can.tscn" id="12_eb6dy"]
+[ext_resource type="PackedScene" path="res://scenes/crate_comms.tscn" id="11_ya4ey"]
+[ext_resource type="PackedScene" path="res://scenes/radio_station.tscn" id="12_trceg"]
+[ext_resource type="PackedScene" path="res://scenes/crate_sandbags.tscn" id="13_a8y0u"]
+[ext_resource type="PackedScene" path="res://scenes/squadmate.tscn" id="14_a8y0u"]
 
 [sub_resource type="Curve2D" id="Curve2D_85g3d"]
 resource_local_to_scene = true
@@ -63,14 +65,62 @@ centre_line = false
 script = ExtResource("11_spawner")
 enemy_health = 4.0
 
-[node name="SandbagCrate" parent="." unique_id=922320337 instance=ExtResource("11_ya4ey")]
-position = Vector2(386, 942)
+[node name="Sandbags" parent="." unique_id=1928113992 instance=ExtResource("10_choun")]
+position = Vector2(3090, 760)
+rotation = 1.5707964
+built = null
+max_health = null
+extra_sandbags = 8
 
-[node name="AmmoCrate" parent="." unique_id=844912553 instance=ExtResource("10_choun")]
-position = Vector2(366, 1051)
+[node name="Sandbags2" parent="." unique_id=1510334185 instance=ExtResource("10_choun")]
+position = Vector2(3179, 92)
+rotation = 1.5707964
+built = null
+max_health = null
+extra_sandbags = 7
 
-[node name="AmmoCan" parent="." unique_id=1478866024 instance=ExtResource("12_eb6dy")]
-position = Vector2(283, 1054)
+[node name="Sandbags3" parent="." unique_id=567815161 instance=ExtResource("10_choun")]
+position = Vector2(3179, 1512)
+rotation = 1.5707964
+built = null
+max_health = null
+extra_sandbags = 7
 
-[node name="AmmoCan2" parent="." unique_id=1325869389 instance=ExtResource("12_eb6dy")]
-position = Vector2(255, 1060)
+[node name="CommsCrate" parent="." unique_id=2098806996 instance=ExtResource("11_ya4ey")]
+position = Vector2(691, 1124)
+
+[node name="RadioStation" parent="." unique_id=1769242796 instance=ExtResource("12_trceg")]
+position = Vector2(1199, 1417)
+
+[node name="SandbagCrate" parent="." unique_id=1784900010 instance=ExtResource("13_a8y0u")]
+position = Vector2(1332, 1646)
+
+[node name="Squadmate" parent="." unique_id=1077623350 instance=ExtResource("14_a8y0u")]
+position = Vector2(1424, 1636)
+idle_min_s = 1.5
+idle_max_s = 5.0
+
+[node name="Squadmate2" parent="." unique_id=19297666 instance=ExtResource("14_a8y0u")]
+position = Vector2(1416, 1549)
+idle_min_s = 1.5
+idle_max_s = 5.0
+
+[node name="Squadmate3" parent="." unique_id=1325231031 instance=ExtResource("14_a8y0u")]
+position = Vector2(1443, 1738)
+idle_min_s = 1.5
+idle_max_s = 5.0
+
+[node name="Squadmate4" parent="." unique_id=794992429 instance=ExtResource("14_a8y0u")]
+position = Vector2(1411, 1293)
+idle_min_s = 1.5
+idle_max_s = 5.0
+
+[node name="Squadmate5" parent="." unique_id=1131335374 instance=ExtResource("14_a8y0u")]
+position = Vector2(1415, 1459)
+idle_min_s = 1.5
+idle_max_s = 5.0
+
+[node name="Squadmate6" parent="." unique_id=1087464906 instance=ExtResource("14_a8y0u")]
+position = Vector2(1409, 1372)
+idle_min_s = 1.5
+idle_max_s = 5.0

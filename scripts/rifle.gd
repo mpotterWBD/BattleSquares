@@ -152,8 +152,13 @@ static var _last_take := -1
 @export_group("Magazine")
 ## Rounds in a full magazine. (A reload lasts as long as its sound.)
 @export_range(1, 200, 1) var mag_size := 30
-## Spare magazines carried, full, besides the one in the rifle (-1 = as many as it needs).
-@export_range(-1, 50, 1) var spare_mags := -1
+## Rounds in the magazine it starts with (-1: a full one). Everyone starts
+## with half a magazine and no spares (Mike, 2026-10-30): more ammo comes
+## off the dead (ammo_pickup.gd).
+@export_range(-1, 200, 1) var start_rounds := 15
+## Spare magazines carried, full, besides the one in the rifle (-1 = as many as
+## it needs).
+@export_range(-1, 50, 1) var spare_mags := 0
 ## Reloads by itself when the magazine runs dry. Off (the player), an empty
 ## rifle just clicks until it's told to reload.
 @export var auto_reload := true
@@ -237,7 +242,7 @@ func _ready() -> void:
 	_shot.max_polyphony = 6   # quick shots' echoes ring over each other instead of cutting off
 	_shot.position = Vector2(muzzle, 0)
 	add_child(_shot)
-	rounds = mag_size
+	rounds = mag_size if start_rounds < 0 else mini(start_rounds, mag_size)
 	_hand_mag = Sprite2D.new()
 	_hand_mag.texture = MAG_TEX
 	_hand_mag.scale = Vector2.ONE * SPRITE_SCALE
@@ -388,6 +393,22 @@ func fire(spread_deg := 0.0, distance_m := 0.0) -> void:
 		start_reload()   # empty: straight into a reload
 
 
+## Takes the magazine out (someone picking it up off a dead square's gun,
+## ammo_pickup.gd): the gun shows with none, and it returns the rounds that
+## were in it.
+func take_magazine() -> int:
+	var taken := rounds
+	rounds = 0
+	_gun.texture = NO_MAG_TEX
+	return taken
+
+
+## A magazine with `count` rounds in it goes in with the spares (picked up).
+func add_spare(count: int) -> void:
+	if spare_mags >= 0 and count > 0:
+		_spares.append(count)
+
+
 ## Spare magazines left (-1: as many as it needs).
 func spare_count() -> int:
 	return -1 if spare_mags < 0 else _spares.size()
@@ -429,8 +450,11 @@ func start_reload() -> bool:
 
 
 ## Stops a reload where it is (its holder died): no magazine left in hand,
-## and the sound cut.
+## and the sound cut. If the old magazine was already out and the fresh one
+## not yet in, the gun's left with none (no rounds).
 func abandon_reload() -> void:
+	if reloading and _dropped and not _seated:
+		rounds = 0
 	reloading = false
 	_hand_mag.visible = false
 	_reload_sound.stop()
