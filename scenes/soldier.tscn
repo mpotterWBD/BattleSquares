@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://drqj2mcfqnv4d" path="res://assets/characters/red_square_shadow_sheet.png" id="2_shadow"]
 [ext_resource type="Texture2D" uid="uid://v5otc2dmnqqh" path="res://assets/characters/red_square_sheet.png" id="3_body"]
 [ext_resource type="Script" uid="uid://dknh7siqurrgx" path="res://scripts/rifle.gd" id="4_rifle"]
-[ext_resource type="Texture2D" uid="uid://b2nruukyqlhjp" path="res://assets/characters/rifle.png" id="5_rifle_tex"]
+[ext_resource type="Texture2D" uid="uid://b2nruukyqlhjp" path="res://assets/characters/hold_rifle.png" id="5_rifle_tex"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
 size = Vector2(34, 34)

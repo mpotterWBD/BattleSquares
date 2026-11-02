@@ -41,11 +41,10 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 | Mouse | Aim: the square turns loosely toward the cursor, and the rifle aims within its sweep |
 | Left click | Fire (one shot per click). Dead-on within the rifle's accurate range (6 m) of the click; strays more the further past it you click |
 | **Right mouse** (hold) | Aim: shows the aiming line (solid = accurate range, then a red-shading spread wedge out to the mouse, labelled with the chance the shot goes into the ground) |
-| **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left), DEPLOY menu (right), selection and orders. Left click a squadmate to select it; left click anywhere else orders the selection, or with nobody selected everyone in the circle: on open ground they go there, at a sandbag wall's box they dig in along it, on a supply crate they build from it |
-| **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left), DEPLOY menu (right), selection and move orders |
+| **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left) with DEPLOY under it (hold Deploy), selection and orders. Left click a squadmate to select it; left click anywhere else orders the selection, or with nobody selected everyone in the circle: on open ground they go there, at a sandbag wall's box they dig in along it, on a supply crate they build from it |
 | **F** | Interact: at a station's desk (platform box), open/close the RADIO menu or hang up radio command; in the dish box, open/close the dish tuning wheel |
 | Esc | Close the RADIO menu (or step back out of marking an LZ) |
-| **Q** | Debug mode on/off: each square's number over it (you 0, everyone else 1, 2...), the same numbers the battle log uses. Your square takes no controls while it's on (no moving, aiming, shooting, F, or command mode). Click a square to see its ammo and spare magazines; click open ground to clear it. Q again gives you control back |
+| **Q** | Debug mode on/off: each square's number over it (you 0, everyone else 1, 2...), the same numbers the battle log uses. Your square takes no controls while it's on (no moving, aiming, shooting, F, or command mode). Each square also shows its state and tags (target, cover, holding fire, ammo run...). Click a square to see its ammo, spare magazines and what it's doing in full; click a crate for its contents, straps and vicinity; click anything else solid (sandbags, the desk or dish, a helicopter) for its cover class and the share of shots it stops; click open ground to clear it. Enemies' detection circles only show here. Hold the wheel button and drag to pan the view; the wheel zooms. Q again gives you control back and the view eases back onto you |
 | **F9** | Start / stop the battle log (or the BATTLE LOG button, top left). Starting wipes the last log. Written to `logs/battle_log.txt`, for Claude to assess (the battle-log skill) |
 | Right click | In command mode: move order for the selection only (or cancel equipment placement). While marking an LZ: back to the request |
 
@@ -213,9 +212,9 @@ BattleSquares/
 | Ammo crate (first of the supply crates) | Done, **scene ready to place** (`scenes/crate_ammo.tscn`) | `blender/scripts/crates.py` (`-- ammo`) | `assets/props/crate_ammo.png` (384 × 384 px = 1.125 m square, **rendered at 4× density**, shown at 0.25 with mipmaps; `.import` has mipmaps on). After Mike's reference photo (a tarped pallet), without the tarp: a 0.8 m square four-way wooden pallet (0.144 m high: bottom boards, nine blocks, stringers, seven deck boards, pine with grain) loaded with 24 olive-drab M2A1-size ammo cans in a square block (4 across × 2 deep × 3 high; each with a rimmed lid, folding handle, end latch and yellow stencil marks, a little out of true) under black ratchet straps both ways with buckles on top. Load 0.632 × 0.618 m, top at 0.732 m. Lit by the standard sun; the game draws the shadow (`scripts/crate.gd`). Review: `assets/previews/crate_ammo_preview.png` (angled). Other crate kinds will be added to `KINDS` in the same script. |
 | Sandbag crate | Done, **scene ready to place** (`scenes/crate_sandbags.tscn`) | `blender/scripts/crates.py` (`-- sandbags`) | `assets/props/crate_sandbags.png` (384 × 384 px = 1.125 m square, 4× density, mipmaps). The ammo crate's pallet and straps, loaded with 30 filled burlap sandbags (the wall's bag model and burlap from `sandbags.py`, a touch smaller: 0.37 × 0.235 m), 2 × 3 to a layer, 5 layers, each turned 90° from the one below. Straps as on the ammo crate. Load 0.768 × 0.772 m, top at 0.747 m. A supply of 10 sandbag walls; as they're used it shows smaller stacks: `crate_sandbags_1.png` … `_3.png` (24, 15 and 3 bags left, no straps; `SAND_STAGES`). Review: `assets/previews/crate_sandbags_preview.png`. |
 | Comms crate | Done, **in the game** (equipment drops; the radio station is built from it) | `blender/scripts/crates.py` (`-- comms`) | `assets/props/crate_comms.png` (full, strapped) and `crate_comms_1.png` … `_4.png` (1–4 parts taken, no straps), 384 × 384 px, 4× density, mipmaps. One item per station part, side by side so each shows from above, in the order they come off: the desk folded into a grey bundle (two panels, folded legs, webbing ties) along the north side; the electronics in a black rugged case; the dish's legs in an olive case; the dish in a rounded desert-tan case; the wiring on an olive cable reel. Load 0.720 × 0.737 m, top at 0.422 m. Review: `assets/previews/crate_comms_preview.png`. |
-| Ammo can (lone) | Done, **scene ready to place** (`scenes/ammo_can.tscn`) | `blender/scripts/crates.py` (`-- can`) | `assets/props/ammo_can.png` (128 × 128 px = 0.375 m square, 4× density, mipmaps). One of the ammo crate's cans on its own: olive drab, rimmed lid, folding handle, end latch, yellow stencils. 0.16 × 0.32 m, top at 0.207 m. Review: `assets/previews/ammo_can_preview.png`. |
+| Ammo can (lone) | Done, **scene ready to place** (`scenes/ammo_can.tscn`) | `blender/scripts/crates.py` (`-- can`) | `assets/props/hold_ammo_can.png` (128 × 128 px = 0.375 m square, 4× density, mipmaps). One of the ammo crate's cans on its own: olive drab, rimmed lid, folding handle, end latch, yellow stencils. 0.16 × 0.32 m, top at 0.207 m. Review: `assets/previews/hold_ammo_can_preview.png`. |
 | Cargo parachute | Done, **in the game** (equipment drops) | `blender/scripts/parachute.py` | `assets/vehicles/parachute.png` (938 × 938 px = 5.5 m square, **rendered at 2×**, shown at 0.5 with mipmaps). A round 5 m cargo canopy, top-down: 16 gores in two olive drabs, sewn radial seam tapes, a darker hem, an apex vent, the skirt scalloped between the lines. Review: `assets/previews/parachute_preview.png` (on its lines over an ammo crate). |
-| Rifle | Done (v2, detailed) | `blender/scripts/rifle.py` | `assets/characters/rifle.png` (384 px, **rendered at 4× density**, shown at 0.25 scale with mipmaps so it stays sharp when zoomed in). 0.48 m from pivot to muzzle (0.28 m beyond the front face). Parts: gunmetal receiver, red-dot sight with a red lens, polymer handguard, front sight post, barrel, muzzle brake, and a forward-raked magazine. **Canted 30°** so the magazine shows from above (it pokes out to the gun's right). Lit from straight overhead so it can rotate; its shadow is drawn in Godot. v1 (plain bar) is in `assets/previews/rifle_v1_plain.png`. |
+| Rifle | Done (v2, detailed) | `blender/scripts/rifle.py` | `assets/characters/hold_rifle.png` (384 px, **rendered at 4× density**, shown at 0.25 scale with mipmaps so it stays sharp when zoomed in). 0.48 m from pivot to muzzle (0.28 m beyond the front face). Parts: gunmetal receiver, red-dot sight with a red lens, polymer handguard, front sight post, barrel, muzzle brake, and a forward-raked magazine. **Canted 30°** so the magazine shows from above (it pokes out to the gun's right). Lit from straight overhead so it can rotate; its shadow is drawn in Godot. With it, `hold_rifle_no_mag.png` and `hold_magazine.png` for the reload. v1 (plain bar) is in `assets/previews/rifle_v1_plain.png`. |
 | Radio pack (radio operator) | Done (v1) | `blender/scripts/radio_pack.py` | `assets/characters/radio_pack.png` (614 px = 1.8 m, **rendered at 4× density**, shown at 0.25 scale with mipmaps), centred on the square's centre, square facing +x. Brown canvas pack on the square's back (0.16 m deep, 0.3 m wide, top at 0.44 m, just above the square), darker top flap and side pouches, shoulder straps over the square's top, the radio's top with two knobs, and a 0.6 m whip antenna raked 32° back with a tip cap. Lit from straight overhead so it turns with the square; its shadow is drawn in Godot (`radio_pack.gd`). |
 | Helicopter (UH-60-style transport) | Done (v3, 0.55 scale, cockpit, flies insertions) | `blender/scripts/helicopter.py` | Modelled at real size, then shrunk by `SCALE` = 0.55 (`helicopter.gd SCALE` must match): fuselage 8.4 m, rotor 9 m. Cockpit (laid out for scale 0.5 and grown with `SCALE`): two red pilot squares, 0.44 m, corners rounded like the player's (upright edges only, top edges sharp), under dark tinted glass (alpha 0.85); an instrument panel with screens, switch strips and a centre console with lamps. `assets/vehicles/helicopter_body.png` (939 px = 11 m, nose to +x; cockpit interior without pilots or glass), `helicopter_pilot.png` (one pilot, lit as in the cockpit; the game draws two and animates them), `helicopter_glass.png` (glass only, drawn over the pilots) and `helicopter_rotor.png` (centred on the mast), both lit from straight overhead so they can face any heading. Plus 4 half-res shadow outlines `helicopter_shadow_{body,stabilator,fin,tailrotor}.png` (padded for sweeping). Olive drab, matte, no markings; black blades with yellow tip bands. Renders in about 15 s. |
 | Deployable comms station (desk, laptop, small satellite dish; no platform since 2026-10-30) | Done, **in the game via DEPLOY** | `blender/scripts/radio_station.py` | Its parts rendered separately, all 2× density (show at scale 0.5), since 2026-10-30: `radio_station_desk.png`, `_electronics.png`, `_stand.png` (z −1), their shadows `radio_station_shadow_desk.png`, `_electronics.png`, `_stand.png` (z −10), `radio_station_ground.png` (the ground cable, z −5), `radio_station_shadow.png` (1109 px = 6.5 m, centred on the station's middle), and `radio_station_dish.png` (2.4 m, centred on the dish post, lit from overhead, rotated in game). **Compact since 2026-10-29:** a 2 m square plank operator platform centred 1.05 m north of the origin, with a field desk along its east edge carrying a radio (whip antenna, handset), the detailed rugged laptop (lit mapping-app screen, mouse), a power unit, a headset, a notebook and a mug; the antenna (since 2026-10-30) is a desert-tan flyaway satellite terminal 1.1 m south of the origin, inside the platform's width: four splayed outrigger legs on round grey foot pads braced to a centre column, a pan/tilt head and yoke, a 1.2 m dish at 40° elevation with a rolled rim and a centre feed boom, and a black cable down the column. The head, yoke, dish, rim, boom and feed are the turning image; the base stays in the station image; one cable from the desk to the dish. The 7 m guyed mast and its stakes are gone. Lit by the normal top-left sun (it doesn't turn), with its shadow rendered separately and normalised like the squares'. Review images: `assets/previews/radio_station_preview.png` (an in-game screenshot) and `radio_station_dish_preview.png` (an angled close-up of the antenna). Renders in about 20 s. |
@@ -2341,3 +2340,573 @@ Major choices and the reasons behind them.
 - Mike: in command mode, a left click anywhere with no unit selected applies to everyone in the circle: on open ground a plain "go here", on a sandbag wall's box (the dig-in square) everyone in the circle tries to dig in. (A first go had put the dig-in on the right click; that's undone.)
 - **`command.gd _click()`**: not on a squadmate (that still selects it), the click goes to `_order_targets()` (the selection, or everyone who hears): a supply crate owing parts, they build from it; anywhere else `_order_move(point, units)`, which mans a wall's row at a wall (`_man_sandbags()`) and otherwise lines them up there. **`_order_move()`** takes who goes (default the selection), so a **right click** still only ever moves a selection. **`_sandbags_at()`** (new) finds the wall whose box a point is in.
 - Tested (`test_click_orders.gd`, scratch copy, main level, command mode, a 6-tile wall, five squadmates in the circle and one 16 m off): nobody selected, a left click on open ground sent the five there side by side, the far one stayed; at the wall the five went and were all dug in within 5 s; right clicks on ground and wall moved nobody; a left click on squadmate 3 selected it without moving anyone; then a left click at the wall sent only 3.
+
+### 2026-11-01 — Air drops come down in a line, not a 2 x 2 block
+- Mike: when you do air drops, don't do them in columns, do them in lines. **`radio_terminal.gd _dz_layout()`**: the filled slots' crates now lie in one line in slot order, `DROP_PITCH_M` 1.6 m apart, centred on the mouse (the drop-zone ghost shows the same); the scroll wheel still turns it 15° a notch. **`supply_drop.gd start(heli, drops, heading)`**: the helicopter flies in along that line (heading = the drop's turn, 0 = from the west, nose east) and lets each crate go as it passes overhead, then climbs away the same way. Before, it always flew east, letting go two crates side by side at a time.
+- Tested (`test_line_drop.gd`, scratch copy, three crates turned 45°): in one diagonal line in slot order, the helicopter came in at 45° and was within 0.25 m of overhead at each release, then flew off and was removed.
+### 2026-11-01 — Ordering a strapped crate unlocked; the straps snap
+- Mike: select someone and click a crate when there's nothing to build from it, and they unlock it; and a quick snapping animation for the straps. **`command.gd _crate_at()`** also picks a crate that's still `strapped`, and `_click()` only calls `take_over()` when there's something to take over. **`squadmate.gd _crate_with_work()`**: sent to a crate (`_build_from`) it keeps at it while it's owed parts *or still strapped*, so with nothing owed it walks over, undoes the straps (UNSTRAP_S, one at a time as before) and goes idle. With nobody selected it's everyone in the circle, as for other clicks. Works for the ammo crate too.
+- **`scripts/strap_snap.gd`** (new): spawned by `crate.gd _break_straps()` as a child of the crate (so it turns with it), alongside BandBreak. Each of the three straps (crates.py: two along y at ±0.3 of the load's width, one along x through the middle) parts near its middle and the two ends whip back past the load's edges (`WHIP_M` 0.22 m), the cut ends curling, fading out over `SNAP_S` 0.4 s. The player's F unstrap gets it too.
+- Tested (`test_unlock_crate.gd`, scratch copy, main level, a crate turned 0.3 rad): one squadmate selected, clicked a sandbag crate with nothing laid: it went into BUILD, the straps broke at 4.3 s (open texture showing), the snap animation was there and gone 0.4 s later, the squadmate back to IDLE, the other five untouched. The same for a strapped ammo crate. `test_click_orders.gd` still passes. The animation itself hasn't been looked at in the running game yet.
+### 2026-11-01 — DEPLOY moves under ORDERS; its button is now "Deploy"
+- Mike: change the menu item Build to Deploy and put it on the left with the orders, with a gap so it's clear what's an order and what's deploying. **`command.gd`**: the DEPLOY column's button reads **Deploy** (it was Build, the same name as the Build order). `_place_menus()` stacks ORDERS over DEPLOY left of the player, `DEPLOY_GAP_PX` 28 px between them, the pair centred on the player as one (DEPLOY still hidden in radio command mode, and then ORDERS centres on its own). Its pop-out now opens to the left, like the orders'. The ORDERS menu's **Build** order is unchanged. Also removed a stale duplicate Space row from the controls table.
+- Tested (`test_menu_stack.gd`, scratch copy, main level): ORDERS 711–1105 px, DEPLOY 1133–1209 px (28 px gap), both right-aligned the same distance left of the player, centred on its 960 px; the button reads Deploy.
+### 2026-11-01 — Deployable ammo cans; everyone carries 2 magazines (can be empty)
+- Mike: add deploy for ammo cans just like sandbags. A can is loose bullets, no magazines, so the magazine count doesn't go up; there's a short cooldown for opening the can and loading each round. All units keep a magazine count of 2, and each can be empty. His picks: 2 spares besides the rifle's own; ~120 rounds a can, gone when empty; loading time per round; a dead square's magazine swaps for your emptiest.
+- **`rifle.gd`**: `spare_mags` now 2 (was 0) and means magazines carried, full or empty; new `spare_start_rounds` 0, so everyone still starts with 15 rounds in the rifle and nothing else. A reload always keeps the magazine coming out, empty or not (only endless-spare rifles drop empties now). New: `load_round()` (a loose round into the fullest spare that isn't full), `spare_room()`, `ready_to_load()` (not reloading or just fired), `swap_magazine(count)` (replaces the emptiest spare if it's better; returns what it held, or -1), `put_magazine()`. `add_spare()` is gone.
+- **`ammo_pickup.gd`** (dead squares' magazines): now a swap. The taker's emptiest spare goes into the dead rifle, and the circle stays if that one still has rounds. `useful_to()` stops the player or AI swapping for something no better. The note reads "MAG n". `note()` is static so the can uses it too.
+- **`scripts/ammo_supply.gd` + `scenes/ammo_supply.tscn`** (new): the deployed can. It goes down as a site like a sandbag wall (`start_site()`, `needs("ammo_can")`, `install()`), on the ground under the squares, not solid. Built, it holds `rounds` 120 and is in "ammo_pickups". Anyone within `REACH_M` 0.6 m with room in their spares loads from it (`work_load()`): `OPEN_S` 0.6 s for the lid, then a round every `round_s` 0.1 s. Two empty magazines take 6.6 s. Firing or reloading pauses it, and stepping away starts again with the lid. The player loads just by standing there, and "+n rds" floats up when they stop. A gold ring round the can shows the loader's spares filling. In command mode the rounds left show over it. Empty, it fades out.
+- **`ai_soldier.gd`**: `_nearest_ammo()` skips ammo that wouldn't help (`useful_to()`). Cans aren't claimed (several can share). At a can it stands loading until its spares are full or the can's empty (`_loading_ammo` keeps it going once it's no longer "short"), then reloads. An order still pulls it away.
+- **`crate_ammo.tscn`**: `builds = "ammo_can"`, 24 `ammo_can` parts (the 4 x 2 x 3 cans in the art). There are no stage pictures, so the load looks full until the last can goes. **`command.gd`**: "Ammo can" in DEPLOYABLES and CRATE_BUILT (so it's in DEPLOY and the Build order's pop-out), with a drawn can icon. **`carry_art.gd`**: an olive can held in front.
+- Note: everyone starting on 15 rounds counts as short, so squadmates within `AMMO_TOPUP_M` 12 m of a new can all go and top up. Six of them empty a 120-round can.
+- Tested (`test_ammo_can.gd`, scratch copy, main level): everyone starts at rifle 15, spares [0, 0]; a reload is refused. A squadmate built a can from a strapped ammo crate in 6.1 s (it undid the straps first). The player standing there loaded 60 rounds in 6.60 s (spares [30, 30], can 60 left), then a reload gave rifle 30, spares [30, 0], still 2 magazines. A squadmate out of ammo walked to the can, loaded 60 (can empty, gone) and reloaded. A dead rifle with 20 swapped into spares [0, 12] gave [20, 12] and the pickup went; it wasn't offered to spares [25, 30]. `test_unlock_crate.gd` and `test_click_orders.gd` still pass.
+
+### 2026-11-01 — Build order removed from ORDERS
+- Mike: get rid of the Build order in the menu. **`command.gd`**: the "build" entry is gone from ORDERS, along with its pop-out (`_build_popout`, `_open_build_popout()`, the `picks` button kind). Crate-built things (radio station, sandbags, ammo can) are laid from **Deploy**. With squadmates selected when the item's picked, they build it (`_build_crew`, as before); nobody selected, the player carries the parts in. Clicking a supply crate in command mode still sends the selection (or everyone in the circle) to build from it or unstrap it. Squadmates' BUILD state (`squadmate.gd order_build()`) is unchanged.
+- Tested (scratch copy): `test_menu_stack.gd`, ORDERS now 341 px tall (was 394), DEPLOY still 28 px under it; `test_click_orders.gd` passes.
+
+### 2026-11-01 — Ammo crate empties in stages; can ghost easier to see; AmmoCrate override removed
+- Mike: the ammo can ghost doesn't show, and clicking the ammo crate doesn't send units like the sandbag crate. **Ghost:** it was there but a small dark-olive can tinted green on green grass (checked in a rendered frame). **`ammo_supply.gd`**: a green outline round the can and a ring at `REACH_M` (`_draw_mark()`) on a placing ghost, on a site, and on a placed can in command mode. The can is drawn brighter (`GHOST_BRIGHT`) on a ghost or site, and `SITE_GHOST` is less see-through (0.6). **Crate:** `scenes/main.tscn`'s AmmoCrate had `builds = ""` and `parts = []` overrides, written when the editor saved the level with the old crate scene still loaded (09:33), so it held no cans. Deploys took their can from AmmoCrate2 across the map, and a click on the near crate was a plain move. Overrides removed. Tested (`test_can_crate_click.gd`): with a can site laid, one squadmate selected and the near AmmoCrate clicked, it unstrapped it, picked up a can at 3.8 s and set it down at 6.1 s.
+- Mike: add 3 more stages for the ammo crate. **`blender/scripts/crates.py`**: `AMMO_STAGES`, columns left per layer (bottom first), [[4,4,1], [4,2,0], [3,0,0]]: 18, 12 and 6 cans. From above, a whole layer gone looks just like the one under it (the first try, 16/8/3 cans by layer, gave near-identical pictures), so they go a column at a time and the stack steps down, each step casting a shadow on the lower cans. Rendered crate_ammo_1..3.png (and re-rendered crate_ammo.png, _open.png, the preview and the .blend, same seed). **`crate_ammo.tscn`**: `stage_textures` [full, _1, _2, _3], `stage_heights` [0.732, 0.732, 0.536, 0.34]. Tested (scratch copy): straps off it shows the open load; from 6 taken stage 1, 12 stage 2, 18 stage 3, 24 just the pallet; the shadow height follows. The new PNGs need importing by the editor (focus it).
+
+### 2026-11-01 — One square at a time at an ammo can
+- Mike: only one unit at a time should go to an ammo can; the grouping round it looks weird. **`ai_soldier.gd _nearest_ammo()`**: a can is claimed like a dead square's magazine (`claimed_by`), so others skip it while one is on its way or loading. The claim is let go when it's done (spares full or can empty), given an order, or killed. The next one picks it up on its next look (`AMMO_LOOK_S`). The player isn't held back by a claim. Doc comments in ai_soldier.gd and ammo_supply.gd updated.
+- Tested (`test_can_queue.gd`, scratch copy, main level, six squadmates 3 m from a 400-round can, all short): they went one after another, each done (spares [30, 30]) about 8.5 s after the last (8.9, 17.5, 26.1, 34.2, 42.4, 50.7 s). Never more than one within 1 m of the can, nor more than one heading for it.
+
+### 2026-11-01 — Debug mode (Q) shows what each unit is doing
+- Mike: when I press Q, also show the units' state (defending, attacking, surprised...). **`debug_overlay.gd _status()`**: under each square's number, its state (squadmate.gd `State`, enemy.gd `Mode`; ATTENTION shortened to ATTN, SURPRISED to SURPRISE) coloured by kind (`STATE_COLORS`: orange ENGAGE, blue DEFEND, yellow SURPRISED, red PINNED, purple SEARCH, tan BUILD, grey the rest). On a line under that, short tags: `>n` the square it's shooting at, its cover phase (going / hiding / peeking), `hold` (a friend in the line), `standoff`, `stop`, `ammo` (on an ammo run) or `loading` (at a can), `reload`, and what it's carrying. The clicked unit's panel adds the state in full and the same things spelled out (shooting at #n, holding fire: a friend in the line, dug in at a wall, in formation, not alerted...). Nothing for the player but its number.
+- Tested (`test_debug_state_shot.gd`, scratch copy, rendered frame): an enemy showed ENGAGE >1; squadmates ATTN >7 hold, DEFEND, PINNED, ATTN >7 hold standoff; the picked one's panel read ATTENTION / shooting at #7 / holding fire: a friend in the line.
+
+### 2026-11-01 — Debug numbers and states bigger, states in the number's colour
+- Mike: make the numbers and states larger, and the states green as well. **`debug_overlay.gd`**: numbers `FONT_SIZE` 28 (was 20, outline 6), state and tag lines `STATE_FONT_SIZE` 18 (was 12). The state and its tags are now in the number's colour (green for our side, red for enemies; tags a little fainter) instead of a colour per state (`STATE_COLORS` gone). Checked in a rendered frame (`test_debug_state_shot.gd`).
+
+### 2026-11-01 — Debug mode: wheel-button drag pans the camera
+- Mike: in Q mode, let me press in the wheel button to pan the camera. **`game_camera.gd`**: while `World.debug` is on, holding the middle button and dragging moves the view (`_pan`, the ground following the mouse: motion / zoom). It's kept within the camera's usual bounds (`_view_center_for()`), and re-clamped each frame so dragging past an edge doesn't store up slack. The wheel still zooms. Turning debug off clears the pan and eases back onto the player (`_easing_move`). Outside debug mode the middle button does nothing, as before. Controls table Q row updated.
+- Tested (`test_debug_pan.gd`, scratch copy, main level, events fed to the camera): no pan outside debug; in debug a 300 px drag left moved the view 3.5 m right (zoom 1); a huge drag stopped at the arena edge (35.75 m) and a 500 px drag back moved it straight away (29.9 m); 1.5 s after Q off it was back by the player.
+
+### 2026-11-01 — Held-item art renamed hold_*
+- Mike: put "hold" at the start of the names of the items units hold (asset housekeeping, nothing in game changes). Renamed with `git mv`, each with its `.import` (its uid kept, its paths updated): `assets/characters/rifle.png` → `hold_rifle.png`, `rifle_no_mag.png` → `hold_rifle_no_mag.png`, `magazine.png` → `hold_magazine.png`, `assets/props/ammo_can.png` → `hold_ammo_can.png` (and `assets/previews/ammo_can_preview.png` → `hold_ammo_can_preview.png`). References updated: `scenes/soldier.tscn`, `scenes/ammo_can.tscn`, `scenes/ammo_supply.tscn`, `scripts/rifle.gd`, `scripts/ammo_supply.gd`, and the Blender scripts that render them (`rifle.py`, `crates.py`), so a re-render writes the new names. The radio pack (worn, not held) and the carried station parts / sandbags (drawn in code, `carry_art.gd`, no files) are unchanged. The Asset List above uses the new names. Older dated entries keep the names as they were.
+- Tested (scratch copy, the same rename, re-imported): `test_ammo_can.gd` passes; no missing resources.
+
+### 2026-11-01 — Carried items are their own pictures, as on their crates
+- Mike: the carried items (desk parts, sandbag, ammo can) were simpler than the crate art; give each its own asset, identical to how it looks on its crate. **`blender/scripts/crates.py -- held`** (new `render_held()`, `HELD_FRAMES`): builds each part exactly as on its crate and renders it on its own, centred, top-down, 4x density, transparent. For the comms parts that's the comms load with every other part removed (desk 0.72 x 0.25 m in a 0.75 m frame; electronics, legs and dish cases 0.36 x 0.24 m and the cable reel 0.22 m in 0.5625 m frames). The sandbag is the sandbag crate's bottom bag (same key), 0.40 x 0.27 m. Output `assets/props/hold_desk.png`, `hold_electronics.png`, `hold_legs.png`, `hold_dish.png`, `hold_wiring.png`, `hold_sandbags.png`. The ammo can uses `hold_ammo_can.png` (the lone can, `-- can`, the crate's can model). Their `.import` files are written with the crate art's settings (mipmaps on).
+- **`scripts/carry_art.gd`**: draws those pictures (0.25 scale) in place of the drawn shapes, held AHEAD_M in front, long side across the body (the can turned 90 degrees). **`player.gd`, `squadmate.gd`**: the carry view filters with mipmaps.
+- `scenes/main.tscn`: the editor had again written AmmoCrate overrides on save (`stage_textures = []`, and `stage_heights` saved as a texture array), from its old copy of crate_ammo.tscn. Removed. The editor needs crate_ammo.tscn reloaded or it'll keep doing this.
+- Tested (scratch copy, re-imported, rendered frame): six squadmates and the player each carrying one item. Each matches its crate (sandbag beside the sandbag crate, can beside the ammo crate).
+
+### 2026-11-01 — Carried items held against the body, the square over them
+- Mike: bring the held props in so they touch the unit and the unit is slightly over the box, so they look held, not floating in front. **`carry_art.gd`**: each part's centre is now `HALF_SQUARE_M` 0.2 + half its own depth (`DEPTH_M`) − `OVERLAP_M` 0.06 ahead of the carrier's middle (was a fixed 0.36 m), so its near edge sits 6 cm under the square's front face. **`player.gd`, `squadmate.gd`**: the carry view is z 0 (was 2) and moved just before `Body` in the tree, so it's drawn over the shadows and under the square.
+- Checked in a rendered frame (`test_carry_shot.gd`, scratch copy, zoom 3): each square overlaps the back of what it carries (desk, cases, sandbag, the player's can).
+
+### 2026-11-01 — Enemies use ammo crates: unstrap them, and set up ammo cans in a standoff
+- Mike: an enemy that comes into an ammo crate's vicinity at least undoes its straps (in debug mode, clicking a crate shows its vicinity circle). If enemies are engaged and in standoff, still in the crate's vicinity, one of them sets up 1 ammo can for every 3 in the group, about 2 m from where the group is held up.
+- **`crate.gd`**: `vicinity_m` (export, 8 m). `enemy_worker` (one enemy at a time) and `enemy_cans`. `take_unplanned()` / `give_back_unplanned()`: an enemy takes a can that nothing was set up for, reserving it as it's taken (so it never eats a squad site's reserved parts).
+- **`enemy.gd`** (CRATES in the header; `_crate_work()`, checked every `CRATE_LOOK_S` 0.5 s, after the ammo run; `crate_task`):
+  - "unstrap": a strapped ammo crate in vicinity, and it's free to (not SURPRISED, and not in ENGAGE unless held up). It goes and undoes the straps.
+  - "ammo": held up (`_held_up()`: ENGAGE, attacking, ai_soldier.gd `_standoff`) by an open ammo crate. The group is every held-up enemy in that crate's vicinity. `_cans_wanted()` = ceil(group / `UNITS_PER_CAN` 3) less the enemy cans already round the group (group "enemy_ammo_cans", from any crate) and any another enemy's bringing. The worker takes a can, carries it (rifle away, `CARRY_SPEED`, carry_art.gd; can't fire) to `CAN_BACK_M` 2 m behind the group's middle, away from the foes they're targeting, `CAN_SPREAD_M` 1.2 m apart across. The spot is moved to clear ground if something solid is there (`_clear_ground_near()`, `CAN_CLEAR_M`). If it gets no closer for `CARRY_STUCK_S` 2 s it sets the can down where it is. The can's a normal ammo_supply.gd can (120 rounds, one at a time), so any enemy short of ammo tops up from it (ai_soldier.gd `_ammo_run()`).
+  - It gives up if the standoff ends before it has a can, or the group has enough. Surprised while carrying, the can goes back on the crate. Killed: the same, and its rifle shows again for the fall.
+- **`debug_overlay.gd`**: a click on a crate picks it: its vicinity circle (gold) and a panel (what it holds n / total, strapped or not, vicinity, parts owed, the enemy working at it and its job, enemy cans set up from it). Enemies show "unstrapping" or "can run" tags. Hint line mentions crates and the wheel-button pan.
+- Found while testing: the first version put a can spot on top of the crate (the carrier stood there forever), and counted per crate (a second crate in range started a second can run for the same group). Both fixed as above.
+- Tested (`test_enemy_crates.gd`, scratch copy, main level): a calm enemy 5 m from a strapped ammo crate undid the straps (4.8 s). Five enemies held up 9–12 m from the player boxed in by sandbags, by an open ammo crate (the rest held in place, as the box made them close in and lose sight otherwise): one took on the can run at 0.5 s and set a can down at 4.5 s, 1.8 m from the group's middle on the far side from the player. A second can at 7.1 s, 2.3 m from the middle, 1.5 m across from the first. No third. Two enemies topped up from the first (30 + 45 each). A third undid the strapped AmmoCrate2 in range. Rendered frame: the crate panel and circle.
+- Not yet: the enemies' own fighting against a target boxed in on all sides closes in to the walls and loses sight (existing behaviour, seen while testing); that ends their standoff.
+
+### 2026-11-01 — Early Deploy: crates parachuted in before the player's helicopter
+- Mike: at the start, before the helicopter that drops the player off arrives, any crate with an Inspector setting Early Deploy ticked is dropped by a helicopter like a normal supply drop.
+- **`crate.gd`**: `early_deploy` (export, off). **`arrival.gd`**: at the start it hides and switches off the player (as the insertion does) and gathers the crates with `early_deploy`. If there are none it flies the player in as before. Otherwise it takes them out of the level and sends a supply helicopter (`supply_drop.gd`) to parachute each one back onto its own spot, turned as placed. It's the crate node itself, so its Inspector settings (strapped, vicinity...) come with it. When the last has landed (`air_drop.gd` new `landed` signal, via `supply_drop.gd` new `released` signal) and `EARLY_PAUSE_S` 1 s has passed, the player's helicopter comes in. **`air_drop.gd setup()`** takes a crate node as well as a scene. With Arrival off (tests), early-deploy crates are just there.
+- Tested (`test_early_deploy.gd`, scratch copy, main level with Arrival on, AmmoCrate and SandbagCrate ticked, the sandbag crate turned 0.5 rad): both off the field at 0.5 s, player hidden and aboard; supply helicopter at 0.1 s; both crates down at 6.5 s exactly on their placed spots (12.97, 16.37 and 12.97, 14.99), turned as placed, still strapped; the player's helicopter at 7.5 s; player out at 14.2 s.
+
+## 2026-11-01 — Player Inspector: Drop Off Animation
+
+- `player.gd` has a new export, `drop_off_animation` (on by default). Untick it on the Player node in `main.tscn` to start the level standing where the player is placed, with no helicopter fly-in.
+- `arrival.gd` checks it: when it's off, the player isn't hidden or put aboard, and `_fly_in()` does nothing. Early-deploy crates still parachute in at the start; the player is already on the ground and can watch.
+- Untick `enabled` on the Arrival node to skip both, as before.
+- Tested headless on the scratch copy. With it off, the player is visible and active from the start, only the supply helicopter flies in, and the crate lands. With it on, the early-deploy test gives the same timings as before.
+
+## 2026-11-01 — F goes to the closest thing only
+
+- When two things in reach both answered F (a crate beside a station's desk, a build site beside the dish), each handled F on its own, so both could act, or whichever came first in the tree won.
+- Now `player.gd` has `interact_target()`: of everything F would do something to right now, the closest. It considers crates (take a part, undo the straps), build sites needing what's carried (radio station, sandbags, ammo can), and anything in the new "interactables" group. That group's members answer `interact_point()` with a world position, or null when F does nothing there. The radio terminal (its desk) and the radio station (its dish) are in that group.
+- Every F action checks it's the target: the player taking, delivering and unstrapping, the terminal opening, and the dish tuning. Every green F prompt (crate, desk, dish, site delivery keys) only shows on the target, so only one F shows at a time. Closing or leaving something already open (menu, hang up, stop tuning) isn't affected.
+- Tested headless on the scratch copy (test_closest_f.gd). Standing at a station's desk with a strapped crate in reach, the crate at 0.8 m (desk 0.95 m) gets F and unstraps, and the desk stays shut. The crate at 1.2 m loses to the desk, which opens. Only the target's F showed. The unlock-crate, ammo-can, click-orders and early-deploy tests still pass.
+
+## 2026-11-01 — Debug mode: enemy circles, cover class on click
+
+- Enemies' detection circles (`enemy_ring.gd`) now only show in debug mode (Q), not in normal play. `show_detection` on an enemy still hides its circle even in debug mode.
+- In debug mode, clicking anything solid that isn't a square or a crate picks it: a sandbag wall, the station's desk or dish, a helicopter, and so on. `debug_overlay.gd _object_at()` uses a physics point query, so it picks whatever a bullet would hit there.
+  - Its panel shows its name (and what it's part of, e.g. DeskBody (RadioStation)), its cover class and the share of shots it stops, from `cover.gd`: sandbags class 3 HEAVY 90%, the desk class 1 LIGHT 30%, the dish class 2 MEDIUM 60%.
+  - The ring and panel sit where you clicked. A crate's panel now has the same cover line (class 3 HEAVY, 100%).
+- Tested headless on the scratch copy (test_debug_cover.gd). The ring was hidden in play, shown with Q on and hidden again with Q off. The sandbags, desk, dish and ammo crate panels all read as above, and clicking open ground clears the pick.
+
+## 2026-11-01 — Firing over sandbags exposes you
+
+- Mike: anyone firing over a sandbag wall has their head up, so the wall covers them only 40%, and an enemy held up in Engage + Standoff takes that chance to shoot them.
+- `soldier.gd`: every square is exposed (`exposed_s`) for EXPOSED_S (0.8 s) after each shot it fires (the rifle's `fired`). That's the player, squadmates and enemies alike.
+- `sandbags.gd`:
+  - A shot reaching the wall that's heading for an exposed square is stopped only EXPOSED_STOP (40%) of the time, instead of 90%. "Heading for" means passing within EXPOSED_LINE_M (0.5 m) of them, with them beyond the wall and within EXPOSED_NEAR_M (1.2 m) of where it hits.
+  - `cover_stop_chance_for(point, unit)` gives the same answer for the AI, and `cover.gd` has `stop_chance_for()` / `class_for_unit()`. 40% is class 1.
+- `ai_soldier.gd _shielded()`: a wall only shields a foe while it's class 3 for them. Exposed, it isn't, so a square held up in a standoff sees a window (`_in_standoff()`, looked at every 0.25 s) and fires.
+  - This is shared AI, so squadmates in a standoff also fire on an enemy who pops up over a wall.
+- Debug view (Q): a square that's just fired from a sandbag wall's box gets an "exposed" tag.
+- Tested headless on the scratch copy (test_exposed.gd), with a squadmate 0.5 m behind a wall and an enemy 10 m out, engaged with it:
+  - Bullets at the wall got over 10% of the time normally and 60% with the squadmate exposed.
+  - With the squadmate holding fire, the enemy was in standoff 82% of 4 s and fired 0 shots.
+  - With the squadmate firing over the wall every 0.5 s, it was in standoff 4% and fired 6 shots.
+  - test_cover_class, test_shielded, test_standoff, test_enemy_crates and test_debug_cover are unchanged.
+- Note: two AI sides each dug in behind walls still sit in a standoff with neither firing (test_standoff), since nobody fires to expose themselves. It's the player's shots that break one.
+
+## 2026-11-01 — Watch tower and its crate
+
+- Mike asked for a new crate and asset, a watch tower (after his reference photo: a cream cabin with a band of dark windows on a galvanised frame, an air conditioner, a switchback stair), built in 5 pieces: the base, the roof, the stairs, another part of the base, and the details.
+- **Art: `blender/scripts/watch_tower.py`** (new). Real size: a 2.8 m grating deck 3 m up on four splayed square-tube legs with X bracing, a 2 m cabin (roof at 5.3 m), and a stair down the east side with a mid landing.
+  - It renders the 5 parts top-down, each with its own shadow: `assets/props/watch_tower_<part>.png` and `watch_tower_shadow_<part>.png`, 2048 px (12 m at 2x), shown at 0.5.
+  - The parts:
+    - **base:** legs, foot plates and lower bracing
+    - **platform:** upper bracing, deck and railing
+    - **stairs**
+    - **roof:** the cabin and its roof
+    - **details:** window frames, sign, air conditioner, searchlight, antenna, camera, vent, conduit
+  - Each part is rendered as it shows in the finished tower. Anything of a part drawn under it in game that's in front of it is cut out (a holdout, e.g. the roof's overhang over the AC unit), and the other parts' shadows fall on it (the roof's on the deck). DRAW_ORDER must match the scene's z order.
+  - Reviews: `assets/previews/watch_tower_preview.png` (top-down with shadow) and `watch_tower_angle_preview.png`.
+- **Crate: `crates.py` "tower" kind** (`-- tower`): the 5 parts on the pallet like the comms kit (`TOWER_PARTS`):
+  - a bundle of galvanised tubes (base)
+  - a stack of grating panels (platform)
+  - a stair flight laid flat
+  - stacked cream cabin panels (roof)
+  - the boxed AC unit (details)
+  - It makes `crate_tower.png`, `_open` and `_1..4`. The comms stages loop now does both kinds.
+  - Carried sprites: `hold_tower_<part>.png`. A held part can now be rendered on its own (`-- tower_base`) without redoing the rest.
+- **Game:**
+  - `scripts/watch_tower.gd` and `scenes/watch_tower.tscn` (new) are built like the radio station: `start_site` / `needs` / `can_deliver_at` / `install`, the parts as green ghosts until delivered, and a green F over the deck when the player brings a part (DELIVER_M 3 m).
+  - Squares walk under the deck. The base is drawn under the squares, everything else over them, and the deck, cabin and details fade to 35% while the player's under the deck.
+  - Solid: the four legs (`LegsBody`, partial_cover 100%, see-through, metal) and the stair's lower flight (`StairsBody`, stops 35%).
+  - Shadows sit in a CanvasGroup (overlaps no darker), each moved for its own height when the tower's turned.
+  - `scenes/crate_tower.tscn` (new): `builds` "watch_tower", single_site, the five parts in order.
+  - `command.gd`: "watch_tower" is in CRATE_BUILT, plus a "Watch tower" DEPLOY entry with an icon (the cabin on X-braced legs with a stair).
+  - `carry_art.gd`: the five held sprites and their depths.
+- The new PNGs have hand-written .import files (mipmaps on, no uid; Godot adds the uid).
+- **Not in main.tscn yet:** drag `scenes/crate_tower.tscn` into the level to have one. The tower does nothing yet beyond being built, solid and cover.
+- Tested on the scratch copy:
+  - test_watch_tower.gd: the player carries all 5 parts in order. The crate steps through its stages to empty, the F shows each time, and it ends built with the legs and stair solid; the deck and cabin fade while under it.
+  - test_tower_squad.gd: two squadmates under a Build order put it up in 9 s.
+  - A windowed screenshot shows a built tower beside a half-built site.
+  - The unlock-crate, ammo-can, closest-F and menu tests still pass.
+
+## 2026-11-01 — Watch tower: climbing it, railings, roof see-through
+
+- Mike: squares should be able to get up on the tower (until now it was drawn over everyone), its side railings should keep them on it, they should get bigger the higher they climb, and the roof should go see-through whenever anyone's inside the cabin.
+- **Two levels** (`watch_tower.gd`, `soldier.gd`):
+  - On the ground, as before: the legs and the stair's lower flight are solid, and the deck and everything above it is drawn over you. The deck fades while the player's under it.
+  - Walking up into the stair's foot (`steps_on()`: the FOOT_ON box, heading north) puts a square on the tower (`soldier.gd tower`). It moves to collision layer 32 and only bumps into the tower's railings and cabin walls (layer 64, made in code from WALLS, `scripts/tower_walls.gd`) and the others up there. Ground squares and tower squares don't push each other.
+  - Its height (`elevation_m`, `height_at()`) climbs the lower flight to the mid landing (1.5 m), then the upper one to the deck (3 m). It's drawn over the deck (z 6; the roof is now z 7, the details z 8).
+  - Walking back out of the foot (`steps_off()`) puts it on the ground.
+  - Up there nothing on the ground underfoot counts (no sandbag climbing or bodies).
+- **Bigger with height:** `soldier.gd view_scale()` = 1 + 0.08 a metre (GROW_PER_M), 1.24x on the deck. It applies to the body, its shadow, the rifle (`rifle.gd view_scale`), anything carried and a radio pack.
+- **Railings:** round the deck, the top landing and both flights, open only at the stair's foot. The cabin's walls have the door in the east wall. Bullets pass them all (they don't know how high they fly). The art's top landing was moved (`watch_tower.py` STAIR_TOP_Y 1.0 -> 0.6) so the way from the stair onto the deck is 0.8 m wide, not one square.
+- **Roof:** whenever any live square is inside the cabin, the roof and the details on it fade to 20%, and a new render of the cabin with its roof off fades in (`watch_tower_roof_open.png`, `RoofOpen`, drawn with the deck under the squares) so you see who's in there.
+- **Squadmates take the stairs** (`ai_soldier.gd _walk_to()` / `_tower_way()`, `squadmate.gd _head_for()` and `_climbs_towers()`). A Move, or a formation slot, on the tower's outline (`on_surface()`) goes by `watch_tower.gd route()`:
+  - up: to the stair's foot, up the flights, onto the deck and round the cabin by the south-east corner, in at the door lined up with it
+  - down: the same way back
+  - Up there they steer round the railings and walls (`_obstacle_mask()`), and only squares on the same level are in each other's way. Enemies don't climb it.
+- Tested on the scratch copy:
+  - test_tower_climb.gd (the player):
+    - On at the foot: height 0.1, scale 1.01. Mid landing 1.5 m, 1.12x. Deck 3 m, 1.24x.
+    - The cabin stops them going west on the north side. The railings stop them east and south.
+    - In at the door the roof goes to 0.2, and back to 1 out of it. Down and off at the foot.
+  - test_tower_squad_climb.gd (a squadmate):
+    - Up to the deck's south-east corner in 17.5 s.
+    - Into the cabin in 2.5 s and out again.
+    - Onto the top landing, then down to the ground in 8.5 s.
+  - Screenshots show a square in the cabin with the roof off, one on the deck, two on the stairs.
+  - All the earlier tests still pass.
+- **Not done yet:**
+  - Height doesn't change shooting or sight (no seeing further or firing over things from up there; the railings and cabin give no cover).
+  - Enemies don't climb.
+  - Following the player up there: the squadmates whose formation spot lands on the tower go up, and the rest wait below.
+  - A click anywhere on the deck's outline means up there, so squadmates can't be sent to stand under the deck.
+
+## 2026-11-01 — Watch tower: stepping onto the stair is seamless
+
+- Mike: walking up the stair he was briefly under it before it worked. His battle log (17:54) didn't help: it ran for 1.5 s and ended before he reached the tower, and the log doesn't record tower state yet.
+- **The cause:** a square only stepped on (`steps_on()`) once its middle was in FOOT_ON, which reached only 0.05 m past the bottom step (y 4.1). A square is 0.4 m, so for about 0.15 m its front half was over the stair while it was still on the ground, drawn under the stair.
+- **The fix** (`watch_tower.gd`):
+  - FOOT_ON now reaches out to y 4.75, more than half a square past the bottom step, and is 1.1 m wide. Anyone coming up whose square would touch the foot is on the tower first.
+  - Off is at FOOT_OFF_Y 4.9. In between it stays on the FOOT_APRON in front.
+  - The squadmates' FOOT_OUT waypoint moved out to y 5.2, past the off line.
+  - The tower-level railings now flare out at the foot (from just inside the stair at y 3.75 to 1.2 / 2.8 at y 4.8). A square coming up off the middle is guided in rather than caught head-on on the end of a railing.
+  - On the ground, the stair's two side stringers at its foot are solid (StairsBody FootWest / FootEast, open at the front), so you can't walk in under the bottom of the stair from the side.
+- Tested on the scratch copy (test_stair_seam.gd): walking up from 5 starting points across the foot (x 1.5 to 2.5) and back down, checking every frame.
+  - All step on at y 4.73 and go all the way up.
+  - None are ever on the ground while any of the square is over the stair, going up or coming down.
+  - From the side you stop at the stringer.
+  - The climb, squadmate climb and build tests still pass.
+
+## 2026-11-01 — Height classes, and firing down from the watch tower
+
+- Mike: every object has a height class (1, 2 or 3). Sandbags and the radio system are 1, crates 2, the watch tower 3. Anything you can go up on has 3 circles round it, and in each a setting for how much the smaller classes' cover is weakened, adjustable in the Inspector: sections 1-3, each with a radius and a debuff per class.
+- **Height classes** (`cover.gd height_class_of()`, a `height_class` export on each):
+  - 1: sandbags.gd; partial_cover.gd (the radio station's desk and dish)
+  - 2: crate.gd
+  - 3: the watch tower and its legs and stair (watch_tower.tscn), and anything solid that doesn't say (a helicopter)
+- **Sections** (`watch_tower.gd`). The Inspector has groups Section 1 / 2 / 3, each with `section_<n>_radius_m` and `section_<n>_class_1_debuff` / `_class_2_debuff` (%). Defaults:
+  - section 1: to 5 m, class 1 -75%, class 2 -50%
+  - section 2: to 10 m, class 1 -50%, class 2 -25%
+  - section 3: to 20 m, class 1 -25%, class 2 -10%
+- **How it works:**
+  - A shot fired by someone up on the tower that meets lower cover in section n is stopped that much less often: stop chance x (1 - debuff).
+  - The section is where the shot meets the cover, measured from the tower's middle.
+  - It's in full from the deck and scales down the lower they are on the stair (`cover_debuff()`, elevation / 3 m). Nothing past section 3, and nothing for class 3 cover.
+  - Bullets: `bullet.gd _fired_down_past()`, asked once per cover after the cover's own `lets_bullet_through()`.
+  - The AI: `ai_soldier.gd _shielded()` counts the weakened cover, so a squadmate up the tower doesn't sit in a standoff against a foe it can now hit.
+  - Sandbag climbing raises you a little, but nothing is lower than class 1, so only the tower has sections.
+- **Debug view (Q):**
+  - Clicking a tower's deck or stair (or its legs) picks the tower. It draws its three section circles (red, orange, yellow, numbered) and a panel with its height class, how many are up on it, and each section's range and debuffs.
+  - Every object's and crate's panel now also shows its HEIGHT CLASS.
+- Tested on the scratch copy (test_height_class.gd), firing 2000 shots per case at sandbags and a crate from the tower deck vs the ground:
+
+  | Cover | Section 1 | Section 2 | Section 3 | Past section 3 |
+  |---|---|---|---|---|
+  | Sandbags, from the deck (expected 77.5 / 55 / 32.5 / 10) | 75% through | 56% | 34% | 11% |
+  | Crate, from the deck (expected 50 / 25 / 10 / 0) | 50% | 26% | 9% | 0% |
+  | From the ground | about 10% (sandbags), 0% (crate) | same | same | same |
+
+  - A squadmate on the deck no longer counts a foe 4.5 m out behind sandbags as shielded; on the ground it does.
+  - The exposure, standoff, cover, debug, climb and orders tests still pass.
+
+## 2026-11-01 — Watch tower: section 3 runs as far as a bullet goes
+
+- Mike: the third region is always as far as a bullet can go.
+- `watch_tower.gd`: `section_3_radius_m` is gone. Section 3 is everything past section 2's circle, out to wherever a bullet reaches (`sections()` gives it INF), so cover any distance past 10 m (by default) gets section 3's debuffs. The Inspector's Section 3 group now holds only its two debuffs.
+- Debug view (Q): only circles 1 and 2 are drawn, with a "3" just outside circle 2. The panel reads "section 3  10.0 m - bullet range".
+- Tested on the scratch copy (test_height_class.gd): from the deck, sandbags at 15, 25 and 40 m all let 32-34% through and the crate 10% (section 3). Sections 1 and 2 are unchanged.
+
+## 2026-11-01 — Watch tower sections: "New Pass Through %" instead of a debuff
+
+- Mike asked whether the debuff meant the pass-through percentage. It didn't: it was a cut in what the cover stops, so the pass-through depended on the cover. Now each section's setting is the share of shots fired down from the tower that get through, directly.
+- `watch_tower.gd`: the Inspector groups use prefixes (`@export_group("Section 1", "section_1_")`), so each shows **Radius M**, **Class 1 New Pass Through** and **Class 2 New Pass Through** (%).
+  - The vars are `section_<n>_class_<c>_new_pass_through`.
+  - Defaults keep the old behaviour: section 1 class 1 78 / class 2 50, section 2 55 / 25, section 3 33 / 10.
+- `fired_down_pass()` gives the pass-through for a shot: the setting, but never less than the cover lets through anyway (the radio desk lets 70% through, so a setting under 70 leaves it at 70). It's in full from the deck and less lower down the stair.
+- `cover.gd fired_down_extra()` (was `elevation_debuff()`) turns that into the chance a shot the cover would stop gets through anyway, which is what `bullet.gd` and `ai_soldier.gd _shielded()` use.
+- Debug view's tower panel reads "FIRING DOWN: new pass through" with the percentages per section.
+- Tested on the scratch copy (test_height_class.gd), from the deck:
+  - Sandbags let 79 / 56 / 33-34% through by section, and the crate 50 / 25 / 9-10%.
+  - From the ground, sandbags let 10% through and the crate none.
+  - The desk with a setting of 50 stays at 70%.
+  - The exposure, debug and cover tests still pass.
+
+## 2026-11-01 — The watch tower as cover for those in or under it
+
+- Mike: the tower has stages of cover. Under it, 75% of shots get through; on the stairs 80%; on the top platform 50%; in the house (cabin) 30%.
+- `watch_tower.gd`: a new Inspector group **Cover For Those On It** (prefix `cover_`), with Under / Stairs / Platform / Cabin Pass Through (%), defaults 75 / 80 / 50 / 30.
+  - `zone_of(unit)` gives "under" (on the ground under the deck), "stairs", "platform" (the deck outside the cabin) or "cabin".
+  - `cover_pass(target, shooter)` gives that zone's pass-through, or 100% if the target's in none of them or the shooter's in the same zone (two on the deck shoot each other freely).
+- `cover.gd tower_pass()` / `tower_blocks()`: a bullet reaching a square in or under a tower rolls on it (`bullet.gd`). If the steel stops it, it ends in the tower's LegsBody instead (sparks and a metal clang, logged as hitting that) and the square isn't hit.
+- `ai_soldier.gd _shielded()`: a foe in or under a tower counts as shielded when that zone is class 3 cover (stops over 60%). So with the defaults, the cabin (stops 70%) holds an enemy in a standoff until there's a window, and the deck (50%), stairs and under don't.
+- Debug view (Q): the tower's panel lists the four pass-throughs. A square's panel says which zone it's in and how much gets through.
+- Tested on the scratch copy (test_tower_cover.gd, an enemy 8 m west):
+  - 2000 rolls each: under 76%, stairs 80%, deck 50%, cabin 30%, open ground 100%; deck to deck 100%.
+  - The enemy counts only the cabin as shielded.
+  - 200 real bullets at a squadmate in the cabin hit it 55 times (about 60 expected).
+  - The height class, exposure, cover, standoff, climb and debug tests still pass.
+
+## 2026-11-01 — Watch tower parts each with their own stats; standard debug panels
+
+- Mike: each part of the watch tower has its own stats. The stairs have their own cover class (from their pass-through) and height class 2. The top is height class 3, but the top and the shelter are different cover classes, so selecting them in debug should show different values. The debug descriptions should be consistent (height class and cover class, all in capitals: the COVER line wasn't), and standardised.
+- **The parts** (`watch_tower.gd PART_NAMES`, `part_of()`): **base** (on the ground under the deck), **stairs**, **top** (the deck outside the cabin) and **shelter** (the cabin). Each has an Inspector group (Base / Stairs / Top / Shelter) with its own Height Class and Pass Through. These replace the single `height_class` and the "Cover For Those On It" group.
+
+  | Part | Height class | Pass through | Cover class |
+  |---|---|---|---|
+  | Base | 3 | 75% | 1 LIGHT |
+  | Stairs | 2 | 80% | 1 LIGHT |
+  | Top | 3 | 50% | 2 MEDIUM |
+  | Shelter | 3 | 30% | 3 HEAVY |
+
+  - A part's cover class always comes from its pass-through (`part_cover_class()`).
+  - The legs and stair bodies take their parts' height classes when the tower's ready.
+- **Height class at work:**
+  - Firing down uses the shooter's part: from the top or shelter it's class 3 (classes 1 and 2 are weakened); from the stairs it's class 2 (only class 1). `fired_down_pass(..., from_height)`, `height_class_of_unit()`.
+  - Someone in a tower part is that part's height class to someone firing down on them from higher up (another tower, or this one's top onto its stairs). Their part's pass-through is raised by the shooter's tower's sections (`cover_pass()`).
+- **Debug view (Q):**
+  - Clicking the shelter, the top or the stairs selects that part, and clicking a leg selects the base. Each shows its own values, "N in it", and (not for the base) firing down from it: each section's pass-through for the classes below its height. The section circles show for those three.
+  - Every object panel now goes through one function (`debug_overlay.gd _show_object()`), all in capitals: NAME (KIND), COVER CLASS n NAME, HEIGHT CLASS n, STOPS n% OF SHOTS, then its own lines (a crate: contents, straps, vicinity, ...).
+  - The square panel's text is all in capitals too (NO RIFLE, MAGS UNLIMITED, the detail lines).
+  - A square in a tower part says which, with its cover and height class.
+- Tested on the scratch copy:
+  - test_debug_parts.gd: base COVER CLASS 1 LIGHT / HEIGHT CLASS 3 / STOPS 25%; stairs 1 LIGHT / 2 / 20% with class 1 only firing down; top 2 MEDIUM / 3 / 50%; shelter 3 HEAVY / 3 / 70%, 1 IN IT. Sandbags, the desk and a crate all show in the same layout.
+  - test_tower_cover.gd: 75 / 80 / 49 / 30% through by part, and 59 of 200 real shots hit someone in the shelter.
+  - The height class, exposure, cover, standoff, climb, debug and build tests still pass.
+- (The height class test hung once: it still asked for the old tower-wide `height_class`, and a script error in a test leaves it waiting forever. Tests now run with a time limit.)
+
+## 2026-11-01 — Watch tower: the stair's top landing is part of the top
+
+- Mike (screenshot): the top is the deck and the stair's top landing, which is level with it. The landing was counted as stairs.
+- `watch_tower.gd part_of()` / `part_at()`: "stairs" is now only the flights and the mid landing (`_on_flights()`: on the stair column, south of the top landing). The top landing is "top": height class 3, 50% through, and that's what clicking it in debug view shows. Routing still treats the landing as the way down (`_on_stair()`), so squadmates' paths are unchanged.
+- Tested on the scratch copy (test_part_at.gd):
+  - Both ends of the top landing and the deck: top.
+  - The top of the upper flight, the mid landing and the lower flight: stairs.
+  - The cabin: shelter.
+  - The tower cover and debug panel tests still pass.
+
+## 2026-11-01 — Watch tower overlook box
+
+- Mike (screenshot with a box drawn round the tower): add this box, viewable in debug.
+  - Inside it, if you're on the upper stairs, the top or in the shelter, any height class 1 or 2 is ignored and the protection comes only from where you are on the tower.
+  - At that level enemies start shooting at you because you're in view.
+  - The shelter is like being next to a sandbag: if you shoot you're exposed and the enemy starts shooting you.
+- `watch_tower.gd`:
+  - A new Inspector group **Overlook** with **Box** (`overlook_box`, a Rect2 in metres in the tower's frame, x right / y down from the deck's middle; default x -6..8.5, y -4..9, about Mike's drawing, reaching further on the stair side).
+  - `is_up_high()`: the upper flight (between the mid landing and the top), the top, or the shelter.
+  - `overlooks()`, `in_full_view(unit, from)`.
+- **In full view** (someone up high, seen or shot at from inside the box), height class 1 and 2 cover in between doesn't count:
+  - Sight: `ai_soldier.gd _clear_view(..., over_low)`, used by `enemy.gd _check_intruders()` (a calm enemy spots them) and `_look_for_targets()`, and by the standoff's window search.
+  - Shots: `cover.gd overlook_past()`, so a bullet fired from inside the box flies on over sandbags and crates toward someone up high it passes within 0.5 m of (`bullet.gd`).
+  - The AI's `_shielded()` skips that cover too.
+  - So only the tower part protects them: the top 50%, the upper stairs 80% through.
+- **Shelter like a sandbag:** seen, but heavy cover (30% through), so an enemy holds fire in a standoff. While its occupant is exposed from firing (`exposed_s`), the new **Shelter > Exposed Pass Through** (60%, light) applies instead, so the enemy takes the window (`cover_pass()`).
+- Also fixed:
+  - The tower's railings and cabin walls blocked sight (`_clear_view()` hit them), so nobody on the tower could be seen. `tower_walls.gd` now `sees_through()`.
+  - A placing ghost tower (command.gd) joined "watch_towers", so squares could step onto it. Only real towers do now.
+- Debug view (Q): every tower's overlook box is drawn in green, labelled OVERLOOK.
+- Tested on the scratch copy (test_overlook.gd: an enemy and a squadmate with an unbreakable sandbag wall between; 300 real shots per case):
+
+  | Squadmate | Enemy | Spots it | Shielded | Hits / 300 |
+  |---|---|---|---|---|
+  | On the top | In the box | yes | no | 151 (the top's 50%) |
+  | On the top | Outside the box | no | yes | 12 (sandbags x top, about 5%) |
+  | On the ground behind the wall | In the box | yes (manning it) | yes | 23 (sandbags' 10%) |
+  | In the shelter, quiet | In the box | yes | yes | 30% through |
+  | In the shelter, just fired | In the box | | no | 60% through |
+
+  - The ghost isn't in "watch_towers".
+  - The height class, exposure, cover, standoff, climb, tower cover, debug, enemy crate and orders tests still pass.
+
+## 2026-11-01 — Debug panel layout
+
+- Mike: format the debug info better. The title bold and larger, everything else smaller but still big, laid out like "COVER CLASS: 3 (Heavy) / HEIGHT CLASS: 3 / PASS THROUGH %: / OBJECT SPECIFIC INFO:".
+- `debug_overlay.gd`: the panel is now two labels.
+  - The title is bold (a FontVariation, embolden 1.0) at TITLE_FONT_SIZE 22.
+  - The body is one label at BODY_FONT_SIZE 17, filled by `_show_panel(title, lines, heading, info, at)`: the "LABEL: value" lines, a gap, then the heading and the info lines indented, in capitals.
+- **Objects** (crates, cover, watch tower parts; `_show_object()`):
+  - "COVER CLASS: 3 (Heavy)", "HEIGHT CLASS: 2", "PASS THROUGH %: 0" (it was "STOPS n% OF SHOTS").
+  - Then OBJECT SPECIFIC INFO:
+    - a crate: AMMO CAN: 24 / 24 LEFT, STRAPS: ON, VICINITY: 8.0 M, ...
+    - a tower part: UNITS IN IT, and firing down from it, "SECTION 1 (0.0 M - 5.0 M): CLASS 1: 78%, CLASS 2: 50%"
+- **Squares:** the title "#4 SQUADMATE4 (SQUAD)", then AMMO: 15 / 30 (with "(EMPTY)" instead of turning red), MAGS: 2 (0 ROUNDS) and STATE: IDLE, then UNIT SPECIFIC INFO.
+- Checked in screenshots on the scratch copy (a tower top, a crate, a square), and the debug panel tests run clean.
+
+## 2026-11-01 — Watch tower: upper and lower stairs
+
+- Mike (screenshot with two boxes on the stair): break the stairs into top and bottom stairs.
+- `watch_tower.gd`: the "stairs" part is split at the bottom of the mid landing (y 2.0 m):
+  - **lower_stairs:** the lower flight, from the ground up to the mid landing.
+  - **upper_stairs:** the mid landing and the upper flight, up to the top landing (which stays part of the top).
+  - Each has its own Inspector group (Lower Stairs / Upper Stairs) with Height Class and Pass Through, both starting at the old stairs' values (2, 80%). The Stairs group is gone.
+  - `_stair_part()` decides it for `part_of()` and `part_at()`.
+  - The solid lower flight's body takes the lower stairs' height class.
+  - "Up high" for the overlook box is now the upper stairs, the top and the shelter (`is_up_high()`). That's the mid landing too; before, it was only the upper flight.
+- Debug view: clicking either flight shows WATCHTOWER (UPPER STAIRS) or (LOWER STAIRS) with its own values. Clicking the solid lower flight from the ground also picks the lower stairs.
+- Tested on the scratch copy:
+  - test_part_at.gd: the top landing and deck are top. The top of the upper flight, the mid landing and its bottom edge are upper stairs. The top of the lower flight and the lower flight are lower stairs.
+  - The debug parts, tower cover (79 / 81% through on the upper / lower stairs), overlook and climb tests still pass.
+
+## 2026-11-01 — Debug panels show PROTECTION % instead of PASS THROUGH %
+
+- Mike: debug's Pass Through makes more sense as protection %.
+- `debug_overlay.gd`: object panels read "PROTECTION %: n", the share of shots it stops (100 minus pass-through): sandbags 90, the desk 30, a tower's top 50, its shelter 70.
+- A tower part's firing-down lines are now "protection of cover below class n", e.g. section 1 class 1 22% (78% got through).
+- The Inspector settings are unchanged: still the pass-through %.
+
+## 2026-11-01 — Radio station on a watch tower
+
+- Mike (two screenshots: the desk along the shelter's north wall, the dish on the roof): placing the comms desk over the watch tower puts it on the tower, the desk and dish as green ghosts. You then build it as with the comms kit, but on the tower.
+- **Placing** (`command.gd`): with Radio station chosen from DEPLOY, the mouse over a built tower's top or shelter that has no station yet snaps it onto the tower (`_layout()`: `watch_tower.gd station_spot()`, with `mount`).
+  - The ghost is laid out mounted (`_make_ghost(mount)`, rebuilt as it moves on or off a tower) and drawn over the roof, so you can see where the desk goes.
+  - Placing it calls `mount_on()` and sets the tower's `station`. One per tower (`can_mount_station()`).
+- **Mounted layout** (`radio_station.gd mount_on()`): the station sits at the tower's STATION_AT (0.75, -0.28 m: on the deck by the shelter's door), turned STATION_TURN (-90°).
+  - **Desk:** along the shelter's north wall (centre -0.3, -0.93 m), the operator's spot in the shelter in front of it. Drawn with the deck, under the squares and under the roof while nobody's in.
+  - **Dish and stand:** moved MOUNT_DISH_SHIFT_M up onto the roof (0.2, 0.3 m), drawn over the roof. `DISH_AT` became the variable `dish_at`.
+  - **Hidden:** the ground cable and the desk's ground shadows (the wiring is still a part to deliver).
+  - **Collisions:** the desk is solid only to squares up on the tower (WALL_LAYER) and lets every shot by. The dish isn't solid.
+  - **Who it notices:** the operator's spot and the dish's ring only notice squares up on the tower. The dish is tuned from the top, outside the shelter (`_player_at_dish()`), so in the shelter F is always the radio.
+  - The F prompts are raised over the deck and roof.
+- **Building:**
+  - `can_deliver_at(at, who)` (every build site now takes the deliverer; player.gd and squadmate.gd pass themselves). A mounted station only takes parts from someone up on its tower, so you can't hand them up from under the deck.
+  - `deliver_spot()` is its origin on the deck, so squadmates take the stairs.
+- **Squares on the tower now pass through each other** (`soldier.gd _set_tower()`: mask WALL_LAYER only). Two squadmates building, one going up the stair and one coming down, jammed head-on: the stair is 0.74 m clear and two squares need 0.8.
+- **Squadmates on the tower** (`ai_soldier.gd _tower_step()`):
+  - Up there they walk straight at each route step, sliding along the railings. `_avoid_obstacles()`' 0.6 m clearance circle kept swerving at the stair's sides.
+  - One idle on the stairs goes up onto the deck (`watch_tower.gd on_stairs()`, `deck_in()`).
+  - Going up from the ground, they only head into the foot once lined up in front of it (route()); from beside it they go round to FOOT_OUT first.
+- Tested on the scratch copy:
+  - test_tower_radio.gd:
+    - Over the tower the layout snaps (0.75, -0.28 m, -90°), and off it, it doesn't. The ghost is mounted.
+    - Placed, the desk is at (-0.3, -0.93), the operator's spot at (-0.3, 0.02), the dish at (0.2, 0.3) on the roof. No second station can mount.
+    - Can't deliver from under the deck. From up on the tower all 5 parts go in.
+    - In the shelter F is the radio. On the top walkway F is the dish. From the ground under it, neither.
+  - test_tower_radio_squad.gd: two squadmates built it in 19 s.
+  - Screenshots show the ghost, the half-built site, and the built station with a squadmate at the desk (roof open) and the dish on the roof.
+  - The closest-F, unlock-crate, orders, tower build, ammo can, menu, overlook, climb and stair tests still pass.
+
+## 2026-11-01 — Tower radio: desk by the west wall, an obvious door, the dish from the radio
+
+- Mike (screenshot): the desk was where the door opening is, so make the door more obvious in the model; put the desk where his snippet shows; when someone's in the shelter, make the dish see-through with the roof; no more interacting with the dish, instead the computer gets a Dish option that controls it.
+- **The door** (`watch_tower.py`, all parts re-rendered):
+  - The shelter's east wall now has a real opening (DOOR_Y) with dark steel posts, a head and a lintel, and a yellow threshold. The door (light tan) stands open inward along the north wall.
+  - On the deck in front there's a black mat edged in yellow (in the platform part), so the doorway shows with the roof on too.
+- **The desk:** mounted stations now sit at STATION_AT (-0.22, -1.38 m) turned STATION_TURN PI. That puts the desk north-south along the shelter's west wall (centre -0.87, -0.33 m, as Mike drew it), the operator's spot east of it (0.08, -0.33), and the dish still at (0.2, 0.3) on the roof (MOUNT_DISH_SHIFT_M (-0.42, -2.78)).
+  - The deliver F shows over the desk.
+  - Squadmates bring parts to the shelter's door (`deliver_spot()`: `watch_tower.gd door_out()`), since the station's origin is now on the deck's north edge, which they can't reach.
+- **Dish fades with the roof:** `watch_tower.gd` passes the roof's alpha to `radio_station.gd fade_dish()`. The dish and its stand fade, and their shadows go while see-through (the dish's is a shader a fade doesn't reach).
+- **The dish is aimed from the radio** (every station, on a tower or on the ground):
+  - The RADIO menu has a **Dish** button (`radio_terminal.gd _on_dish()`): the menu goes and the aiming wheel opens round the dish (`radio_station.gd start_tuning()`). F or a left click locks the heading in. Stepping away from the desk or Space closes it.
+  - There's no F at the dish any more (`interact_point()` gives null, the dish's green F never shows).
+- Tested on the scratch copy:
+  - test_tower_radio.gd: the desk at (-0.87, -0.33) and the operator's spot at (0.08, -0.33). The deliver spot is the door, on the tower. The radio opens at the desk.
+  - Dish from the menu opens the wheel with the menu gone and the player busy. F locks the heading (0.30) and frees the player. Walking away closes it.
+  - Outside, F does nothing at the dish. Parts can't be delivered from under the deck.
+  - test_tower_radio_squad.gd: two squadmates built it in 27 s.
+  - A screenshot shows the desk on the west wall with a squadmate at it, the door's mat and threshold, and the dish faded with no shadow.
+  - The closest-F, menu, unlock-crate, climb, overlook and tower tests still pass.
+
+## 2026-11-01 — Tower door: white, no black mat
+
+- Mike: for the door, get rid of the black and change the yellow to white.
+- `watch_tower.py`: the black mat on the deck in front of the shelter's door is gone. Its edging is now white lines framing the doorway on the grating, and the threshold in the doorway is white too. All parts re-rendered. Checked in a screenshot on the scratch copy.
+
+## 2026-11-01 — Watch tower Inspector: start with a radio station
+
+- Mike asked for an Inspector item on the watch tower for the radio version.
+- `watch_tower.gd`: a new Inspector group **Radio** (prefix `radio_`):
+  - **Has Station** (`radio_has_station`, off by default): at the start a built tower is fitted with a radio station as if placed from DEPLOY (`_fit_radio()`, deferred so the level's crates are in): mounted (`radio_station.gd mount_on()`), at `station_spot()`, named "<tower>Radio".
+  - **Built** (`radio_built`, on): unticked, the station starts as a site built from the nearest comms crate that can set one up. With no such crate it starts built, with a warning in the output.
+- Tested on the scratch copy (test_tower_radio_export.gd):
+  - Has Station: a built, mounted station, desk at (-0.87, -0.33).
+  - Has Station with Built off: a site from CommsCrate.
+  - Neither: no station.
+
+## 2026-11-01 — Tower shelter: 100% protection, no firing out of it
+
+- Mike: make the shelter's protection 100%, but you can't shoot out of it.
+- `watch_tower.gd`: `shelter_pass_through` now defaults to 0 (PROTECTION 100%, cover class 3). `shelter_exposed_pass_through` is gone, along with the "firing from the shelter exposes you" rule, since nobody can fire from it now.
+- `soldier.gd _sheltered()`: a square in a watch tower's shelter doesn't fire. The player's trigger does nothing, and the AI holds its shots.
+- Tested on the scratch copy (test_shelter_fire.gd):
+  - A squadmate told to attack an enemy 6 m out fired 0 shots in 4 s from the shelter, and 4 from the top.
+  - Shots at it get through 0% in the shelter and 50% on the top.
+  - The overlook, tower cover and debug panel tests show the shelter at 0% through, PROTECTION 100, cover class 3.
+
+## 2026-11-01 — Watch tower stair: no catch at the foot going down
+
+- Mike (screenshot): a little bump at the bottom of the stair hung his square up going down.
+- Two causes, both in `watch_tower.gd`:
+  - **A lip.** The flared guides at the stair's foot started 6 cm inside the stair's sides, so a square sliding down against a side met that lip. The sides now taper in over half a metre (3.3 to 3.75 m) before flaring out, so going down slides past and coming up off the middle is still guided in.
+  - **Snagging box ends.** The railings and walls were thin boxes stretched a little past their ends, and where two met, a box's end corner poked out and caught a square's corner (found at (1.89, 3.53) against the guide's end). They're now line segments (SegmentShape2D, `_make_walls()`), with nothing to catch on; WALL_THICK_M is gone.
+- Tested on the scratch copy:
+  - test_stair_down.gd: walking down from the mid landing pressed into either side, or down the middle, takes 2.2 s each, never below 0.89 m/s. Before, hugging a side took 4.5 s with a full stop.
+  - test_stair_seam.gd: up from 5 points across the foot, all the way to the top, never under the stair.
+  - The climb test (railings stop you at 1.20 m now that they're lines), squadmate climb (11 s up, was 17.5) and tower radio build tests pass.
+
+## 2026-11-01 — Squadmates under ORDERS; radio command camera, Deploy, Back and Exit
+
+- Mike asked for four things:
+  - In command mode the camera shouldn't move with his squares, and he has full control of the zoom.
+  - Deploy, and Back to the menu, in radio command mode, like the player's command menu.
+  - An Exit button on the RADIO menu.
+  - Squadmates in his command circle or selected go to an ORDERS state: no surprise, no ammo, no automatic change from idle. Only Disperse breaks it, leaving them on their own (even in the circle or selected) until the next order.
+- **ORDERS** (`squadmate.gd`):
+  - `under_orders` latches on once a squadmate is in the player's command circle (`aura_radius_m`) or selected (`_update_orders()`, each tick), or is given any order (`_take_orders()`, in every order_*()).
+  - Under orders:
+    - Surprised, it shoots back from where it is but doesn't run for cover (`_surprise()`).
+    - It never goes for ammo, even out (`_may_fetch_ammo()`, a new hook in ai_soldier.gd `_ammo_run()`).
+    - It isn't pinned (`_check_pinned()`).
+    - It doesn't shuffle when idle, only glances about (`_tick_idle()`).
+  - **Disperse** (command.gd) now calls `order_disperse()`: it walks out as before and is then `on_own`. Not under orders, it's free to react, take cover and fetch ammo, even in the circle or selected, until its next order.
+  - Debug view shows an idle squadmate under orders as **ORDERS**. The battle log has `orders` and `own` keys.
+- **Camera** (`game_camera.gd`): radio command's overview frames the player and squad once going in (never closer than you had it), then stays put. It doesn't follow or re-fit as they move. The wheel zooms normally, and holding the wheel button and dragging pans (as in debug mode). Hanging up eases back to your zoom on the player. `_overview_scale` is gone.
+- **Radio command menus** (`command.gd`):
+  - DEPLOY now shows over the radio too. Placing works there (crate-built things anywhere; carried equipment still within your own reach).
+  - Under it there's a **Back** button that hangs up and reopens the station's RADIO menu (`_back_to_radio()`).
+- **RADIO menu** (`radio_terminal.gd`): an **Exit** button closes it.
+- Tested on the scratch copy:
+  - test_orders_state.gd:
+    - A squadmate near the player is under orders; one 20 m off isn't.
+    - Fired at, the one under orders stays IDLE (ORDERS) shooting back; the free one goes SURPRISED.
+    - Out of ammo under orders, it doesn't move or go for ammo.
+    - Dispersed and then selected, it's on its own and goes for ammo.
+    - Given Follow me, it's under orders again.
+  - test_radio_cam.gd:
+    - In radio command, the camera stayed within 2 px while the squad moved 9 m.
+    - Two wheel notches took the zoom from 1.00 to 1.32.
+    - Back and DEPLOY show, and placing works.
+    - Back leaves radio command with the RADIO menu open. Exit closes it and frees the player.
+  - The orders, closest-F, menu, standoff, cover, exposure, ammo can, crate, tower radio and debug tests still pass.
+
+## 2026-11-01 — Sandbag dig-in squares: none under things, drawn as separate squares
+
+- Mike (screenshots: a sandbag row along a watch tower's stair, the stair-side boxes crossed out; separate boxes per wall): if there's an object on top of a dig-in square, disable it. Change the ghost for the dig-in squares to match his example: on the ground, the bags on top.
+- `sandbags.gd`:
+  - **Drawing** (`_draw_zone()`): each wall draws a dig-in square each side, the wall's length less ZONE_GAP_PX (6 px) out to `zone_depth_m`, on the ground under the bags. A row reads as separate squares (it was one 1 m box per wall over 0.8 m spacing, so neighbours overlapped and their edges doubled up). Redrawn in command mode, and as a placing ghost moves.
+  - `side_open(side)` / `spot_open(spot)`: a side is closed when a watch tower is over its dig-in spot (COVER_SPOT_M out: its deck or stairs, `on_surface()`), or something solid is on it (a 0.2 m circle on layer 1: a crate, a station, a helicopter, a tower's legs; not squares). Closed sides aren't drawn.
+- Nobody digs in on a closed side: command.gd `_man_sandbags()` skips those spots (anyone left over lines up behind the row as before), squadmate.gd `_free_cover_spot()` skips them, and so does enemy.gd `_take_cover()`. The proximity box itself (`in_zone()`, firing over the wall) is unchanged.
+- Tested on the scratch copy:
+  - Nine walls along a tower's stair: the stair side is closed on the eight under the stair and open on the last, past its foot. The far side is open on all.
+  - A screenshot shows separate squares, none on the stair side.
+  - test_digin_order.gd: manning the far side fills three spots in a row. Manning the stair side sends one to the only open spot and the rest line up behind.
+  - The orders, standoff, exposure, enemy crate and overlook tests still pass.
+
+## 2026-11-01 — Dish aiming: X goes back to the RADIO menu
+
+- Mike: when in dish mode, add a press X to go back, to the main menu.
+- `world.gd`: a new control, "back" (X).
+- `radio_station.gd`: while the aiming wheel is open, X closes it without changing the heading and reopens the station's RADIO menu (the player stays at the menu). The wheel shows "[X] BACK" under its S mark.
+- Tested on the scratch copy (test_dish_back.gd): Dish from the menu, then X: the wheel's closed, the RADIO menu is open, the heading is unchanged, and the player is still at the menu.
+
+## 2026-11-02 — Placing equipment: X goes back to the menu
+
+- Mike: same as the dish's X, when placing.
+- `command.gd`: while placing from DEPLOY, X (the "back" control) cancels it and keeps the command menu open even with Space let go (`World.menu_held`, which `World.commanding()` now counts). You're back at ORDERS / DEPLOY to pick again.
+  - The menu closes on X again, on Space, or once an order's carried out. For Fire and Attention that's after their click.
+  - Over the radio the menu's open anyway.
+  - The placing banner says "[X] back to the menu", and the held menu's banner "[X] close".
+- Tested on the scratch copy (test_place_back.gd):
+  - Placing sandbags, X: placing ends with the menu still showing ("[X] close").
+  - X again: command mode closes.
+  - Backing out and then giving Follow me also closes it.
+
+## 2026-11-02 — Watch tower: stairs fade from under them, dust under them, squadmates in and out
+
+- Mike asked for three things:
+  - Make the upper stairs see-through when under them.
+  - When shooting from under the tower, sandbag dust should be under the upper stairs.
+  - Fix squadmates going in and out of the tower: his log (07:10) had one sitting in the shelter get stuck.
+- **The log:**
+  - Squadmate 8 was in the shelter (16.66, 15.26). At 2.78 s it was sent to the sandbags at (19.04, 20.94) on the ground.
+  - It walked out of the door and stopped for good at (18.40, 14.84). In the tower's frame that's (1.53, -0.78), on the top landing beside the deck.
+  - `route()` counted anywhere past the deck's edge as "on the stair" and sent it straight down to the foot. From the side of the landing that line runs into the corner where the stair's side starts, and up there squadmates walk straight at each step (no swerving), so it pushed into the corner for ever.
+- **Squadmates in and out** (`watch_tower.gd route()`, `leave_way()`; `ai_soldier.gd`):
+  - On the top landing off to one side, a squadmate going down steps to its middle (TOP_IN, lined up with the flights) before heading down.
+  - **Stepping straight back on.** Testing found another catch: one coming down for anywhere but straight south stepped off, turned north for its goal through the stair's foot, and that counted as walking up into it, so it stepped back on, over and over. AI squares now only step onto a tower they're headed up (`soldier.gd _wants_onto()`; ai_soldier.gd: the tower its route is to). The player is unchanged. Enemies no longer step on by accident.
+  - Just off the stair with a goal back past it (north), a squadmate goes round the side of the stair nearest its goal first (`leave_way()`): straight there walks into the solid lower flight. Coming up from beside the stair, it goes round to the front the same way (ROUND_STAIR_M).
+  - On the east walkway it keeps to the middle rather than cutting along the shelter's wall (`_deck_step()`).
+  - On a route step on the ground it gets the usual "getting nowhere, try the other way round" nudge, without ever giving up. Off the route, its progress check starts afresh (it was carrying the waypoint's distances over and giving up early).
+- **Stairs fade:** while the player's on the ground under the top landing, upper flight or mid landing (UPPER_STAIRS_ABOVE), the stairs fade to UNDER_ALPHA like the deck.
+- **Dust:** `hit_dust.gd tuck_under_towers()` draws dust off something on the ground (a sandbag wall, the dirt) at z 3, under a tower's stairs and deck and over the squares, when it's under them or within 0.4 m (the wall beside the stair). Sandbags and ground hits call it; dust off a square doesn't.
+- Tested on the scratch copy:
+  - test_tower_ways.gd (tower at Mike's spot, radio fitted): from 7 spots on the tower (the log's spot in the shelter, beside the desk, deck corner and walkway, both ends of the top landing, the upper flight) to 3 ground goals (the log's, west, north), and from 4 ground spots up to the deck and into the shelter. All 27 arrive.
+  - test_stairs_fade_dust.gd: the stairs at 0.35 under the upper flight and top landing, 1.0 beside the lower flight and in the open. Dust off the wall beside the stair at z 3; off a wall in the open, z 15.
+  - The climb, stair seam, stair down, squadmate climb, tower radio build, orders, overlook and cover tests still pass.
+
+## 2026-11-02 — Log 08:15: stuck by the stair foot; closed dig-in squares weren't closed to clicks
+
+- **The log:**
+  - At 3.38 s squadmate 10 was sent to dig in at the sandbag wall at (19.04, 20.14), on its west side. That's just in front of the watch tower's stair foot (tower frame (2.19, 4.5)).
+  - It walked over, ended up east of the wall at about (19.75, 20.75), and jittered there to the end of the log.
+  - The cause was `watch_tower.gd leave_way()` (added this morning). It sent anyone near the foot with a goal north of it round the stair's side, this goal included, though it needs no detour. It went round the east side past the wall, turned back for the spot, came near the foot, and was sent round again.
+  - (Also at 0.72 s the player's one shot hit squadmate 10: friendly fire.)
+- `leave_way()` now only detours when the straight way to the goal runs into the stair's solid lower flight (STAIR_SOLID, `_crosses()`). That applies anywhere on the ground, not just near the foot. It goes round the front of the foot: to the corner on its own side when beside or behind the stair, or to the goal's side once out in front.
+- **Mike (screenshot):** dig-in squares under the stair were still taking dig-in orders. A closed side was only skipped when spots were handed out; a click there still found the wall.
+  - `command.gd _sandbags_at()` and `squadmate.gd _cover_at()` now only count a wall's box on an open side (`spot_open()`). A click on the stair beside the wall is a plain move, onto the stair.
+- Tested on the scratch copy (the tower and wall as in Mike's level):
+  - test_log_digin_foot.gd: sent to that spot from the log's start, from the east and from the west of the tower, all three dig in there in 3.5-6 s. From the west it used to get squeezed between the stair and the wall.
+  - test_closed_click.gd: a click on the upper or lower stair beside the wall walks the squadmate up onto the stair, not digging in. A click on the wall's open east side digs in.
+  - test_tower_ways.gd: 27 of 27 arrive.
+  - The orders, standoff, squadmate climb, tower radio and enemy crate tests still pass.

@@ -13,10 +13,15 @@ extends Node2D
 ## It holds `mag_size` rounds. Empty, it reloads by itself if `auto_reload`
 ## (squadmates, enemies); otherwise (the player) the trigger just clicks
 ## (DRY_FIRE_SOUNDS) until the holder start_reload()s (R). It can't fire
-## while reloading. It carries `spare_mags` magazines (-1: as many as it
-## needs). A reload swaps in the fullest spare; the magazine coming out is
-## kept as a spare if it still has rounds in it, and only an empty one is
-## dropped on the ground. With no spare left that has rounds, it can't reload.
+## while reloading. It carries `spare_mags` spare magazines (2; -1: as many
+## as it needs), which can be empty: everyone always has the same number
+## (Mike, 2026-11-01). A reload swaps in the fullest spare and the one
+## coming out goes in the pouch, empty or not. With no spare that has more
+## rounds than the rifle, it can't reload. Loose rounds (an ammo can,
+## ammo_supply.gd) are loaded into the spares one at a time (load_round());
+## a magazine off a dead square's rifle takes the place of the emptiest spare
+## (swap_magazine()). Only a rifle with endless spares drops its empty
+## magazines on the ground.
 ##
 ## A reload plays one of RELOAD_TAKES at random (never the same twice
 ## running): five takes cut from assets/sfx/RifleReload.mp3, each with the
@@ -25,17 +30,17 @@ extends Node2D
 ##   start..out   the rifle tips out to the right (RELOAD_TILT_DEG), pulled
 ##                back and lowered
 ##   out          the magazine release: the empty magazine drops out (the gun
-##                shows rifle_no_mag.png) and falls to the ground (DroppedMag:
+##                shows hold_rifle_no_mag.png) and falls to the ground (DroppedMag:
 ##                under gravity, its shadow closing in, bounces, lies there,
 ##                fades)
 ##   in - 0.35 s  a fresh magazine comes from the body to the well...
-##   in           ...and seats with the clack (rifle.png again), a jolt
+##   in           ...and seats with the clack (hold_rifle.png again), a jolt
 ##   charge       the charging handle: pulled back and let go
 ##   charge..end  back up to the aim
 ## Its sound is heard from the rifle, panned on screen, but as loud as the
 ## distance from the player says: full at the player's own rifle, fading
 ## to nothing at `reload_hearing_m`.
-## Art: blender/scripts/rifle.py renders rifle_no_mag.png and magazine.png.
+## Art: blender/scripts/rifle.py renders hold_rifle_no_mag.png and hold_magazine.png.
 
 signal fired
 signal reload_started
@@ -45,14 +50,14 @@ const World = preload("res://scripts/world.gd")
 const Bullet = preload("res://scripts/bullet.gd")
 
 const LENGTH_M := 0.48        ## shoulder (pivot) to muzzle; matches LENGTH_M in blender/scripts/rifle.py
-## rifle.png is rendered at 4x the game's pixel density (RENDER_SCALE in
+## hold_rifle.png is rendered at 4x the game's pixel density (RENDER_SCALE in
 ## rifle.py) so its small parts stay sharp when zoomed in; shrink it back.
 const SPRITE_SCALE := 1.0 / 4.0
 const HOLD_HEIGHT_M := 0.22   ## how high it's held, for the shadow offset
 const FLASH_TIME_S := 0.05
-const RIFLE_TEX := preload("res://assets/characters/rifle.png")
-const NO_MAG_TEX := preload("res://assets/characters/rifle_no_mag.png")
-const MAG_TEX := preload("res://assets/characters/magazine.png")
+const RIFLE_TEX := preload("res://assets/characters/hold_rifle.png")
+const NO_MAG_TEX := preload("res://assets/characters/hold_rifle_no_mag.png")
+const MAG_TEX := preload("res://assets/characters/hold_magazine.png")
 ## Where the magazine sits in the rifle's frame (metres; pivot at 0, muzzle
 ## along +x): it pokes out to the gun's right (rifle.py, canted 30 degrees).
 const MAG_SEAT_M := Vector2(0.33, 0.045)
@@ -153,12 +158,14 @@ static var _last_take := -1
 ## Rounds in a full magazine. (A reload lasts as long as its sound.)
 @export_range(1, 200, 1) var mag_size := 30
 ## Rounds in the magazine it starts with (-1: a full one). Everyone starts
-## with half a magazine and no spares (Mike, 2026-10-30): more ammo comes
-## off the dead (ammo_pickup.gd).
+## with half a magazine and empty spares (Mike, 2026-10-30): more ammo comes
+## off the dead (ammo_pickup.gd) and from ammo cans (ammo_supply.gd).
 @export_range(-1, 200, 1) var start_rounds := 15
-## Spare magazines carried, full, besides the one in the rifle (-1 = as many as
-## it needs).
-@export_range(-1, 50, 1) var spare_mags := 0
+## Spare magazines carried besides the one in the rifle, full or empty (-1 =
+## as many as it needs, always full).
+@export_range(-1, 50, 1) var spare_mags := 2
+## Rounds in each spare magazine to start with.
+@export_range(0, 200, 1) var spare_start_rounds := 0
 ## Reloads by itself when the magazine runs dry. Off (the player), an empty
 ## rifle just clicks until it's told to reload.
 @export var auto_reload := true
@@ -189,6 +196,8 @@ static var _last_take := -1
 @export var shadow_path: NodePath = ^"../Shadows/RifleShadow"
 
 ## Where the rifle points, in radians (0 = right, -PI/2 = up).
+## Drawn this much bigger, for its square up a watch tower (soldier.gd view_scale()).
+var view_scale := 1.0
 var aim := -PI / 2
 
 ## How steady the aim is: 0 moving, rising to 1 after standing still for
@@ -263,7 +272,7 @@ func _ready() -> void:
 	_dry_sound.max_distance = 15.0 * World.PX_PER_M
 	add_child(_dry_sound)
 	for i in maxi(spare_mags, 0):
-		_spares.append(mag_size)
+		_spares.append(mini(spare_start_rounds, mag_size))
 
 
 ## Called by the player every physics tick, after it has turned and hopped.
@@ -294,7 +303,7 @@ func update_aim(facing: float, lift_m: float, target: Vector2, delta: float) -> 
 	var back := _recoil_m + pose.y
 	rotation = aim + pose.x
 	var kick := Vector2.from_angle(rotation) * -back * px
-	scale = Vector2.ONE * (1.0 + lift_m)
+	scale = Vector2.ONE * (1.0 + lift_m) * view_scale
 	_gun.position.x = -back * px
 	var height := HOLD_HEIGHT_M + lift_m - pose.z
 	_shadow.position = (position + kick
@@ -403,10 +412,46 @@ func take_magazine() -> int:
 	return taken
 
 
-## A magazine with `count` rounds in it goes in with the spares (picked up).
-func add_spare(count: int) -> void:
-	if spare_mags >= 0 and count > 0:
-		_spares.append(count)
+## Puts a magazine with `count` rounds back in (a dead square's rifle,
+## swapped for one of the taker's: ammo_pickup.gd).
+func put_magazine(count: int) -> void:
+	rounds = count
+	_gun.texture = RIFLE_TEX
+
+
+## A magazine with `count` rounds (picked up) takes the place of the
+## emptiest spare, if it has more in it: returns the rounds in the one it
+## replaced (left behind), or -1 if it's no better (nothing changes).
+func swap_magazine(count: int) -> int:
+	if spare_mags < 0 or _spares.is_empty() or count <= _spares.min():
+		return -1
+	var emptiest := _spares.find(_spares.min())
+	var old := _spares[emptiest]
+	_spares[emptiest] = count
+	return old
+
+
+## Room for loose rounds in the spare magazines (0 with endless spares).
+func spare_room() -> int:
+	return 0 if spare_mags < 0 else _spares.size() * mag_size - spare_rounds()
+
+
+## Loads one loose round into a spare magazine (the fullest that isn't
+## full, so one fills before the next is started). False if they're all full.
+func load_round() -> bool:
+	var best := -1
+	for i in _spares.size():
+		if _spares[i] < mag_size and (best < 0 or _spares[i] > _spares[best]):
+			best = i
+	if best < 0:
+		return false
+	_spares[best] += 1
+	return true
+
+
+## Free to load loose rounds: not reloading, not just fired.
+func ready_to_load() -> bool:
+	return not reloading and _cooldown <= 0.0
 
 
 ## Spare magazines left (-1: as many as it needs).
@@ -498,8 +543,8 @@ func _reload_pose(delta: float) -> Vector3:
 	if t >= _take.out and not _dropped:
 		_dropped = true
 		_gun.texture = NO_MAG_TEX
-		if _old_rounds <= 0:
-			_drop_magazine()   # (one with rounds left goes in a pouch instead)
+		if _old_rounds <= 0 and spare_mags < 0:
+			_drop_magazine()   # (counted magazines go back in the pouch, empty or not)
 	# The fresh one comes from the body to the well, and seats on the clack.
 	var seat := MAG_SEAT_M * World.PX_PER_M
 	if t >= _take.seat - LOAD_S and t < _take.seat:
@@ -518,8 +563,7 @@ func _reload_pose(delta: float) -> Vector3:
 		if spare_mags < 0:
 			rounds = mag_size
 		else:
-			if _old_rounds > 0:
-				_spares.append(_old_rounds)   # kept, with what's left in it
+			_spares.append(_old_rounds)   # kept, with what's left in it (maybe none)
 			var best := _spares.find(_spares.max())
 			rounds = _spares[best]
 			_spares.remove_at(best)

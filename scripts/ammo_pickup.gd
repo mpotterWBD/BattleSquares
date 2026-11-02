@@ -3,12 +3,15 @@ extends Node2D
 ## death_fall.gd once the dropped rifle has come to rest with rounds in it).
 ##
 ## A little green circle on the ground round the gun marks it, breathing
-## gently. The player walking over it (their square within the circle)
-## takes that one magazine with the rounds that were left in it: it goes in
-## with their spares (rifle.gd add_spare()), the dead rifle shows with no
-## magazine (take_magazine()), a short "+1 MAG" floats up over the player,
-## and the circle's gone. Only the magazine that was in the gun: a dead
-## square's spares aren't there to be had.
+## gently. Everyone carries the same number of magazines (rifle.gd
+## `spare_mags`), so it's a swap: the player walking over it (their square
+## within the circle) takes that magazine, with the rounds left in it, in
+## place of their emptiest spare if it has more in it (rifle.gd
+## swap_magazine()), and leaves theirs in the dead rifle (put_magazine());
+## a short "MAG n" floats up over the player. If what was left behind is
+## empty the circle's gone; if not, it's still there for someone else. No
+## better than what they've got, nothing happens (useful_to()). Only the
+## magazine that was in the gun: a dead square's spares aren't there to be had.
 ##
 ## Squadmates and enemies out of ammo come for it too (ai_soldier.gd
 ## _ammo_run()): one claims it (`claimed_by`) so the others look elsewhere,
@@ -54,7 +57,7 @@ func _physics_process(delta: float) -> void:
 	var player = get_tree().get_first_node_in_group("player")
 	if player == null or player.dead:
 		return
-	if player.global_position.distance_to(global_position) <= REACH_M * World.PX_PER_M:
+	if player.global_position.distance_to(global_position) <= REACH_M * World.PX_PER_M and useful_to(player):
 		give_to(player)
 
 
@@ -64,17 +67,30 @@ func _draw() -> void:
 	draw_arc(Vector2.ZERO, r, 0.0, TAU, 40, Color(COLOR, ALPHA), 2.0, true)
 
 
-## `square` takes the magazine into its spares (the note only for the player).
+## Whether the magazine has more in it than `square`'s emptiest spare.
+func useful_to(square: Node2D) -> bool:
+	var spares: Array = square.get_node("Rifle")._spares
+	return is_instance_valid(_rifle) and not spares.is_empty() and _rifle.rounds > spares.min()
+
+
+## `square` swaps its emptiest spare for the magazine (the note only for
+## the player); gone once what's left in the dead rifle is empty.
 func give_to(square: Node2D) -> void:
-	var rounds: int = _rifle.take_magazine()
-	square.get_node("Rifle").add_spare(rounds)
+	var rounds: int = _rifle.rounds
+	var old: int = square.get_node("Rifle").swap_magazine(rounds)
+	if old < 0:
+		return   # no better than what it has
+	_rifle.take_magazine()
+	if old > 0:
+		_rifle.put_magazine(old)
 	if square.is_in_group("player"):
-		_note(square.global_position, "+1 MAG  (%d)" % rounds)
-	queue_free()
+		note(get_parent(), square.global_position, "MAG  %d" % rounds)
+	if old <= 0:
+		queue_free()
 
 
-## "+1 MAG (n)" rising over the player and fading, in the level.
-func _note(at: Vector2, text: String) -> void:
+## `text` (e.g. "MAG 12") rising over world `at` and fading, in `parent`.
+static func note(parent: Node, at: Vector2, text: String) -> void:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_color_override("font_color", COLOR)
@@ -83,7 +99,7 @@ func _note(at: Vector2, text: String) -> void:
 	label.add_theme_font_size_override("font_size", 14)
 	label.z_as_relative = false
 	label.z_index = 30
-	get_parent().add_child(label)
+	parent.add_child(label)
 	label.reset_size()
 	var px := World.PX_PER_M
 	label.global_position = at + Vector2(-label.size.x / 2.0, -0.5 * px - label.size.y)

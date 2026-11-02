@@ -13,7 +13,9 @@ on it and black ratchet straps over the load, both ways, buckled on top
   ammo   olive-drab steel ammo cans (M2A1 size), PER_ROW across by ROWS deep,
          LAYERS high: lid with a raised rim, folding carry handle on top,
          latch on one end, yellow stencil marks on the sides; after Mike's
-         reference photo (2026-10-30), without its tarp.
+         reference photo (2026-10-30), without its tarp. As the cans are
+         taken the game swaps in a smaller stack, stepping down a column at
+         a time (AMMO_STAGES: crate_ammo_1..3.png, no straps).
   comms  the kit a radio station is built from (scripts/radio_station.gd),
          one item per part, side by side so each shows from above
          (COMMS_PARTS, in the order they're taken): the field desk folded
@@ -22,6 +24,13 @@ on it and black ratchet straps over the load, both ways, buckled on top
          in a rounded desert-tan case, and the wiring on a cable reel. As
          the station is built the game swaps in a sprite with one fewer
          (crate_comms_1..4.png, no straps); crate_comms.png is it full.
+  tower  the parts a watch tower is built from (scripts/watch_tower.gd,
+         blender/scripts/watch_tower.py), one item per part like the comms
+         kit (TOWER_PARTS, in the order they're taken): the base's legs and
+         braces as a bundle of galvanised tubes, the deck as a stack of
+         grating panels, a stair flight laid flat, the cabin's panels
+         stacked, and the details (the air conditioner) boxed. As it's
+         built the game swaps in one fewer (crate_tower_1..4.png, no straps).
   sandbags  filled burlap sandbags (the same bags as the sandbag wall,
          blender/scripts/sandbags.py), SAND_ACROSS x SAND_ALONG to a layer,
          SAND_LAYERS high, each layer turned 90 degrees from the one below.
@@ -29,7 +38,10 @@ on it and black ratchet straps over the load, both ways, buckled on top
          a smaller stack (SAND_STAGES: crate_sandbags_1..3.png, no straps).
 
 Also a lone ammo can (`-- can`; render_can()): one of the same cans, on
-its own, for assets/props/ammo_can.png (CAN_FRAME_M square) and its review.
+its own, for assets/props/hold_ammo_can.png (CAN_FRAME_M square) and its review.
+And the carried items (`-- held`; render_held()): each comms part, each
+watch tower part, and a sandbag, built exactly as on its crate, on its own, for
+assets/props/hold_<part>.png (scripts/carry_art.gd draws them).
 
 Output, per kind: assets/props/crate_<kind>.png, the load and straps only,
 and crate_<kind>_open.png, the same load with the straps cut off
@@ -73,6 +85,13 @@ CAN_W, CAN_L, CAN_H = 0.154, 0.305, 0.17
 LID_H = 0.022
 PER_ROW, ROWS, LAYERS = 4, 2, 3    # 4 across x 2 deep: a square block (0.63 x 0.62 m)
 CAN_GAP = 0.004
+## The smaller stacks as the cans are used, for crate_ammo_1..3.png: how
+## many columns (of PER_ROW, from the -x side) are left in each layer, bottom
+## first. Seen from above a whole layer gone looks like the one under it, so
+## they go a column at a time and the stack steps down: 18, 12, then 6 cans
+## (the game shows stage k from 6k of the 24 taken).
+AMMO_STAGES = [[4, 4, 1], [4, 2, 0], [3, 0, 0]]
+AMMO_CAN_OBJECTS = []   # every can, bottom layer first (filled by build_ammo_load())
 
 # Sandbags: bags per layer (two along their length, three side by side),
 # layers high. Each layer is turned 90 degrees from the one below.
@@ -243,8 +262,8 @@ def build_ammo_load(seed):
             for c in range(PER_ROW):
                 x = (c - (PER_ROW - 1) / 2) * pitch_x + rng.gauss(0, 0.002)
                 y = (r - (ROWS - 1) / 2) * pitch_y + rng.gauss(0, 0.003)
-                build_ammo_can(f"Can{layer}{r}{c}", (x, y, PALLET_H + layer * can_h), mats,
-                               flip=(r == 1), rot_z=math.radians(rng.gauss(0, 0.8)))
+                AMMO_CAN_OBJECTS.append(build_ammo_can(f"Can{layer}{r}{c}", (x, y, PALLET_H + layer * can_h), mats,
+                                                       flip=(r == 1), rot_z=math.radians(rng.gauss(0, 0.8))))
     return (PER_ROW * pitch_x, ROWS * pitch_y), PALLET_H + LAYERS * can_h
 
 
@@ -421,10 +440,119 @@ def build_comms_load(seed):
     return (hi.x - lo.x, hi.y - lo.y), hi.z
 
 
+
+GALV = srgb(0.64, 0.65, 0.64)        # watch_tower.py's galvanised steel
+CREAM = srgb(0.86, 0.79, 0.6)        # its cabin
+
+
+def grating_material(name):
+    """Galvanised bar grating (as watch_tower.py's): bright bars, thin dark gaps."""
+    mat = paint_material(name, GALV, 0.45, 0.8, wear=False)
+    nt = mat.node_tree
+    bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    brick = nt.nodes.new("ShaderNodeTexBrick")
+    brick.inputs["Scale"].default_value = 1.0
+    brick.inputs["Brick Width"].default_value = 0.1
+    brick.inputs["Row Height"].default_value = 0.035
+    brick.inputs["Mortar Size"].default_value = 0.006
+    brick.offset = 0.0
+    brick.inputs["Color1"].default_value = (*GALV, 1)
+    brick.inputs["Color2"].default_value = (*(Vector(GALV) * 0.7), 1)
+    brick.inputs["Mortar"].default_value = (*srgb(0.22, 0.22, 0.21), 1)
+    nt.links.new(coord.outputs["Object"], brick.inputs["Vector"])
+    nt.links.new(brick.outputs["Color"], bsdf.inputs["Base Color"])
+    return mat
+
+
+## The watch tower crate's parts, in the order they're taken off it
+## (watch_tower.gd PARTS), and the objects that make up each (filled by
+## build_tower_load()).
+TOWER_PARTS = ["tower_base", "tower_platform", "tower_stairs", "tower_roof", "tower_details"]
+TOWER_OBJECTS = {}
+
+
+def build_tower_load(seed):
+    """The watch tower's parts, centred on the pallet like the comms kit:
+    the base's tube bundle along the north side, and in front of it the
+    deck's grating panels and the stair flight, then the cabin's panels and
+    the boxed air conditioner. Returns the load's footprint (x, y) and top
+    height, measured. Fills TOWER_OBJECTS."""
+    galv = paint_material("Galv", GALV, 0.4, 0.8)
+    galv_dark = paint_material("GalvDark", Vector(GALV) * 0.6, 0.5, 0.7)
+    grating = grating_material("Grating")
+    cream = paint_material("Cream", CREAM, 0.75, 0.0)
+    white = paint_material("White", srgb(0.88, 0.88, 0.85), 0.5, 0.0, wear=False)
+    vent = paint_material("Vent", srgb(0.6, 0.6, 0.58), 0.6, 0.0, wear=False)
+    black = paint_material("Black", srgb(0.03, 0.03, 0.03), 0.6, 0.0, wear=False)
+    seam = paint_material("Seam", srgb(0.66, 0.63, 0.55), 0.8, 0.0, wear=False)
+    tie = paint_material("TieStrap", srgb(0.75, 0.3, 0.08), 0.8, 0.0, wear=False)
+    z = PALLET_H
+
+    def part(name, make):
+        before = set(bpy.data.objects)
+        make()
+        TOWER_OBJECTS[name] = [o for o in bpy.data.objects if o not in before]
+
+    def tube_bundle():
+        # Four leg tubes, a layer of braces on top, the foot plates, tied twice.
+        for k in range(4):
+            block(f"LegTube{k}", (0, 0.17 + k * 0.05, z + 0.024), (0.72, 0.048, 0.048), galv, bevel=0.004)
+        for k in range(3):
+            block(f"BraceTube{k}", (0.02, 0.19 + k * 0.05, z + 0.068), (0.66, 0.035, 0.035), galv, bevel=0.003)
+        for k in range(4):
+            block(f"FootPlate{k}", (-0.3 + k * 0.035, 0.245, z + 0.14), (0.03, 0.11, 0.11), galv_dark)
+        for x in (-0.2, 0.22):
+            block(f"BundleTie{x:+.2f}", (x, 0.245, z + 0.045), (0.03, 0.22, 0.1), tie)
+
+    def grating_stack():
+        for k in range(3):
+            block(f"Panel{k}", (-0.18, -0.02, z + 0.02 + k * 0.042), (0.34, 0.22, 0.036), galv_dark, bevel=0.003)
+            block(f"PanelGrate{k}", (-0.18, -0.02, z + 0.039 + k * 0.042), (0.32, 0.2, 0.002), grating)
+
+    def stair_flight():
+        for y in (-0.115, 0.075):
+            block(f"Stringer{y:+.2f}", (0.18, y, z + 0.06), (0.34, 0.04, 0.12), galv, bevel=0.003)
+        for k in range(5):
+            block(f"Tread{k}", (0.05 + k * 0.065, -0.02, z + 0.1), (0.05, 0.15, 0.02), grating)
+
+    def roof_panels():
+        for k in range(4):
+            block(f"CabinPanel{k}", (-0.18, -0.25, z + 0.026 + k * 0.052), (0.34, 0.2, 0.05), cream, bevel=0.005)
+        block("PanelSeam", (-0.18, -0.25, z + 0.209), (0.03, 0.2, 0.004), seam)
+
+    def ac_box():
+        block("AcUnit", (0.18, -0.25, z + 0.12), (0.3, 0.2, 0.24), white, bevel=0.012)
+        for k in range(4):
+            block(f"AcVent{k}", (0.075 + k * 0.07, -0.25, z + 0.241), (0.04, 0.16, 0.004), vent)
+        bpy.ops.mesh.primitive_cylinder_add(vertices=24, radius=0.075, depth=0.004,
+                                            location=(0.18, -0.351, z + 0.12), rotation=(math.pi / 2, 0, 0))
+        fan = bpy.context.active_object
+        fan.name = "AcFan"
+        fan.data.materials.append(black)
+
+    part("tower_base", tube_bundle)
+    part("tower_platform", grating_stack)
+    part("tower_stairs", stair_flight)
+    part("tower_roof", roof_panels)
+    part("tower_details", ac_box)
+    bpy.context.view_layer.update()
+    lo = Vector((1e9, 1e9, 1e9))
+    hi = Vector((-1e9, -1e9, -1e9))
+    for obj in bpy.data.objects:
+        if obj.type == "MESH" and obj.matrix_world.translation.z > PALLET_H - 0.001:
+            for corner in obj.bound_box:
+                w = obj.matrix_world @ Vector(corner)
+                lo = Vector(map(min, lo, w))
+                hi = Vector(map(max, hi, w))
+    return (hi.x - lo.x, hi.y - lo.y), hi.z
+
+
 KINDS = {
     "ammo": build_ammo_load,
     "comms": build_comms_load,
     "sandbags": build_sandbag_load,
+    "tower": build_tower_load,
 }
 
 
@@ -450,16 +578,17 @@ def render_kind(kind):
     bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_open.png"))
     for obj in straps:
         obj.hide_render = False
-    if kind == "comms":
-        # As the station's built: the straps cut, then one part fewer each time.
+    if kind in ("comms", "tower"):
+        # As the station (or tower) is built: the straps cut, then one part fewer each time.
+        names, objects = (COMMS_PARTS, COMMS_OBJECTS) if kind == "comms" else (TOWER_PARTS, TOWER_OBJECTS)
         for obj in straps:
             obj.hide_render = True
-        for k, name in enumerate(COMMS_PARTS[:-1]):
-            for obj in COMMS_OBJECTS[name]:
+        for k, name in enumerate(names[:-1]):
+            for obj in objects[name]:
                 obj.hide_render = True
             bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_{k + 1}.png"))
-        for name in COMMS_PARTS:
-            for obj in COMMS_OBJECTS[name]:
+        for name in names:
+            for obj in objects[name]:
                 obj.hide_render = False
         for obj in straps:
             obj.hide_render = False
@@ -472,6 +601,28 @@ def render_kind(kind):
                 obj.hide_render = i >= left
             bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_{k + 1}.png"))
         for obj in SAND_BAG_OBJECTS + straps:
+            obj.hide_render = False
+    if kind == "ammo":
+        # As the cans are taken: the straps cut, and smaller stacks (a can's
+        # parts are parented to its body, and each needs hiding itself).
+        for obj in straps:
+            obj.hide_render = True
+        can_h = CAN_H + LID_H + 0.004
+        for k, columns in enumerate(AMMO_STAGES):
+            left = 0
+            for i, can in enumerate(AMMO_CAN_OBJECTS):
+                layer, c = i // (PER_ROW * ROWS), i % PER_ROW   # (built layer, row, column)
+                keep = c < columns[layer]
+                left += keep
+                for obj in [can] + list(can.children):
+                    obj.hide_render = not keep
+            bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"crate_{kind}_{k + 1}.png"))
+            layers = sum(1 for n in columns if n > 0)
+            print(f"crate_{kind}_{k + 1}: {left} cans, top at {PALLET_H + layers * can_h:.3f} m (crate.gd stage_heights)")
+        for can in AMMO_CAN_OBJECTS:
+            for obj in [can] + list(can.children):
+                obj.hide_render = False
+        for obj in straps:
             obj.hide_render = False
     build_pallet(wood_material())   # for the .blend and the review
     blend = os.path.join(ROOT, "blender", "source", f"crate_{kind}.blend")
@@ -519,7 +670,7 @@ def render_can():
                 w = obj.matrix_world @ Vector(corner)
                 lo = Vector(map(min, lo, w))
                 hi = Vector(map(max, hi, w))
-    bs.render_to(scene, os.path.join(ROOT, "assets", "props", "ammo_can.png"))
+    bs.render_to(scene, os.path.join(ROOT, "assets", "props", "hold_ammo_can.png"))
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(ROOT, "blender", "source", "ammo_can.blend"))
     cam = bpy.data.objects.new("Review", bpy.data.cameras.new("Review"))
     scene.collection.objects.link(cam)
@@ -532,19 +683,72 @@ def render_can():
     scene.render.film_transparent = False
     bg = next(n for n in scene.world.node_tree.nodes if n.type == "BACKGROUND")
     bg.inputs["Color"].default_value = (0.9, 0.9, 0.9, 1)
-    bs.render_to(scene, os.path.join(ROOT, "assets", "previews", "ammo_can_preview.png"))
+    bs.render_to(scene, os.path.join(ROOT, "assets", "previews", "hold_ammo_can_preview.png"))
     print(f"ammo_can: {hi.x - lo.x:.3f} x {hi.y - lo.y:.3f} m (centre {(hi.x + lo.x) / 2:+.3f}, {(hi.y + lo.y) / 2:+.3f}), "
           f"top at {hi.z:.3f} m (crate.gd)")
 
 
+## Carried items (`-- held`; render_held()): each part the way it is on its
+## crate, on its own, for assets/props/hold_<part>.png, held in front of
+## whoever's carrying it (scripts/carry_art.gd). The frame (m, square) each
+## is rendered in: 0.75 m = 256 px, 0.5625 m = 192 px at RENDER_SCALE.
+## (The ammo can's is the lone can, hold_ammo_can.png, render_can().)
+HELD_FRAMES = {"desk": 0.75, "electronics": 0.5625, "legs": 0.5625, "dish": 0.5625,
+               "wiring": 0.5625, "sandbags": 0.5625,
+               "tower_base": 0.75, "tower_platform": 0.5625, "tower_stairs": 0.5625,
+               "tower_roof": 0.5625, "tower_details": 0.5625}
+
+
+def render_held(part):
+    """One carried part, built exactly as on its crate (the comms kit's or
+    the watch tower's item, or the sandbag crate's bottom bag), moved to the middle of the
+    frame, top-down like the crates."""
+    scene = bs.new_scene(center=(0.0, 0.0), frame_m=HELD_FRAMES[part], transparent=True, samples=SAMPLES,
+                         px_per_m=bs.PX_PER_M * RENDER_SCALE)
+    if part == "sandbags":
+        import sandbags as sb
+        objs = [sb.bag("Bag", 0.0, 0, SAND_BAG_L, SAND_BAG_W, ("crate", 7, 0, 0, 0), sb.burlap_material())]
+    else:
+        tower = part in TOWER_PARTS
+        (build_tower_load if tower else build_comms_load)(seed=7)
+        objs = (TOWER_OBJECTS if tower else COMMS_OBJECTS)[part]
+        for obj in bpy.data.objects:
+            if obj.type == "MESH" and obj not in objs:
+                bpy.data.objects.remove(obj)
+    bpy.context.view_layer.update()
+    lo = Vector((1e9, 1e9, 1e9))
+    hi = Vector((-1e9, -1e9, -1e9))
+    for obj in objs:
+        if obj.type == "MESH":
+            for corner in obj.bound_box:
+                w = obj.matrix_world @ Vector(corner)
+                lo = Vector(map(min, lo, w))
+                hi = Vector(map(max, hi, w))
+    mid = (lo + hi) / 2
+    for obj in objs:
+        if obj.parent is None:
+            obj.location.x -= mid.x
+            obj.location.y -= mid.y
+    bs.render_to(scene, os.path.join(ROOT, "assets", "props", f"hold_{part}.png"))
+    size = hi - lo
+    fits = max(size.x, size.y) < HELD_FRAMES[part]
+    print(f"hold_{part}: {size.x:.3f} x {size.y:.3f} m, {size.z:.3f} m deep; frame {HELD_FRAMES[part]} m"
+          f"{'' if fits else '  ** DOES NOT FIT **'}")
+
+
 def main():
-    args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["pallet"] + list(KINDS) + ["can"]
+    args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else ["pallet"] + list(KINDS) + ["can", "held"]
     for kind in args:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         if kind == "pallet":
             render_pallet()
         elif kind == "can":
             render_can()
+        elif kind == "held":
+            for part in HELD_FRAMES:
+                render_held(part)
+        elif kind in HELD_FRAMES:   # one carried part (e.g. `-- tower_base`)
+            render_held(kind)
         else:
             render_kind(kind)
 

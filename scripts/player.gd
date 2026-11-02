@@ -47,6 +47,10 @@ const DeathMenu = preload("res://scripts/death_menu.gd")
 const DEATH_TIME_SCALE := 0.3
 const DEATH_MENU_DELAY_S := 0.6   ## real seconds after coming to rest
 
+## Start the level by flying in on a helicopter and stepping out where this
+## square is placed (scripts/arrival.gd). Untick to start on the ground
+## there (early-deploy crates still parachute in first).
+@export var drop_off_animation := true
 ## The command circle: how far its voice carries, all round. (Until
 ## 2026-10-29 this was 2.475 m plus an 8 m voice cone out of its front face.)
 @export var aura_radius_m := 8.0
@@ -152,9 +156,11 @@ func _ready() -> void:
 				Color(1.0, 0.85, 0.3, 0.9), 3.0, true))
 	add_child(_reload_ring)
 	_carry_view = Node2D.new()
-	_carry_view.z_index = 2
+	_carry_view.z_index = 0   # with the body: added just before it below, so the square is over what it holds
+	_carry_view.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # the 4x pictures, shrunk
 	_carry_view.draw.connect(func() -> void: CarryArt.draw(_carry_view, carrying, facing))
 	add_child(_carry_view)
+	move_child(_carry_view, $Body.get_index())
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	_ammo_hud = UiStyle.panel()
@@ -198,10 +204,9 @@ func _physics_process(delta: float) -> void:
 func _tick_unstrap(delta: float) -> void:
 	if dead or _hands_off() or World.commanding() or carrying != "" or not Input.is_action_pressed("interact"):
 		return
-	for crate: Node2D in get_tree().get_nodes_in_group("crates"):
-		if crate.has_method("can_unstrap") and crate.can_unstrap(self):
-			crate.work_unstrap(self, delta)
-			return
+	var crate := interact_target()
+	if crate and crate.is_in_group("crates") and crate.can_unstrap(self):
+		crate.work_unstrap(self, delta)
 
 
 ## The running footfalls: on while it's running faster than it walks on
@@ -278,28 +283,56 @@ func _move_intent() -> Vector2:
 
 
 ## F: with empty hands at a supply crate that owes something a part, takes
-## one off it; carrying one, at a site that needs it (the nearest), puts it in.
+## one off it; carrying one, at a site that needs it, puts it in. Only when
+## that's the closest thing F works on (interact_target()); a station's desk
+## or dish handles its own F.
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("interact") or event.is_echo() or dead or _hands_off() or World.commanding():
 		return
-	if carrying != "":
-		var best: Node2D = null
-		for site: Node2D in get_tree().get_nodes_in_group("build_sites"):
-			if site.needs(carrying) and site.can_deliver_at(global_position):
-				if best == null or site.global_position.distance_to(global_position) < best.global_position.distance_to(global_position):
-					best = site
-		if best:
-			best.install(carrying)
-			carrying = ""
-			_carried_from = null
-			get_viewport().set_input_as_handled()
+	var target := interact_target()
+	if target == null:
 		return
-	for crate: Node2D in get_tree().get_nodes_in_group("crates"):
-		if crate.has_method("can_take") and crate.can_take(self):
-			carrying = crate.take_part()
-			_carried_from = crate
-			get_viewport().set_input_as_handled()
-			return
+	if carrying != "" and target.is_in_group("build_sites"):
+		target.install(carrying)
+		carrying = ""
+		_carried_from = null
+		get_viewport().set_input_as_handled()
+	elif target.is_in_group("crates") and target.can_take(self):
+		carrying = target.take_part()
+		_carried_from = target
+		get_viewport().set_input_as_handled()
+
+
+## What F works on now: of everything in reach that it would do something
+## to, the closest. With two in reach (a crate beside a station's desk, a
+## site beside the dish) only this one takes F and shows its green F.
+## Crates (take a part, undo the straps), build sites (put in what it's
+## carrying), and anything in the "interactables" group, which answers
+## interact_point(): where it is (world), or null when F does nothing there.
+func interact_target() -> Node:
+	if dead or _hands_off() or World.commanding():
+		return null
+	var best: Node = null
+	var best_d := INF
+	var candidates := []
+	if carrying != "":
+		for site: Node2D in get_tree().get_nodes_in_group("build_sites"):
+			if site.needs(carrying) and site.can_deliver_at(global_position, self):
+				candidates.append([site, site.global_position])
+	else:
+		for crate: Node2D in get_tree().get_nodes_in_group("crates"):
+			if crate.has_method("can_take") and (crate.can_take(self) or crate.can_unstrap(self)):
+				candidates.append([crate, crate.global_position])
+	for thing: Node in get_tree().get_nodes_in_group("interactables"):
+		var at = thing.interact_point()
+		if at != null:
+			candidates.append([thing, at])
+	for c in candidates:
+		var d: float = global_position.distance_to(c[1])
+		if d < best_d:
+			best = c[0]
+			best_d = d
+	return best
 
 
 ## Where to aim: the mouse, except in command mode, when the mouse is busy

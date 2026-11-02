@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://thgolfeot5pn"
-path="res://.godot/imported/magazine.png-d7f5d79230941cb7a84ad962b23f278e.ctex"
+uid="uid://bf53hqdlautce"
+path="res://.godot/imported/hold_tower_roof.png-b7e4baa7342e02886e9ed4ac50239a75.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/characters/magazine.png"
-dest_files=["res://.godot/imported/magazine.png-d7f5d79230941cb7a84ad962b23f278e.ctex"]
+source_file="res://assets/props/hold_tower_roof.png"
+dest_files=["res://.godot/imported/hold_tower_roof.png-b7e4baa7342e02886e9ed4ac50239a75.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

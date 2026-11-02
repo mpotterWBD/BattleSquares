@@ -41,8 +41,10 @@ extends StaticBody2D
 ## coming or going tells its neighbours to look again.
 ##
 ## Its proximity box (`zone_length_m` along the wall by `zone_depth_m` out
-## from it on each side; shown faintly in command mode and on the placing
-## ghost) is where you're using it as cover: a shot fired from inside the
+## from it on each side; shown in command mode and on the placing ghost as a
+## dig-in square each side, none on a side something stands over: a watch
+## tower's stairs, a crate; side_open(), and nobody digs in there) is where
+## you're using it as cover: a shot fired from inside the
 ## box goes over this wall (lets_bullet_through()), and from inside you see
 ## over it (in_zone(), ai_soldier.gd _clear_view()). A shot from outside
 ## stops in it with a puff of dust (bullet_hit()), except
@@ -97,6 +99,9 @@ const SHADOW_ALPHA := 0.71     ## an open-ground shadow (soldier.gd)
 const CLIMB_MARGIN_PX := 14.0
 const ZONE_FILL := Color(World.COMMAND_COLOR, 0.08)
 const ZONE_EDGE := Color(World.COMMAND_COLOR, 0.55)
+const ZONE_GAP_PX := 6.0   ## between the dig-in squares of walls in a row
+const COVER_SPOT_M := 0.42    ## a dig-in spot is this far out from the wall's middle (as command.gd, squadmate.gd, enemy.gd)
+const SPOT_ROOM_M := 0.2      ## the room a dig-in spot needs clear
 
 ## The proximity box: how long it is along the wall, centred on it.
 @export_range(0.2, 5.0, 0.05, "suffix:m") var zone_length_m := 1.0
@@ -105,6 +110,9 @@ const ZONE_EDGE := Color(World.COMMAND_COLOR, 0.55)
 ## The chance a shot fired from outside the box goes over the wall instead of
 ## stopping in it (0.1 = 10%).
 @export_range(0.0, 1.0, 0.01) var through_chance := 0.1
+## How tall it is (cover.gd height classes): low, 1. Fired down on from up a
+## watch tower it stops less (watch_tower.gd sections).
+@export_range(1, 3, 1) var height_class := 1
 ## Up (solid, cover), or still a site waiting for its bags (see above).
 @export var built := true
 ## How much shooting it takes (a rifle round does 2: 30 hits).
@@ -125,6 +133,13 @@ var _preview: Node2D   ## editor only: draws the row extra_sandbags makes
 var _key: Label        ## a site's green F, when the player brings bags
 const SITE_GHOST := Color(0.55, 1.0, 0.55, 0.35)
 const DELIVER_M := 1.4      ## bags are brought in within this far of its middle
+## Firing over it (Mike, 2026-11-01): a square that's just fired (soldier.gd
+## `exposed_s`) within EXPOSED_NEAR_M of where a shot reaches the wall, on
+## the far side, has its head up: the wall stops only EXPOSED_STOP of those
+## shots (class 1, cover.gd), not 1 - `through_chance`.
+const EXPOSED_STOP := 0.4
+const EXPOSED_NEAR_M := 1.2
+const EXPOSED_LINE_M := 0.5   ## a shot passing this close to them counts as heading for them
 const DELIVER_SIDE_M := 0.7 ## squadmates bring them to this far out to one side (clear of climbing)
 
 var _zone: Node2D
@@ -167,10 +182,12 @@ func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	_zone.visible = World.commanding() and built and damage_stage < 3
+	if _zone.visible:
+		_zone.queue_redraw()   # (things come and go over its dig-in squares)
 	if _key:
 		var player = get_tree().get_first_node_in_group("player")
 		_key.visible = (not built and player != null and player.carrying == "sandbags"
-				and can_deliver_at(player.global_position))
+				and can_deliver_at(player.global_position) and player.interact_target() == self)
 		_key.rotation = -global_rotation
 		_key.position = (-_key.size / 2.0).rotated(-global_rotation)
 
@@ -193,7 +210,7 @@ func needs(part: String) -> bool:
 	return not built and part == "sandbags"
 
 
-func can_deliver_at(at: Vector2) -> bool:
+func can_deliver_at(at: Vector2, _who: Node = null) -> bool:
 	return not built and at.distance_to(global_position) <= DELIVER_M * World.PX_PER_M
 
 
@@ -240,6 +257,8 @@ func _notification(what: int) -> void:
 		return
 	if what == NOTIFICATION_TRANSFORM_CHANGED and is_node_ready():
 		_update_tile()   # a ghost being moved and turned: join up where it would go
+		if _zone:
+			_zone.queue_redraw()
 
 
 ## Lays the `extra_sandbags` walls after this one, beside it in the level,
@@ -336,6 +355,22 @@ func cover_class() -> int:
 	return Cover.class_of(self)
 
 
+
+## The share of shots reaching it at world `point` it stops on their way to
+## `unit`: EXPOSED_STOP if `unit` has its head up behind it (just fired,
+## within EXPOSED_NEAR_M of `point`), cover_stop_chance() otherwise.
+func cover_stop_chance_for(point: Vector2, unit: Node2D) -> float:
+	var stops := cover_stop_chance()
+	if stops > 0.0 and _exposed_at(point, unit):
+		return minf(stops, EXPOSED_STOP)
+	return stops
+
+
+func _exposed_at(point: Vector2, unit: Node2D) -> bool:
+	return (is_instance_valid(unit) and not unit.dead and unit.get("exposed_s") > 0.0
+			and unit.global_position.distance_to(point) <= EXPOSED_NEAR_M * World.PX_PER_M)
+
+
 ## Shot: `amount` off its health; past each third it looks worse, and at
 ## nothing it collapses.
 func take_damage(amount: float) -> void:
@@ -372,6 +407,7 @@ func _collapse() -> void:
 		dust.setup(global_position + Vector2.from_angle(global_rotation) * (k - 1) * TILE_PX * 0.35,
 				Vector2.from_angle(global_rotation + PI / 2 * (1 if k % 2 else -1)), 1.0, true)
 		(level if level else get_parent()).add_child(dust)
+		dust.tuck_under_towers()
 
 
 ## A wall's arrived next to these: they look again.
@@ -441,9 +477,19 @@ func climb_at(point: Vector2) -> float:
 
 
 ## Asked by a bullet (bullet.gd) once, when it reaches this wall: whether it
-## goes over. Always from inside the box, `through_chance` from outside.
+## goes over. Always from inside the box, `through_chance` from outside,
+## or 1 - EXPOSED_STOP when it's heading for someone with their head up
+## just behind the wall (cover_stop_chance_for()).
 func lets_bullet_through(bullet: Node2D) -> bool:
-	return in_zone(bullet.origin) or randf() < through_chance
+	if in_zone(bullet.origin):
+		return true
+	var stops := 1.0 - through_chance
+	var ahead: Vector2 = bullet.velocity.normalized()
+	for unit: Node2D in get_tree().get_nodes_in_group("units"):
+		var to: Vector2 = unit.global_position - bullet.global_position
+		if to.dot(ahead) > 0.0 and absf(to.cross(ahead)) <= EXPOSED_LINE_M * World.PX_PER_M and _exposed_at(bullet.global_position, unit):
+			stops = minf(stops, EXPOSED_STOP)
+	return randf() >= stops
 
 
 ## A bullet stopped in the wall (bullet.gd): sand flies back out the way it
@@ -453,12 +499,48 @@ func bullet_hit(point: Vector2, direction: Vector2, damage := 0.0) -> void:
 	dust.setup(point, direction)
 	var level := get_tree().current_scene
 	(level if level else get_parent()).add_child(dust)
+	dust.tuck_under_towers()   # (beside a watch tower's stairs: under them)
 	ImpactSound.play(level if level else get_parent(), point, "sand")
 	take_damage(damage)
 
 
+## Its dig-in squares, one each side (Mike, 2026-11-01): a box the length of
+## the wall (less a little, so a row shows as separate squares) out to
+## `zone_depth_m`, on the ground under the bags; none on a side something
+## stands on (side_open()).
 func _draw_zone() -> void:
-	var half := Vector2(zone_length_m / 2.0, zone_depth_m) * World.PX_PER_M
-	var rect := Rect2(-half, half * 2.0)
-	_zone.draw_rect(rect, ZONE_FILL)
-	_zone.draw_rect(rect, ZONE_EDGE, false, 1.5)
+	var px := World.PX_PER_M
+	var length := FOOT_PX.x - ZONE_GAP_PX
+	for side in [-1, 1]:
+		if not side_open(side):
+			continue
+		var rect := Rect2(-length / 2.0, 0.0 if side > 0 else -zone_depth_m * px, length, zone_depth_m * px)
+		_zone.draw_rect(rect, ZONE_FILL)
+		_zone.draw_rect(rect, ZONE_EDGE, false, 1.5)
+
+
+## Whether its dig-in square on `side` (1: +y, the wall's own frame; -1: -y)
+## is free to dig in at: nothing solid on the spot (COVER_SPOT_M out; a crate,
+## a station, a helicopter, a watch tower's legs or stair) and no watch tower
+## over it (its deck or stairs).
+func side_open(side: int) -> bool:
+	var px := World.PX_PER_M
+	var spot := to_global(Vector2(0.0, side * COVER_SPOT_M * px))
+	for tower in get_tree().get_nodes_in_group("watch_towers"):
+		if tower.on_surface(spot, 0.15):
+			return false
+	var room := CircleShape2D.new()
+	room.radius = SPOT_ROOM_M * px
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = room
+	query.transform = Transform2D(0.0, spot)
+	query.collision_mask = 1   # solid things (and squares, which don't count)
+	for hit in get_world_2d().direct_space_state.intersect_shape(query, 8):
+		if not hit.collider.has_method("take_hit"):
+			return false
+	return true
+
+
+## Whether the dig-in spot `spot` (world, on one side or the other) is free to dig in at.
+func spot_open(spot: Vector2) -> bool:
+	return side_open(1 if to_local(spot).y >= 0.0 else -1)

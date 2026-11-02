@@ -61,6 +61,23 @@ extends "res://scripts/ai_soldier.gd"
 ##        last saw them and looks around for `search_s`...
 ## RETURN ...then walks back to its post and goes CALM again. Any shot in
 ##        its circle or sight of someone on the way puts it back in ENGAGE.
+## CRATES Ammo crates (crate.gd, builds "ammo_can") within a crate's
+##        `vicinity_m` get used (_crate_work(); one enemy per crate at a
+##        time, `crate.enemy_worker`; `crate_task` says what it's doing):
+##          - "unstrap": still strapped, and it's free to (not surprised,
+##            and not in a fight unless held up in a standoff), it goes and
+##            undoes the straps (crate.gd work_unstrap()).
+##          - "ammo": held up in a standoff (ENGAGE, ai_soldier.gd
+##            `_standoff`) with others in the same standoff round the
+##            crate, the group gets an ammo can for every UNITS_PER_CAN of
+##            them (rounded up; `crate.enemy_cans`). One fetches them, one
+##            at a time: takes a can off the crate (take_unplanned()) and
+##            carries it (rifle away, CARRY_SPEED, carry_art.gd) to
+##            CAN_BACK_M behind the group, away from its foes, the cans
+##            CAN_SPREAD_M apart across, and sets it down (ammo_supply.gd),
+##            for any of them to top up from (ai_soldier.gd _ammo_run()).
+##            The standoff over before it's got one, it gives up; surprised
+##            while carrying, the can goes back on the crate.
 ##
 ## On patrol (`patrol`, a scripts/patrol.gd; spawned by the testing
 ## spawner), CALM means keeping its slot in the patrol's formation as it
@@ -70,6 +87,8 @@ extends "res://scripts/ai_soldier.gd"
 enum Mode { CALM, ENGAGE, SEARCH, RETURN, SURPRISED }
 
 const RangeRing = preload("res://scripts/enemy_ring.gd")
+const CarryArt = preload("res://scripts/carry_art.gd")
+const AMMO_CAN_SCENE := preload("res://scenes/ammo_supply.tscn")
 
 const THINK_S := 0.25           ## how often it looks for targets
 const SPOT_RINGS := 3           ## distances tried round the target, across the fighting range
@@ -86,11 +105,19 @@ const COVER_SPOT_M := 0.42      ## a defensive spot is this far behind a wall's 
 const COVER_REACH_M := 1.5      ## a wall this close along the line of fire counts as cover
 const FLANK_GRACE_S := 0.8      ## out of cover this long and it's been flanked
 const SANDBAG_LAYER := 4        ## sandbags.tscn collision_layer
+const CRATE_LOOK_S := 0.5       ## how often it looks for a crate to work at
+const UNITS_PER_CAN := 3        ## a standoff gets an ammo can for every this many held up
+const CAN_BACK_M := 2.0         ## cans go this far behind the group, away from its foes...
+const CAN_SPREAD_M := 1.2       ## ...this far apart across
+const CAN_PLACE_M := 0.4        ## close enough to the can's spot to set it down
+const CARRY_SPEED := 0.65       ## carrying a can, this much of its speed (as squadmates)
+const CAN_CLEAR_M := 0.45       ## a can's spot must be this clear of anything solid
+const CARRY_STUCK_S := 2.0      ## getting no closer to the spot this long, it sets the can down where it is
 
 ## How far round it a shot wakes it: fired from inside this circle or
 ## flying through it.
 @export_range(1.0, 40.0, 0.5, "suffix:m") var detection_radius_m := 10.0
-## Draw the detection circle on the ground (a testing aid).
+## Draw the detection circle on the ground in debug view (Q; enemy_ring.gd).
 @export var show_detection := true
 ## How far it can see, in any direction, where nothing solid is in the way
 ## (stations, a landed helicopter, sandbags while it's calm).
@@ -157,6 +184,18 @@ var patrol: Node = null
 var cover_wall: Node2D = null
 var cover_spot := Vector2.ZERO
 var _flanked_s := 0.0
+## Working at an ammo crate (see CRATES above): "", "unstrap" or "ammo";
+## the crate; what it's carrying ("" or "ammo_can", as squadmates) and
+## where it's taking it.
+var crate_task := ""
+var _crate: Node2D = null
+var _crate_look_s := 0.0
+var carrying := ""
+var _carried_from: Node2D = null
+var _can_spot := Vector2.ZERO
+var _carry_best := INF          ## closest it's been to the can's spot (px)...
+var _carry_stuck_s := 0.0       ## ...and how long since it got any closer
+var _carry_view: Node2D
 
 
 func _ready() -> void:
@@ -172,6 +211,12 @@ func _ready() -> void:
 	_ring = RangeRing.new()
 	_ring.enemy = self
 	add_child(_ring)
+	_carry_view = Node2D.new()
+	_carry_view.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # the 4x pictures, shrunk
+	_carry_view.visible = false
+	_carry_view.draw.connect(func() -> void: CarryArt.draw(_carry_view, carrying, facing))
+	add_child(_carry_view)
+	move_child(_carry_view, $Body.get_index())   # the square over what it holds
 
 
 ## Wakes it: `source` (whoever fired) becomes its threat; if that isn't
@@ -258,9 +303,19 @@ func _move_intent() -> Vector2:
 	if _think_in <= 0.0 and mode != Mode.CALM:
 		_think_in = THINK_S
 		_look_for_targets()
-	var run := _ammo_run()   # out of ammo: off to get some first
-	if run != Vector2.INF:
-		return run
+	# Hands full: the can in front of it, its rifle away.
+	_rifle.visible = carrying == ""
+	get_node("Shadows/RifleShadow").visible = _rifle.visible
+	_carry_view.visible = carrying != ""
+	if _carry_view.visible:
+		_carry_view.queue_redraw()
+	if carrying == "":
+		var run := _ammo_run()   # out of ammo: off to get some first
+		if run != Vector2.INF:
+			return run
+	var work := _crate_work(delta)
+	if work != Vector2.INF:
+		return work
 	match mode:
 		Mode.SURPRISED:
 			return _surprised(delta)
@@ -324,10 +379,12 @@ func _keep_patrol_slot() -> Vector2:
 ## direction, with nothing solid in the way (a station, a landed
 ## helicopter, sandbags). Someone manning a wall shows over it, though
 ## (_clear_view() `seen_over`): only one hiding behind it, not at it, is unseen.
+## Someone up high on a watch tower it's in the overlook box of is in plain view
+## over sandbags and crates (cover.gd in_full_view()).
 func _check_intruders() -> void:
 	for hostile: Node2D in _hostiles():
 		if (hostile.global_position.distance_to(global_position) <= sight_m * World.PX_PER_M
-				and _clear_view(global_position, hostile.global_position, false, true)):
+				and _clear_view(global_position, hostile.global_position, false, true, Cover.in_full_view(hostile, global_position))):
 			alert(hostile)
 			return
 
@@ -358,7 +415,8 @@ func _look_for_targets() -> void:
 	var best_d := INF
 	for hostile: Node2D in _hostiles():
 		var d := global_position.distance_to(hostile.global_position)
-		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position, true):
+		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position, true, false,
+				Cover.in_full_view(hostile, global_position)):
 			continue
 		if hostile == threat:
 			d *= 0.7   # sticks with whoever it was fighting
@@ -497,7 +555,7 @@ func _take_cover(focus: Vector2, reach_m := -1.0) -> bool:
 			var spot: Vector2 = wall.global_position + across * side * COVER_SPOT_M * px
 			var d := spot.distance_to(global_position)
 			if (d < best_d and spot.distance_to(focus) <= sight_m * px
-					and _covered(spot, focus) and not _spot_taken(spot)):
+					and _covered(spot, focus) and not _spot_taken(spot) and wall.spot_open(spot)):
 				best_d = d
 				best = wall
 				best_spot = spot
@@ -717,7 +775,7 @@ func _aim_point() -> Vector2:
 ## Its first shot at a new target waits for it to react.
 func _ready_to_fire() -> bool:
 	_reaction_left -= get_physics_process_delta_time()
-	return (mode == Mode.ENGAGE or mode == Mode.SURPRISED) and _reaction_left <= 0.0
+	return (mode == Mode.ENGAGE or mode == Mode.SURPRISED) and _reaction_left <= 0.0 and carrying == ""
 
 
 ## Bursts: `burst_shots` quick shots, then a pause.
@@ -737,3 +795,236 @@ func _shot_spread_deg() -> float:
 	if velocity.length() > 0.3 * World.PX_PER_M:
 		spread += moving_spread_deg
 	return spread
+
+
+# ---------------------------------------------------------------- crates --
+
+## Working at an ammo crate (see CRATES at the top): the way to walk, or
+## Vector2.INF when it isn't, for the rest of _move_intent() to carry on.
+func _crate_work(delta: float) -> Vector2:
+	if crate_task == "":
+		_crate_look_s -= delta
+		if _crate_look_s > 0.0:
+			return Vector2.INF
+		_crate_look_s = CRATE_LOOK_S
+		_pick_crate_task()
+		if crate_task == "":
+			return Vector2.INF
+	if not is_instance_valid(_crate) or _crate.is_queued_for_deletion():
+		_end_crate_task()
+		return Vector2.INF
+	if crate_task == "unstrap":
+		if not _crate.strapped or not _free_for_crate():
+			_end_crate_task()
+			return Vector2.INF
+		return _work_straps(delta)
+	# "ammo": fetch a can and set it down behind the group.
+	if carrying != "":
+		if mode == Mode.SURPRISED:
+			_end_crate_task()   # the can goes back on the crate
+			return Vector2.INF
+		var to := _can_spot - global_position
+		# Getting no closer for a while (something in the way): it puts the
+		# can down where it is.
+		if to.length() < _carry_best - 0.05 * World.PX_PER_M:
+			_carry_best = to.length()
+			_carry_stuck_s = 0.0
+		else:
+			_carry_stuck_s += delta
+		if to.length() <= CAN_PLACE_M * World.PX_PER_M or _carry_stuck_s > CARRY_STUCK_S:
+			if _carry_stuck_s > CARRY_STUCK_S:
+				_can_spot = global_position + Vector2.from_angle(facing) * 0.35 * World.PX_PER_M
+			_set_can_down()
+			return Vector2.ZERO
+		_speed_scale = JOG_SPEED * CARRY_SPEED
+		return _steer(to)
+	if not _held_up() or _cans_wanted(_crate) <= 0 or _crate.available() <= 0:
+		_end_crate_task()   # the standoff's over, or they've enough
+		return Vector2.INF
+	if _crate.strapped:
+		return _work_straps(delta)
+	if _crate.in_reach(self):
+		carrying = _crate.take_unplanned()
+		_carried_from = _crate
+		_can_spot = _can_spot_for(_crate)
+		_carry_best = INF
+		_carry_stuck_s = 0.0
+		_reset_progress()
+		return Vector2.ZERO
+	return _go_toward(_crate.global_position)
+
+
+## Free to see to a crate: not surprised, and not in a fight unless it's
+## held up in a standoff.
+func _free_for_crate() -> bool:
+	return mode != Mode.SURPRISED and (mode != Mode.ENGAGE or _held_up())
+
+
+## In a fight, holding fire in a standoff (ai_soldier.gd _in_standoff()).
+func _held_up() -> bool:
+	return mode == Mode.ENGAGE and is_attacking() and _standoff
+
+
+## Takes on an ammo crate in reach that needs something and that nobody
+## else is working at.
+func _pick_crate_task() -> void:
+	if not _free_for_crate() or carrying != "":
+		return
+	for crate: Node2D in get_tree().get_nodes_in_group("crates"):
+		if not "enemy_worker" in crate or crate.builds != "ammo_can":
+			continue
+		if global_position.distance_to(crate.global_position) > crate.vicinity_m * World.PX_PER_M:
+			continue
+		var worker: Node2D = crate.enemy_worker
+		if worker != null and is_instance_valid(worker) and worker != self and not worker.dead and worker.crate_task != "":
+			continue
+		var task := ""
+		if crate.strapped:
+			task = "unstrap"
+		elif _held_up() and crate.available() > 0 and _cans_wanted(crate) > 0:
+			task = "ammo"
+		if task != "":
+			crate_task = task
+			_crate = crate
+			crate.enemy_worker = self
+			_reset_progress()
+			return
+
+
+## At the crate undoing its straps (or walking over to it).
+func _work_straps(delta: float) -> Vector2:
+	if _crate.in_reach(self):
+		_look_angle = (_crate.global_position - global_position).angle()
+		if not _crate.unstrapping_by_other(self):
+			_crate.work_unstrap(self, delta)
+		return Vector2.ZERO
+	return _go_toward(_crate.global_position)
+
+
+## Straight there, jogging if it's far.
+func _go_toward(point: Vector2) -> Vector2:
+	var to := point - global_position
+	if to.length() > JOG_FROM_M * World.PX_PER_M:
+		_speed_scale = JOG_SPEED
+	return _steer(to)
+
+
+## The enemies held up in a standoff round `crate` (in its vicinity).
+func _held_up_near(crate: Node2D) -> Array:
+	var reach: float = crate.vicinity_m * World.PX_PER_M
+	return get_tree().get_nodes_in_group("enemies").filter(func(e):
+		return (_alive(e) and e._held_up()
+				and e.global_position.distance_to(crate.global_position) <= reach))
+
+
+## How many more cans the standoff round `crate` wants: one for every
+## UNITS_PER_CAN held up there, less the enemy cans already set up round
+## them (from any crate) and any another enemy is bringing.
+func _cans_wanted(crate: Node2D) -> int:
+	crate.enemy_cans = crate.enemy_cans.filter(func(can):
+		return is_instance_valid(can) and not can.is_queued_for_deletion() and not can._empty)
+	var group := _held_up_near(crate)
+	if group.is_empty():
+		return 0
+	var middle := Vector2.ZERO
+	for e: Node2D in group:
+		middle += e.global_position
+	middle /= group.size()
+	var reach: float = crate.vicinity_m * World.PX_PER_M
+	var have := 0
+	for can: Node2D in get_tree().get_nodes_in_group("enemy_ammo_cans"):
+		if not can.is_queued_for_deletion() and not can._empty and can.global_position.distance_to(middle) <= reach:
+			have += 1
+	for e: Node2D in get_tree().get_nodes_in_group("enemies"):
+		if e != self and _alive(e) and e.crate_task == "ammo" and e.global_position.distance_to(middle) <= reach:
+			have += 1
+	return ceili(group.size() / float(UNITS_PER_CAN)) - have
+
+
+## Where the next can goes: CAN_BACK_M behind the middle of the group, away
+## from the foes they're held up by, the cans CAN_SPREAD_M apart across.
+func _can_spot_for(crate: Node2D) -> Vector2:
+	var px := World.PX_PER_M
+	var group := _held_up_near(crate)
+	if group.is_empty():
+		group = [self]
+	var middle := Vector2.ZERO
+	var foes := Vector2.ZERO
+	var foe_count := 0
+	for e: Node2D in group:
+		middle += e.global_position
+		if _alive(e.attack_target):
+			foes += e.attack_target.global_position
+			foe_count += 1
+	middle /= group.size()
+	var away := Vector2.from_angle(facing + PI)
+	if foe_count > 0:
+		away = (middle - foes / foe_count).normalized()
+	var k := 0   # cans already round the group: this one goes beside them
+	for can: Node2D in get_tree().get_nodes_in_group("enemy_ammo_cans"):
+		if not can._empty and can.global_position.distance_to(middle) <= crate.vicinity_m * px:
+			k += 1
+	var across: float = [0.0, 1.0, -1.0, 2.0, -2.0][k % 5] * CAN_SPREAD_M
+	var spot := middle + away * CAN_BACK_M * px + away.orthogonal() * across * px
+	var area := World.ARENA.grow(-SIZE_M * px)
+	return _clear_ground_near(spot.clamp(area.position, area.end))
+
+
+## `spot` if nothing solid (a crate, a wall, a square...) is within
+## CAN_CLEAR_M of it, else the nearest point round it that's clear (so the
+## carrier can get there and the can doesn't go down inside something).
+func _clear_ground_near(spot: Vector2) -> Vector2:
+	var px := World.PX_PER_M
+	var circle := CircleShape2D.new()
+	circle.radius = CAN_CLEAR_M * px
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = circle
+	query.collision_mask = HIDE_MASK
+	query.exclude = [get_rid()]
+	var space := get_world_2d().direct_space_state
+	var area := World.ARENA.grow(-SIZE_M * px)
+	for ring in range(0, 6):
+		for k in (1 if ring == 0 else 10):
+			var at := (spot + Vector2.from_angle(TAU * k / 10.0) * ring * 0.4 * px).clamp(area.position, area.end)
+			query.transform = Transform2D(0.0, at)
+			if space.intersect_shape(query, 1).is_empty():
+				return at
+	return spot
+
+
+## The can's down where it was going: a working ammo can, the group's.
+func _set_can_down() -> void:
+	var can: Node2D = AMMO_CAN_SCENE.instantiate()
+	can.position = _can_spot
+	can.rotation = randf_range(-0.3, 0.3)
+	can.add_to_group("enemy_ammo_cans")
+	get_parent().add_child(can)
+	if is_instance_valid(_carried_from):
+		_carried_from.enemy_cans.append(can)
+	carrying = ""
+	_carried_from = null
+	_end_crate_task()
+
+
+## Done with the crate (or giving up): a can in its hands goes back on it,
+## and it's free for another enemy.
+func _end_crate_task() -> void:
+	if carrying != "" and is_instance_valid(_carried_from):
+		_carried_from.give_back_unplanned(carrying)
+	carrying = ""
+	_carried_from = null
+	if is_instance_valid(_crate) and _crate.enemy_worker == self:
+		_crate.enemy_worker = null
+	_crate = null
+	crate_task = ""
+	_crate_look_s = CRATE_LOOK_S
+	_rethink_in = 0.0   # back to the fight: somewhere to stand
+	_reset_progress()
+
+
+func _die(point: Vector2, direction: Vector2) -> void:
+	_end_crate_task()
+	_carry_view.visible = false
+	_rifle.visible = true
+	get_node("Shadows/RifleShadow").visible = true
+	super(point, direction)

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b2nruukyqlhjp"
-path="res://.godot/imported/rifle.png-4dd63ad1f94209e965951470474c5765.ctex"
+uid="uid://thgolfeot5pn"
+path="res://.godot/imported/hold_magazine.png-e482e55513707ba10b692319c22a251f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/characters/rifle.png"
-dest_files=["res://.godot/imported/rifle.png-4dd63ad1f94209e965951470474c5765.ctex"]
+source_file="res://assets/characters/hold_magazine.png"
+dest_files=["res://.godot/imported/hold_magazine.png-e482e55513707ba10b692319c22a251f.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

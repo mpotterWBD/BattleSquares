@@ -14,9 +14,12 @@ extends "res://scripts/soldier.gd"
 ## got there.
 ##
 ## Out of ammo (rifle empty and no spare with rounds in it), it goes for
-## the nearest ammo on the field (a dead square's magazine, ammo_pickup.gd)
-## within AMMO_SEARCH_M that nobody else is going for: it claims it, jogs
-## there round anything in the way, takes it, reloads, and goes back to
+## the nearest ammo on the field that would help it (a dead square's
+## magazine, ammo_pickup.gd, or an ammo can, ammo_supply.gd) within
+## AMMO_SEARCH_M that nobody else is going for: it claims it (a can too, so
+## squares don't crowd round one; the next comes once it's done),
+## jogs there round anything in the way, takes it (at a can, stands loading
+## its spares round by round until they're full), reloads, and goes back to
 ## what it was doing (_ammo_run(), checked first by the subclasses each
 ## tick). Short of ammo (less than a full magazine all told) it doesn't
 ## wait to run dry: it picks up any within AMMO_TOPUP_M, if it's free to
@@ -124,7 +127,11 @@ var _swerve_side := 0.0    ## 1 or -1 while going round something, the side it's
 var _avoid_check_s := 0.0
 var _detour_s := 0.0       ## time spent going round things without getting closer
 var _squares: Array[RID] = []   ## every square, not obstacles for _blocked_by()
-var _ammo: Node2D = null   ## the ammo it's going for (ammo_pickup.gd), claimed
+var _ammo: Node2D = null   ## the ammo it's going for (ammo_pickup.gd, or an ammo can), claimed
+var _loading_ammo := false ## at an ammo can, loading: keeps at it until its spares are full
+var _goal_tower: Node2D = null   ## the watch tower its walk is to (_tower_way()), if any
+var _route_via := Vector2.INF   ## the step of a watch tower's route it's walking to
+var _goal_tower_tick := -10
 var _ammo_look_s := 0.0
 ## Standoff: holding fire (as of the last look), and the next look.
 var _standoff := false
@@ -175,10 +182,13 @@ func is_short_of_ammo() -> bool:
 ## isn't (it has enough, or there's none to be had), for the subclass to
 ## carry on as usual. There, it takes the magazine and reloads.
 func _ammo_run() -> Vector2:
+	if not _may_fetch_ammo():
+		_drop_ammo_claim()
+		return Vector2.INF
 	var reach := 0.0
 	if is_out_of_ammo():
 		reach = AMMO_SEARCH_M
-	elif is_short_of_ammo() and _may_top_up():   # (given an order, it drops a top-up it was on)
+	elif (is_short_of_ammo() or _loading_ammo) and _may_top_up():   # (given an order, it drops a top-up it was on)
 		reach = AMMO_TOPUP_M
 	if reach <= 0.0:
 		_drop_ammo_claim()
@@ -196,12 +206,25 @@ func _ammo_run() -> Vector2:
 		_reset_progress()
 	var to := _ammo.global_position - global_position
 	if to.length() <= _ammo.REACH_M * World.PX_PER_M:
-		_ammo.give_to(self)
-		_ammo = null
+		if _ammo.has_method("work_load"):
+			# An ammo can: it stands there loading its spares round by
+			# round until they're full or the can's empty.
+			_loading_ammo = true
+			if not _ammo.work_load(self, get_physics_process_delta_time()):
+				return Vector2.ZERO
+			_drop_ammo_claim()
+		else:
+			_ammo.give_to(self)
+			_ammo = null
 		_rifle.start_reload()
 		return Vector2.ZERO
 	_speed_scale = AMMO_RUN_SPEED
 	return _steer(to)
+
+
+## Whether it goes for ammo at all (squadmate.gd: not under orders). Yes by default.
+func _may_fetch_ammo() -> bool:
+	return true
 
 
 ## Whether it's free to go and top up when it's short (not yet out). Yes by default.
@@ -214,8 +237,10 @@ func _nearest_ammo(reach_m: float) -> Node2D:
 	var best: Node2D = null
 	var best_d := reach_m * World.PX_PER_M
 	for pickup: Node2D in get_tree().get_nodes_in_group("ammo_pickups"):
-		if is_instance_valid(pickup.claimed_by) and pickup.claimed_by != self and not pickup.claimed_by.dead:
+		if not pickup.useful_to(self):
 			continue
+		if is_instance_valid(pickup.claimed_by) and pickup.claimed_by != self and not pickup.claimed_by.dead:
+			continue   # someone's on its way to it, or loading from it (one at a time)
 		var d := pickup.global_position.distance_to(global_position)
 		if d < best_d:
 			best_d = d
@@ -227,6 +252,7 @@ func _drop_ammo_claim() -> void:
 	if _ammo != null and is_instance_valid(_ammo) and _ammo.claimed_by == self:
 		_ammo.claimed_by = null
 	_ammo = null
+	_loading_ammo = false
 
 
 func _die(point: Vector2, direction: Vector2) -> void:
@@ -245,7 +271,7 @@ func _steer(to: Vector2) -> Vector2:
 	var dir := _avoid_obstacles(to)
 	var push := Vector2.ZERO
 	for other: Node2D in get_tree().get_nodes_in_group("units"):
-		if other == self:
+		if other == self or other.get("tower") != tower:   # (up a watch tower or not: not in each other's way)
 			continue
 		var away: Vector2 = global_position - other.global_position
 		var d := away.length() / px
@@ -322,7 +348,7 @@ func _blocked_by(dir: Vector2, length: float, goal: Vector2) -> Vector2:
 	room.radius = CLEAR_RADIUS_M * World.PX_PER_M
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = room
-	query.collision_mask = OBSTACLE_MASK
+	query.collision_mask = _obstacle_mask()
 	query.transform = Transform2D(0.0, global_position)
 	var skip := _squares.duplicate()
 	query.exclude = skip
@@ -350,14 +376,28 @@ func _at_goal(rid: RID, goal: Vector2) -> bool:
 	room.radius = CLEAR_RADIUS_M * World.PX_PER_M
 	var query := PhysicsShapeQueryParameters2D.new()
 	query.shape = room
-	query.collision_mask = OBSTACLE_MASK
+	query.collision_mask = _obstacle_mask()
 	query.transform = Transform2D(0.0, goal)
 	return get_world_2d().direct_space_state.intersect_shape(query, 8).any(func(found): return found.rid == rid)
 
 
 ## Which way to walk (0..1 of walking speed) to reach `point`; calls
-## _arrive() once there, or once it gives up getting any closer.
+## _arrive() once there, or once it gives up getting any closer. A point up
+## a watch tower (for those that climb them, _climbs_towers()), or down off
+## the one it's on, is reached by the stairs: it walks the tower's route()
+## a step at a time, and only watches its progress once there's nothing
+## but the walk to the point itself left.
 func _walk_to(point: Vector2, speed_fraction: float) -> Vector2:
+	var via := _tower_way(point)
+	if via != point:
+		if via.distance_to(_route_via) > 0.5 * World.PX_PER_M:   # a new step of the way
+			_reset_progress()
+			_route_via = via
+		_is_stuck(via.distance_to(global_position))   # getting nowhere: tries the other way round now and then (never gives up)
+		return _tower_step(via) * speed_fraction
+	if _route_via != Vector2.INF:   # off the route: watch its progress to `point` itself afresh
+		_route_via = Vector2.INF
+		_reset_progress()
 	var px := World.PX_PER_M
 	var to := point - global_position
 	if to.length() < ARRIVE_M * px or _is_stuck(to.length()):
@@ -365,6 +405,55 @@ func _walk_to(point: Vector2, speed_fraction: float) -> Vector2:
 		return Vector2.ZERO
 	var ease_off := clampf(to.length() / (SLOW_DOWN_M * px), 0.3, 1.0)
 	return _steer(to) * speed_fraction * ease_off
+
+
+## Toward the next step `via` of a watch tower's route: up on the tower,
+## straight at it (the route already goes round the shelter and through its
+## door, and the railings slide it along: a stair's barely wider than the
+## room _avoid_obstacles() wants, which would have it swerving at them); on
+## the ground, round things as usual.
+func _tower_step(via: Vector2) -> Vector2:
+	var way := via - global_position
+	return way.normalized() if tower else _steer(way)
+
+
+## The next step of its way to `point` if a watch tower's stairs are in it
+## (watch_tower.gd route()); `point` itself if not.
+func _tower_way(point: Vector2) -> Vector2:
+	var goal_tower: Node2D = null
+	if _climbs_towers():
+		for t: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+			if t.built and t.on_surface(point):
+				goal_tower = t
+				break
+	_goal_tower = goal_tower
+	_goal_tower_tick = Engine.get_physics_frames()
+	if goal_tower == null and tower == null:
+		for t: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+			var way: Vector2 = t.leave_way(global_position, point)   # just off one, round its stair first
+			if way != point:
+				return way
+		return point
+	var by: Node2D = tower if tower != null else goal_tower
+	return by.route(global_position, tower == by, point, goal_tower == by)
+
+
+## Only onto a tower it's on its way up (_tower_way() this tick or last):
+## coming off and turning back past the stair's foot, it stays off.
+func _wants_onto(t: Node2D) -> bool:
+	return _goal_tower == t and _goal_tower_tick >= Engine.get_physics_frames() - 1
+
+
+## Whether it goes up watch towers when sent to a spot on one. No by default
+## (squadmate.gd does).
+func _climbs_towers() -> bool:
+	return false
+
+
+## The solid things it walks round: on the ground, OBSTACLE_MASK; up a
+## watch tower, its railings and cabin walls.
+func _obstacle_mask() -> int:
+	return WatchTower.WALL_LAYER if tower else OBSTACLE_MASK
 
 
 ## Got where _walk_to() was taking it (or gave up). Subclasses decide what next.
@@ -453,7 +542,10 @@ func _line_blocked() -> bool:
 ## doesn't hide them either: they're looking over the top, so they show
 ## (spotting someone, enemy.gd _check_intruders(): two sides each dug in
 ## behind a wall see each other).
-func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := false) -> bool:
+## With `over_low`, nothing of height class 1 or 2 hides it (someone up high
+## on a watch tower, seen from its overlook box: cover.gd in_full_view()).
+## A watch tower's railings and cabin walls never do (tower_walls.gd).
+func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := false, over_low := false) -> bool:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(from, to)
 	var skip: Array[RID] = []
@@ -468,6 +560,8 @@ func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := f
 		var over_cover: bool = ((hit.collider.has_method("in_zone") and (past_cover
 				or hit.collider.in_zone(from) or (seen_over and hit.collider.in_zone(to))))
 				or (hit.collider.has_method("sees_through") and hit.collider.sees_through()))
+		if over_low and Cover.height_class_of(hit.collider) <= 2:
+			over_cover = true
 		if not hit.collider.has_method("take_hit") and not over_cover:
 			return false
 		skip.append(hit.rid)
@@ -519,7 +613,8 @@ func _in_standoff() -> bool:
 	var best_d := STANDOFF_FOE_M * World.PX_PER_M
 	for foe: Node2D in _foes():
 		var d := global_position.distance_to(foe.global_position)
-		if d < best_d and not _shielded(foe) and _clear_view(global_position, foe.global_position, true):
+		if (d < best_d and not _shielded(foe)
+				and _clear_view(global_position, foe.global_position, true, false, Cover.in_full_view(foe, global_position))):
 			best_d = d
 			window = foe
 	if window != null:
@@ -533,18 +628,34 @@ func _in_standoff() -> bool:
 ## its muzzle to `foe` (Mike, 2026-11-01: any wall on the line protects,
 ## however far behind it the foe is). A sandbag wall it's at doesn't count:
 ## its shots go over that one (sandbags.gd lets_bullet_through(), as the
-## bullets judge it).
+## bullets judge it). Nor does one the foe is firing over (its head up,
+## soldier.gd `exposed_s`; sandbags.gd EXPOSED_STOP): that's a window.
+## And firing down from up a watch tower, lower cover counts for less
+## (cover.gd fired_down_extra(), the tower's sections). A foe in or under a
+## watch tower is shielded by its steel if that's class 3 cover for it (the
+## cabin: cover.gd tower_pass()).
+## Someone up high on a watch tower seen from inside its overlook box has only
+## the tower to shield them: height class 1 and 2 cover doesn't count
+## (cover.gd in_full_view()).
 func _shielded(foe: Node2D) -> bool:
+	if Cover.class_for(1.0 - Cover.tower_pass(foe, self)) == Cover.HEAVY:
+		return true
 	var from: Vector2 = _rifle.muzzle_position()
+	var full_view := Cover.in_full_view(foe, global_position)
 	var space := get_world_2d().direct_space_state
 	var ray := PhysicsRayQueryParameters2D.create(from, foe.global_position, HIDE_MASK, _unit_rids())
 	for i in 6:   # past cover it shoots over, and anything light
 		var hit := space.intersect_ray(ray)
 		if hit.is_empty():
 			return false
+		if full_view and Cover.height_class_of(hit.collider) <= 2:
+			ray.exclude = ray.exclude + [hit.rid]
+			continue
 		var over: bool = hit.collider.has_method("in_zone") and hit.collider.in_zone(from)
-		if not over and Cover.class_of(hit.collider) == Cover.HEAVY:
-			return true
+		var stops := Cover.stop_chance_for(hit.collider, hit.position, foe)
+		stops *= 1.0 - Cover.fired_down_extra(hit.collider, hit.position, self, stops)
+		if not over and Cover.class_for(stops) == Cover.HEAVY:
+			return true   # (firing over it, the foe's exposed: not heavy then, a window)
 		ray.exclude = ray.exclude + [hit.rid]
 	return false
 

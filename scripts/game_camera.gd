@@ -8,13 +8,16 @@ extends Camera2D
 ## to the edges.
 ##
 ## In radio command mode (World.radio_commanding, from a station's terminal)
-## it switches to an RTS-style overview: it eases out and over to fit the
-## player and every squadmate with OVERVIEW_MARGIN_M to spare, and keeps
-## them all in view as they move. It never zooms in closer than you had it.
-## The wheel still works there: it zooms out from (or back in toward) that
-## fit, `zoom_step` a notch, and it keeps the units centred; each time radio
-## command starts it's back to the plain fit. Hanging up eases it back to
+## it switches to an RTS-style overview: going in, it eases out and over once
+## to fit the player and every squadmate with OVERVIEW_MARGIN_M to spare (never
+## closer than you had it), and then it's yours (Mike, 2026-11-01): it doesn't
+## move or zoom as the units move; the wheel zooms, and holding the wheel
+## button and dragging pans (as in debug mode). Hanging up eases it back to
 ## your zoom, following the player again.
+##
+## In debug mode (Q, World.debug) holding the wheel button down and dragging
+## pans the view (`_pan`, kept inside the same bounds); the wheel still
+## zooms. Leaving debug mode eases it back onto the player.
 ##
 ## When the player dies it closes in on the body, DEATH_VIEW_M of ground
 ## top to bottom (past `max_zoom` if need be), easing at real-time speed
@@ -36,25 +39,30 @@ const DEATH_EASE := 2.5          ## how quickly it closes in (real time)
 var _target_zoom := 1.0
 var _overview := false
 var _user_zoom := 1.0       ## the zoom to go back to after the overview
-var _overview_scale := 1.0  ## the wheel's change to the overview's fit (below 1 = further out)
+var _overview_focus := Vector2.ZERO   ## where the overview's centred (before any panning)
 var _easing_move := false   ## panning smoothly (into, during or out of the overview)
+var _pan := Vector2.ZERO    ## debug mode: the view dragged this far off the player (px)
+var _dragging := false      ## the wheel button's held down, in debug mode
+var _was_debug := false
 
 @onready var _target: Node2D = get_node(target_path)
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Debug mode: drag with the wheel button held to pan.
+	var press := event as InputEventMouseButton
+	if press and press.button_index == MOUSE_BUTTON_MIDDLE:
+		_dragging = press.pressed and (World.debug or _overview)
+		if _dragging:
+			get_viewport().set_input_as_handled()
+		return
+	var motion := event as InputEventMouseMotion
+	if motion and _dragging:
+		_pan -= motion.relative / zoom.x
+		get_viewport().set_input_as_handled()
+		return
 	var wheel := event as InputEventMouseButton
 	if wheel == null or not wheel.pressed or _target.dead:
-		return
-	if _overview:
-		if wheel.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_overview_scale *= zoom_step
-		elif wheel.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_overview_scale /= zoom_step
-		else:
-			return
-		_overview_scale = clampf(_overview_scale, min_zoom / max_zoom, max_zoom / min_zoom)
-		get_viewport().set_input_as_handled()
 		return
 	if wheel.button_index == MOUSE_BUTTON_WHEEL_UP:
 		_target_zoom *= zoom_step
@@ -72,21 +80,32 @@ func _process(delta: float) -> void:
 		return
 	if World.radio_commanding != _overview:
 		_overview = World.radio_commanding
-		if _overview:
+		_pan = Vector2.ZERO
+		_dragging = false
+		if _overview:   # frame everyone, once
 			_user_zoom = _target_zoom
-			_overview_scale = 1.0
+			var box := _units_box()
+			var view := get_viewport_rect().size
+			_overview_focus = box.get_center()
+			_target_zoom = clampf(minf(view.x / box.size.x, view.y / box.size.y), min_zoom, _user_zoom)
 		else:
 			_target_zoom = _user_zoom
 		_easing_move = true
+	if World.debug != _was_debug:
+		_was_debug = World.debug
+		if not World.debug:   # back onto the player
+			_pan = Vector2.ZERO
+			_dragging = false
+			_easing_move = true
 	var focus := _target.position
-	if _overview:
-		var box := _units_box()
-		focus = box.get_center()
-		var view := get_viewport_rect().size
-		var fit := clampf(minf(view.x / box.size.x, view.y / box.size.y), min_zoom, _user_zoom)
-		_target_zoom = clampf(fit * _overview_scale, min_zoom, max_zoom)
-		# Keep the scale within reach of the limits, so turning back doesn't take extra notches.
-		_overview_scale = clampf(_overview_scale, min_zoom / fit, max_zoom / fit)
+	if World.debug:
+		# Kept where the view can actually go, so dragging past an edge
+		# doesn't build up slack to drag back through.
+		focus = _view_center_for(_target.position + _pan)
+		_pan = focus - _target.position
+	if _overview:   # where it was framed, plus any panning: the units moving don't move it
+		focus = _view_center_for(_overview_focus + _pan)
+		_pan = focus - _overview_focus
 
 	var z := lerpf(zoom.x, _target_zoom, 1.0 - exp(-zoom_ease * delta))
 	if absf(z - _target_zoom) < 0.0005:
@@ -95,8 +114,8 @@ func _process(delta: float) -> void:
 	var wanted := _view_center_for(focus)
 	if _easing_move:
 		position = position.lerp(wanted, 1.0 - exp(-move_ease * delta))
-		# Back on the player: follow it exactly again.
-		if not _overview and position.distance_to(wanted) < 1.0:
+		# There (on the player, or the overview): follow exactly again.
+		if position.distance_to(wanted) < 1.0:
 			_easing_move = false
 	else:
 		position = wanted

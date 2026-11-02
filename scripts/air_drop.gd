@@ -64,6 +64,9 @@ const FLAP_FADE_S := 0.8           ## fading out after touchdown
 const LAND_DB := 4.0               ## the landing (the recording's quiet)
 const SOUND_HEARING_M := 40.0
 
+## The crate's down (arrival.gd waits for the early drops).
+signal landed
+
 var crate: Node2D                  ## the crate on its way down (then on the ground)
 var _target := Vector2.ZERO
 var _turn := 0.0
@@ -83,15 +86,17 @@ var _shadow: Node2D
 var _flap: AudioStreamPlayer2D
 
 
-## `scene` is the crate's scene (crate.gd); it lands at world `target`,
-## turned `turn`, having been let go at world `from`, `altitude_m` up.
-func setup(scene: PackedScene, target: Vector2, turn: float, from: Vector2, altitude_m: float) -> void:
+## `crate_or_scene` is the crate's scene (crate.gd), or a crate itself (out
+## of the tree: arrival.gd's early drops, placed in the level); it lands at
+## world `target`, turned `turn`, having been let go at world `from`,
+## `altitude_m` up.
+func setup(crate_or_scene: Variant, target: Vector2, turn: float, from: Vector2, altitude_m: float) -> void:
 	_target = target
 	_turn = turn
 	_from = from
 	_alt = altitude_m
 	_alt0 = maxf(altitude_m, 0.1)
-	crate = scene.instantiate()
+	crate = crate_or_scene if crate_or_scene is Node2D else crate_or_scene.instantiate()
 	crate.position = from
 	crate.rotation = turn
 	crate.z_index = CRATE_Z
@@ -206,6 +211,7 @@ func _land() -> void:
 	thud.finished.connect(thud.queue_free)
 	level.add_child(thud)
 	thud.play()
+	landed.emit()
 
 
 ## Where the canopy is (world): over its crate in the air; once the crate's

@@ -1,8 +1,8 @@
 extends Node2D
 ## An enemy's detection circle (added by scripts/enemy.gd), painted on the
-## ground under the squares while its `show_detection` is on: a faint blue
-## ring while it's calm, dashed and brighter once it's alerted. Hidden when
-## it dies.
+## ground under the squares in debug view (Q, World.debug) while its
+## `show_detection` is on: a faint blue ring while it's calm, dashed and
+## brighter once it's alerted. Hidden in normal play and when it dies.
 
 const World = preload("res://scripts/world.gd")
 const CALM_COLOR := Color(0.35, 0.6, 1.0)
@@ -13,10 +13,11 @@ var enemy: Node2D   ## enemy.gd
 
 func _ready() -> void:
 	z_index = -1   # on the ground, like the sight triangle
+	visible = false   # until _process() says (debug mode)
 
 
 func _process(_delta: float) -> void:
-	visible = enemy.show_detection and not enemy.dead
+	visible = World.debug and enemy.show_detection and not enemy.dead
 	if visible:
 		queue_redraw()
 

@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ammo_supply.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/props/hold_ammo_can.png" id="2_tex"]
+
+[node name="AmmoSupply" type="Node2D"]
+script = ExtResource("1_script")
+
+[node name="Shadow" type="Sprite2D" parent="."]
+texture_filter = 4
+scale = Vector2(0.25, 0.25)
+texture = ExtResource("2_tex")
+
+[node name="Body" type="Sprite2D" parent="."]
+texture_filter = 4
+scale = Vector2(0.25, 0.25)
+texture = ExtResource("2_tex")

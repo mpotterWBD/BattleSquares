@@ -21,10 +21,10 @@ It renders at RENDER_SCALE x the game's pixel density so the small parts stay
 crisp when zoomed in; Godot shrinks it back (with mipmaps).
 
 For the reload (scripts/rifle.gd) it also renders, the same way:
-  rifle_no_mag.png  the rifle with its magazine out (same frame as rifle.png)
-  magazine.png      the magazine alone, seen from above as it's carried and
-                    as it lies on the ground: long axis along +x, centred,
-                    in a MAG_FRAME_M square
+  hold_rifle_no_mag.png  the rifle with its magazine out (same frame as hold_rifle.png)
+  hold_magazine.png      the magazine alone, seen from above as it's carried and
+                         as it lies on the ground: long axis along +x, centred,
+                         in a MAG_FRAME_M square
 """
 
 import math
@@ -39,9 +39,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bs_common as bs  # noqa: E402
 
 ROOT = bs.ROOT
-OUT_RIFLE = os.path.join(ROOT, "assets", "characters", "rifle.png")
-OUT_NO_MAG = os.path.join(ROOT, "assets", "characters", "rifle_no_mag.png")
-OUT_MAG = os.path.join(ROOT, "assets", "characters", "magazine.png")
+OUT_RIFLE = os.path.join(ROOT, "assets", "characters", "hold_rifle.png")
+OUT_NO_MAG = os.path.join(ROOT, "assets", "characters", "hold_rifle_no_mag.png")
+OUT_MAG = os.path.join(ROOT, "assets", "characters", "hold_magazine.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "rifle.blend")
 
 LENGTH_M = 0.48      # pivot (square's centre) to muzzle; scripts/rifle.gd must match

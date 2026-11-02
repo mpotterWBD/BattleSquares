@@ -2,6 +2,14 @@ extends "res://scripts/ai_soldier.gd"
 ## A squadmate: the same square as the player (scripts/soldier.gd), run by
 ## simple AI (walking, steering and fire discipline are in scripts/ai_soldier.gd).
 ##
+## Under orders (Mike, 2026-11-01; `under_orders`): from the moment it's in
+## the player's command circle or selected, or is given any order, it does
+## nothing on its own from idle: no running for cover when surprised (it still
+## shoots back from where it is), no ammo runs, no getting pinned, no
+## shuffling. Debug mode shows it as ORDERS. Only Disperse frees it
+## (order_disperse(): `on_own`), even in the circle or selected, until its
+## next order puts it under orders again.
+##
 ## Idle, it stands at its post, every few seconds either glancing somewhere
 ## new or shuffling a step or two, never straying more than SHUFFLE_RADIUS_M.
 ## Given a move order (by scripts/command.gd) it walks there facing where
@@ -127,6 +135,15 @@ const DEFEND_LAYER := 16         ## collision layer 5 while dug in: squares (mas
 
 ## Set by command mode; shown as a ring while Space is held.
 var selected := false
+## Under orders (Mike, 2026-11-01): once it's been in the player's command
+## circle or selected, or been given any order, it does only what it's told:
+## nothing on its own from idle (no running for cover when surprised, no
+## going for ammo, no getting pinned, no shuffling about; it still shoots
+## back from where it is). Shown as ORDERS rather than IDLE in debug mode.
+## Disperse is the only way out: it's then `on_own`, free to look after
+## itself even in the circle or selected, until its next order.
+var under_orders := false
+var on_own := false
 var state := State.IDLE
 ## Where it's walking to (meaningful while state isn't IDLE).
 var destination := Vector2.ZERO
@@ -169,10 +186,12 @@ func _ready() -> void:
 	add_to_group("squad")
 	_body_layer = collision_layer
 	_carry_view = Node2D.new()
-	_carry_view.z_index = 2
+	_carry_view.z_index = 0   # with the body: added just before it below, so the square is over what it holds
+	_carry_view.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # the 4x pictures, shrunk
 	_carry_view.visible = false
 	_carry_view.draw.connect(func() -> void: CarryArt.draw(_carry_view, carrying, facing))
 	add_child(_carry_view)
+	move_child(_carry_view, $Body.get_index())
 	_post = global_position
 	_look_angle = facing
 	_next_idle_s = randf_range(idle_min_s, idle_max_s)
@@ -182,16 +201,43 @@ func _ready() -> void:
 ## sandbag wall's proximity box means taking up the defensive there.
 func order_move(point: Vector2, take_cover := false) -> void:
 	BattleLog.order(self, "move", [point, "cover" if take_cover else ""])
+	_take_orders()
 	_stop_building()
 	_start_walk(point, State.MOVE)
 	follow_mode = ""
 	_cover = _cover_at(point) if take_cover else null
 
 
+## Disperse: walk to `point`, and from then on it's on its own (`on_own`)
+## until its next order.
+func order_disperse(point: Vector2) -> void:
+	order_move(point)
+	on_own = true
+	under_orders = false
+
+
+## Any order puts it under orders (and ends being on its own).
+func _take_orders() -> void:
+	on_own = false
+	under_orders = true
+
+
+## In the player's command circle or selected (and not on its own): under
+## orders from now on.
+func _update_orders() -> void:
+	if on_own or under_orders or dead:
+		return
+	var player = get_tree().get_first_node_in_group("player")
+	if selected or (player != null and not player.dead
+			and global_position.distance_to(player.global_position) <= player.aura_radius_m * World.PX_PER_M):
+		under_orders = true
+
+
 ## Keep station behind ("follow") or in front of ("lead") the player, in a
 ## "column" or a "line".
 func order_follow(mode: String, shape := "column") -> void:
 	BattleLog.order(self, mode, [shape])
+	_take_orders()
 	_stop_building()
 	_cover = null
 	_dig_in(false)
@@ -204,6 +250,7 @@ func order_follow(mode: String, shape := "column") -> void:
 ## (radians), until the next order.
 func order_attention(spot: Vector2, face_angle: float) -> void:
 	BattleLog.order(self, "attention", [spot])
+	_take_orders()
 	_stop_building()
 	_cover = null
 	_start_walk(spot, State.ATTENTION)
@@ -217,6 +264,7 @@ func order_attention(spot: Vector2, face_angle: float) -> void:
 func order_attack(target: Node2D, ordered := true) -> void:
 	if ordered:   # its own picks show as a change of target
 		BattleLog.order(self, "fire", [target])
+		_take_orders()
 	attack_target = target
 	_fire_ordered = ordered
 	hold_fire = false
@@ -229,6 +277,7 @@ func order_attack(target: Node2D, ordered := true) -> void:
 ## (or it's hit). It also stops defending: it just stands there.
 func order_stop_firing() -> void:
 	BattleLog.order(self, "stop")
+	_take_orders()
 	_unpin()
 	attack_target = null
 	hold_fire = true
@@ -268,15 +317,19 @@ func _surprise(by: Node2D, from: Vector2) -> void:
 	var alive: bool = by != null and is_instance_valid(by) and not by.dead
 	if alive and not hold_fire:
 		order_attack(by, false)
+	if under_orders:
+		return   # it stays where it was put (just shooting back)
 	if _find_hide(by.global_position if alive else from):
 		state = State.SURPRISED
 
 
 ## Build what's under construction, fetching the parts (see above). Given
 ## `from` (a supply crate: the player clicked it with this one selected), it
-## only takes parts from that crate, and stops once that crate owes nothing.
+## only takes parts from that crate, and stops once that crate owes nothing;
+## if it's strapped with nothing owed, it undoes the straps and stops.
 func order_build(from: Node2D = null) -> void:
 	BattleLog.order(self, "build", [from])
+	_take_orders()
 	_build_from = from
 	_cover = null
 	_dig_in(false)
@@ -285,11 +338,22 @@ func order_build(from: Node2D = null) -> void:
 	_reset_progress()
 
 
+## Sent to a spot up a watch tower (a Move there, or a formation slot round
+## the player up there), it takes the stairs (ai_soldier.gd _walk_to()).
+func _climbs_towers() -> bool:
+	return true
+
+
 ## Short of ammo, it only tops up when it isn't walking somewhere it was
 ## sent, holding a wall, or building (out of ammo, it goes anyway:
 ## ai_soldier.gd).
 func _may_top_up() -> bool:
 	return not state in [State.MOVE, State.DEFEND, State.BUILD, State.SURPRISED, State.PINNED]
+
+
+## Under orders it doesn't go for ammo at all, even out.
+func _may_fetch_ammo() -> bool:
+	return not under_orders
 
 
 func is_building() -> bool:
@@ -331,7 +395,7 @@ func defend_facing() -> float:
 ## The sandbag wall whose proximity box `point` is in, or null.
 func _cover_at(point: Vector2) -> Node2D:
 	for wall: Node2D in get_tree().get_nodes_in_group("deployed_sandbags"):
-		if wall.in_zone(point):
+		if wall.in_zone(point) and wall.spot_open(point):   # (not a side something stands over: a watch tower's stairs)
 			return wall
 	return null
 
@@ -377,7 +441,7 @@ func _free_cover_spot() -> Vector2:
 		var toward := across if across.dot(out) > 0.0 else -across
 		var spot: Vector2 = wall.global_position - toward * COVER_SPOT_M * px   # behind it, looking out over it
 		var d := spot.distance_to(global_position)
-		if d < best_d and not _spot_taken(spot):
+		if d < best_d and not _spot_taken(spot) and wall.spot_open(spot):
 			best_d = d
 			best = spot
 	return best
@@ -408,7 +472,7 @@ func _stand_down() -> void:
 ## Dug in (DEFEND), it's on DEFEND_LAYER so others can squeeze past; back
 ## on its usual layer otherwise. (Never once it's dead: that clears it.)
 func _dig_in(on: bool) -> void:
-	if not dead:
+	if not dead and tower == null:   # (up a watch tower it's on the tower's layer)
 		collision_layer = DEFEND_LAYER if on else _body_layer
 
 
@@ -425,6 +489,7 @@ func is_following(mode: String) -> bool:
 
 func _move_intent() -> Vector2:
 	_speed_scale = 1.0
+	_update_orders()
 	_look_for_return_fire()
 	# Hands full: the part in front of it, its rifle away.
 	_rifle.visible = carrying == ""
@@ -469,6 +534,8 @@ func _move_intent() -> Vector2:
 					return Vector2.ZERO
 			_tick_scan()
 			return _head_for(_post, AT_ATTENTION_M)
+	if tower and tower.on_stairs(self):   # idle on a watch tower's stairs: up onto the deck, out of the way
+		return _tower_step(_tower_way(tower.deck_in()))
 	_tick_idle()
 	return Vector2.ZERO
 
@@ -480,7 +547,7 @@ func _check_pinned() -> void:
 	if _pin_check_s > 0.0:
 		return
 	_pin_check_s = PIN_CHECK_S
-	var can_pin := state in [State.IDLE, State.SHUFFLE, State.DEFEND, State.SURPRISED, State.PINNED]
+	var can_pin := not under_orders and state in [State.IDLE, State.SHUFFLE, State.DEFEND, State.SURPRISED, State.PINNED]
 	var pinned := can_pin and _pinned_down()
 	if pinned and state != State.PINNED:
 		_unpinned_state = State.IDLE if state == State.SHUFFLE else state
@@ -561,6 +628,9 @@ func _tick_pinned() -> Vector2:
 ## Attention spot): jogs when well out of position, eases in as it gets
 ## close, and stands still once there.
 func _head_for(spot: Vector2, close_enough := IN_SLOT_M) -> Vector2:
+	var via := _tower_way(spot)   # up or down a watch tower's stairs first
+	if via != spot:
+		return _tower_step(via)
 	var px := World.PX_PER_M
 	var to := spot - global_position
 	var dist := to.length() / px
@@ -667,7 +737,7 @@ func _tick_idle() -> void:
 		return
 	_next_idle_s = randf_range(idle_min_s, idle_max_s)
 	var px := World.PX_PER_M
-	if randf() < 0.35:
+	if randf() < 0.35 and not under_orders:   # (under orders it stays put, just glancing about)
 		# Shuffle a step or two, staying near the post.
 		var spot := _post + Vector2.from_angle(randf() * TAU) * randf_range(0.08, SHUFFLE_RADIUS_M) * px
 		var area := World.ARENA.grow(-SIZE_M * px)
@@ -688,7 +758,7 @@ func _tick_build() -> Vector2:
 			if _build_site == null:
 				_stop_building()   # nothing needs it any more: back on the crate
 				return Vector2.ZERO
-		if _build_site.can_deliver_at(global_position):
+		if _build_site.can_deliver_at(global_position, self):
 			_build_site.install(carrying)
 			carrying = ""
 			_carried_from = null
@@ -721,8 +791,8 @@ func _tick_build() -> Vector2:
 ## The nearest supply crate, however far, that owes something a part (only
 ## the one it was sent to, if it was sent to one).
 func _crate_with_work() -> Node2D:
-	if _build_from != null:
-		return _build_from if is_instance_valid(_build_from) and _build_from.wanted() else null
+	if _build_from != null:   # sent to a strapped one with nothing to build: just to undo it
+		return _build_from if is_instance_valid(_build_from) and (_build_from.wanted() or _build_from.strapped) else null
 	var best: Node2D = null
 	var best_d := INF
 	for crate: Node2D in get_tree().get_nodes_in_group("crates"):

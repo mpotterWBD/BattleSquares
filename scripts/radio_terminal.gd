@@ -4,10 +4,16 @@ extends Node
 ## for the RADIO menu, beside the player like the command-mode menus:
 ##
 ##   Command  radio command mode (World.radio_commanding): command mode over
+##            (with DEPLOY too, and Back to return to this menu, command.gd)
 ##            this station's radio net. Radio operators in its dish beam,
 ##            and anyone in their command circle, hear you, as well as
 ##            anyone in earshot of your voice (player.gd can_hear()). F
 ##            again, or stepping off the box, hangs up.
+##   Exit     closes the menu (as F does).
+##   Dish     aim the station's dish: the menu goes and the wheel opens round
+##            the dish (radio_station.gd start_tuning(); it used to be F at
+##            the dish). Click or F locks the heading in; stepping away
+##            from the desk or Space closes it; X goes back to this menu.
 ##   Deploy   hold for Troops / Equipment / Vehicles (vehicles to come).
 ##            Let go on Troops:
 ##              1. MAX_TROOPS slots, in rows of PER_ROW. Press a slot for
@@ -27,10 +33,11 @@ extends Node
 ##                 crate; a quick click gives an ammo crate).
 ##              2. filled slots are readied one after another,
 ##                 `seconds_per_crate` each
-##              3. Send helicopter: a ghost of the drop, the crates laid out
-##                 as in the grid (DROP_PITCH_M apart), follows the mouse,
-##                 like lining up troops at Attention; the scroll wheel
-##                 turns it (15 degrees a notch, on the same grid). Red
+##              3. Send helicopter: a ghost of the drop, the crates in one
+##                 line in slot order (DROP_PITCH_M apart), follows the
+##                 mouse, like lining up troops at Attention; the scroll
+##                 wheel turns it (15 degrees a notch, on the same grid),
+##                 and the helicopter flies in along the line. Red
 ##                 where a crate can't come down (off the field, or on
 ##                 something). A click sends a helicopter over to drop them
 ##                 (scripts/supply_drop.gd): each comes down by parachute
@@ -143,6 +150,7 @@ var _equip_send: Button
 
 
 func _ready() -> void:
+	add_to_group("interactables")   # F at the desk (player.gd interact_target())
 	World.register_controls()
 	_build_ui()
 	_pad_prompt = _make_pad_prompt()
@@ -164,7 +172,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif screen != Screen.CLOSED:
 			close()
 			get_viewport().set_input_as_handled()
-		elif _player_on_box() and not World.commanding():
+		elif _player_on_box() and not World.commanding() and _player().interact_target() == self:
 			open_menu()
 			get_viewport().set_input_as_handled()
 		return
@@ -201,7 +209,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_tick_readying(delta)
 	var on_box := _player_on_box()
-	_pad_prompt.visible = on_box and screen == Screen.CLOSED and not _owns_radio
+	_pad_prompt.visible = on_box and screen == Screen.CLOSED and not _owns_radio and _player().interact_target() == self
 	_update_pad_timer()
 	if _owns_radio and not on_box:
 		hang_up()
@@ -232,6 +240,13 @@ func _player():
 func _player_on_box() -> bool:
 	var player = _player()
 	return get_parent().built and player != null and _zone.overlaps_body(player)
+
+
+## For the player's interact_target(): the desk, while F would open it.
+func interact_point() -> Variant:
+	if screen == Screen.CLOSED and not _owns_radio and _player_on_box():
+		return get_node(pad_path).global_position
+	return null
 
 
 func open_menu() -> void:
@@ -283,6 +298,13 @@ func _on_command() -> void:
 	World.radio_commanding = true
 	World.radio_station = get_parent()   # this station's dish carries the link
 	_owns_radio = true
+
+
+## Dish: the menu goes and the station's aiming wheel opens round its dish
+## (radio_station.gd start_tuning()); the player stays busy (it takes over).
+func _on_dish() -> void:
+	_show(Screen.CLOSED)
+	get_parent().start_tuning()
 
 
 func _on_deploy_down() -> void:
@@ -473,18 +495,18 @@ static func _turned(turn: float, notch: int) -> float:
 
 
 ## Where each filled slot's crate comes down if the drop is centred on
-## `center`: the 2 x 2 grid, DROP_PITCH_M apart, turned `_dz_turn`. As
+## `center`: one line, in slot order, DROP_PITCH_M apart, along the
+## helicopter's run (turned `_dz_turn`; at 0 it flies east). As
 ## [{kind, pos, ok}].
 func _dz_layout(center: Vector2) -> Array:
 	var out := []
 	var pitch := DROP_PITCH_M * World.PX_PER_M
-	for index in _equip_queue:
-		var col := index % EQUIP_PER_ROW
-		var row := index / EQUIP_PER_ROW
-		var offset := Vector2((col - (EQUIP_PER_ROW - 1) / 2.0) * pitch,
-				(row - (EQUIP_SLOTS / EQUIP_PER_ROW - 1) / 2.0) * pitch).rotated(_dz_turn)
+	var filled := _equip_queue.duplicate()
+	filled.sort()
+	for k in filled.size():
+		var offset := Vector2((k - (filled.size() - 1) / 2.0) * pitch, 0.0).rotated(_dz_turn)
 		var pos := center + offset
-		out.append({kind = equip_slots[index], pos = pos, ok = _drop_spot_ok(pos)})
+		out.append({kind = equip_slots[filled[k]], pos = pos, ok = _drop_spot_ok(pos)})
 	return out
 
 
@@ -526,7 +548,7 @@ func _send_drop(center: Vector2) -> void:
 	var run := SupplyDrop.new()
 	heli.add_child(run)
 	get_parent().get_parent().add_child(heli)
-	run.start(heli, drops)
+	run.start(heli, drops, _dz_turn)
 	equip_slots.clear()
 	_equip_progress.clear()
 	_equip_queue.clear()
@@ -594,6 +616,12 @@ func _build_ui() -> void:
 	_command_button.pressed.connect(_on_command)
 	_menu.add_child(_deploy_button)
 	_menu.add_child(_command_button)
+	var dish_button := UiStyle.menu_button("Dish")
+	dish_button.pressed.connect(_on_dish)
+	_menu.add_child(dish_button)
+	var exit_button := UiStyle.menu_button("Exit")
+	exit_button.pressed.connect(close)
+	_menu.add_child(exit_button)
 	_layer.add_child(_menu)
 
 	_kinds_popout = HoldPopout.new()

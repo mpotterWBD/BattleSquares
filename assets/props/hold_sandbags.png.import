@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bcvqtj1tgdwfr"
-path="res://.godot/imported/rifle_no_mag.png-4bd515de6ee2087a3c446cff6416864a.ctex"
+uid="uid://e0cvmnr6tnx5"
+path="res://.godot/imported/hold_sandbags.png-a18dd5cb4625609089812928fe2e4dfc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/characters/rifle_no_mag.png"
-dest_files=["res://.godot/imported/rifle_no_mag.png-4bd515de6ee2087a3c446cff6416864a.ctex"]
+source_file="res://assets/props/hold_sandbags.png"
+dest_files=["res://.godot/imported/hold_sandbags.png-a18dd5cb4625609089812928fe2e4dfc.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -65,6 +65,7 @@ const LEGEND := [
 	"#   stop     told to Stop (won't shoot back)     ordered   its target came from a Fire order",
 	"#   carry    the part it's carrying     reload  reloading 1/0   rounds  in the magazine (on reload)",
 	"#   follow   follow / lead              cmd     player in command mode 1/0   busy  player at a menu 1/0",
+	"#   orders   squadmate under orders 1/0 (nothing on its own from idle)   own   dispersed: on its own 1/0",
 	"#   dead     1 once killed",
 ]
 
@@ -310,7 +311,7 @@ func _read_status(unit: Node2D) -> Dictionary:
 		var spot: Vector2 = (unit.tactical_spot / (SPOT_GRID_M * World.PX_PER_M)).round() * SPOT_GRID_M
 		s.spot = "%s,%s" % [spot.x, spot.y] if unit.mode == 1 else "-"   # Mode.ENGAGE
 	for pair in [["blocked", "holding_fire"], ["standoff", "_standoff"], ["stop", "hold_fire"],
-			["ordered", "_fire_ordered"], ["busy", "busy"]]:
+			["ordered", "_fire_ordered"], ["busy", "busy"], ["orders", "under_orders"], ["own", "on_own"]]:
 		if pair[1] in unit:
 			s[pair[0]] = _flag(unit.get(pair[1]))
 	if "carrying" in unit:

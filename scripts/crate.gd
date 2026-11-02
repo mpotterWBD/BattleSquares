@@ -23,7 +23,8 @@ extends StaticBody2D
 ##
 ## Some crates are a supply that things are built from (`builds`): the comms
 ## crate a radio station (radio_station.gd), the sandbag crate sandbag walls
-## (sandbags.gd). Their `parts` come off one at a time (take_part()),
+## (sandbags.gd), the ammo crate ammo cans (ammo_supply.gd: its 24 cans, the
+## load showing full until the last is gone). Their `parts` come off one at a time (take_part()),
 ## carried to whatever's being built by the player (player.gd) or by
 ## squadmates under a Build order (squadmate.gd); `stage_textures` shows the
 ## load getting smaller (the stage for how many are off: they spread over
@@ -43,7 +44,10 @@ extends StaticBody2D
 ## stands at it (squadmate.gd) for UNSTRAP_S (work_unstrap()), one at a
 ## time, a ring round it filling as they go; let go or step away and it
 ## starts again. Then the straps are off: the load shows without them
-## (`open_texture`, crates.py's crate_<kind>_open.png), with UNSTRAP_SOUND.
+## (`open_texture`, crates.py's crate_<kind>_open.png), with UNSTRAP_SOUND,
+## the straps snapping and whipping away (scripts/strap_snap.gd). Clicked in
+## command mode with nothing to build from it, the selection go and undo
+## its straps (command.gd _click(), squadmate.gd order_build()).
 ## Something with no `open_texture` (a lone ammo can) has no straps.
 ##
 ## A bullet that stops in it can show it (bullet_hit()): with `impact` set,
@@ -56,6 +60,7 @@ const HitDust = preload("res://scripts/hit_dust.gd")
 const HitSparks = preload("res://scripts/hit_sparks.gd")
 const ImpactSound = preload("res://scripts/impact_sound.gd")
 const Cover = preload("res://scripts/cover.gd")
+const StrapSnap = preload("res://scripts/strap_snap.gd")
 
 const UNSTRAP_S := 2.0         ## holding at it this long undoes the straps
 const UNSTRAP_RING_M := 0.62   ## the progress ring's radius, round the crate's middle
@@ -76,7 +81,8 @@ const PAD_KEY_ALPHA := 0.55    ## the green F, see-through like the station's
 ## The load's footprint and the top of it, straps included (printed by crates.py).
 @export var load_m := Vector2(0.632, 0.618)
 @export var load_height_m := 0.732
-## What's built from it (a DEPLOY id, command.gd: "radio_station", "sandbags"); empty for nothing.
+## What's built from it (a DEPLOY id, command.gd: "radio_station", "sandbags", "ammo_can",
+## "watch_tower"); empty for nothing.
 @export var builds := ""
 ## Its parts, in the order they come off (empty: an ordinary crate).
 @export var parts: Array[String] = []
@@ -91,8 +97,19 @@ const PAD_KEY_ALPHA := 0.55    ## the green F, see-through like the station's
 ## with sparks; "sand", "dirt" or "concrete" with a puff of dust); empty for
 ## nothing.
 @export var impact := ""
+## How tall it is (cover.gd height classes): crates are middling, 2. Fired
+## down on from up a watch tower they stop less (watch_tower.gd sections).
+@export_range(1, 3, 1) var height_class := 2
 ## Under its straps: nothing comes off it until they're undone.
 @export var strapped := true
+## Enemies this close to it make use of it (enemy.gd _crate_work(): undo
+## its straps, and in a standoff set ammo cans up from it). Shown round it
+## when it's clicked in debug mode (Q).
+@export_range(1.0, 40.0, 0.5, "suffix:m") var vicinity_m := 8.0
+## Placed in the level: at the start of the game it's not there yet, and a
+## supply helicopter parachutes it onto this spot before the one bringing
+## the player in (arrival.gd).
+@export var early_deploy := false
 ## The full load with the straps off; none means it has no straps.
 @export var open_texture: Texture2D
 
@@ -105,6 +122,10 @@ signal unstrapped
 var sites: Array = []
 var reserved := 0
 var taken := 0
+## The enemy working at it (enemy.gd: one at a time), and the ammo cans
+## enemies have set up from it that are still in use.
+var enemy_worker: Node2D = null
+var enemy_cans: Array = []
 var _next := 0                       ## the next part in `parts` never yet taken
 var _returned: Array[String] = []    ## parts put back, taken again first
 var _key: Label
@@ -152,7 +173,8 @@ func _process(_delta: float) -> void:
 	if _key == null:
 		return
 	var player = get_tree().get_first_node_in_group("player")
-	_key.visible = player != null and _unstrapper == null and (can_take(player) or can_unstrap(player))
+	_key.visible = (player != null and _unstrapper == null and (can_take(player) or can_unstrap(player))
+			and player.interact_target() == self)
 	_key.rotation = -global_rotation   # upright however the crate's turned
 	_key.position = (-_key.size / 2.0).rotated(-global_rotation)
 
@@ -214,6 +236,9 @@ func _break_straps() -> void:
 		snap.finished.connect(snap.queue_free)
 		level.add_child(snap)
 		snap.play()
+	var straps := StrapSnap.new()
+	straps.setup(load_m)
+	add_child(straps)
 	_show_stage()
 	unstrapped.emit()
 
@@ -310,6 +335,19 @@ func take_part() -> String:
 	return part
 
 
+## An enemy takes a part for itself (nothing was set up for it, so it's
+## reserved as it's taken): enemy.gd's ammo cans.
+func take_unplanned() -> String:
+	reserved += 1
+	return take_part()
+
+
+## An enemy's part, never set down, comes back.
+func give_back_unplanned(part: String) -> void:
+	return_part(part)
+	reserved = maxi(reserved - 1, taken)
+
+
 ## A part comes back (its carrier fell, or was sent elsewhere): it's the next taken.
 func return_part(part: String) -> void:
 	if taken <= 0:
@@ -339,7 +377,7 @@ func site_for(part: String, at: Vector2, claimed: Array = []) -> Node2D:
 ## parts); empty, just the pallet, no longer solid or casting the load's shadow.
 func _show_stage() -> void:
 	var body: Sprite2D = $Body
-	if parts.is_empty():   # nothing comes off it (the ammo crate): just the straps
+	if parts.is_empty():   # nothing comes off it: just the straps
 		if not strapped and open_texture:
 			body.texture = open_texture
 		return

@@ -6,16 +6,18 @@ extends Node2D
 ## 2026-10-29 it also had a 7 m guyed mast.) The node's origin is the
 ## middle of the whole thing, so the deploy ghost centres on the mouse.
 ##
-## Stand anywhere round the dish (its DishZone, a ring 1.35 m out from its
-## middle, unmarked; a big green F shows on the dish) and press F (the "interact" control)
-## to tune it. A wheel opens around the dish with a white line that follows
+## The dish is aimed from the radio (Mike, 2026-11-01; it used to be F at the
+## dish): at the desk, the RADIO menu's Dish (radio_terminal.gd) calls
+## start_tuning(). A wheel opens around the dish with a white line that follows
 ## the mouse: that only picks the heading, the dish stays put. Left click or
 ## F again locks the pick in (`target_heading`) and the dish then turns to
 ## it slowly (TURN_DEG_PER_S, easing in and out). A very big translucent cone
 ## comes out of the dish to show where it actually points, in the same
 ## green and see-through as the command circles; it shows while tuning and in
-## command mode (holding Space), not while the dish turns on its own. Stepping out of the box or pressing Space closes
-## the wheel without changing the pick. Where the dish points is kept in
+## command mode (holding Space), not while the dish turns on its own. Stepping away
+## from the desk (out of the operator's spot) or pressing Space closes the wheel
+## without changing the pick, and X (the "back" control) does too, going back
+## to the RADIO menu (Mike, 2026-11-01). Where the dish points is kept in
 ## `dish_heading`, and `dish_tuned` is announced once it gets there, for the
 ## long-range comms to come. While tuning, the player doesn't aim or fire
 ## (player.gd `busy`).
@@ -48,6 +50,12 @@ extends Node2D
 ## any heading; its shadow is its outline swept across the dish's height
 ## range (shaders/shadow_sweep.gdshader).
 ##
+## Placed over a built watch tower (command.gd), it goes on the tower instead
+## (mount_on(), Mike 2026-11-01): the desk in the shelter, the dish on the
+## roof. It's built the same way, but the parts have to be carried up onto
+## the tower (can_deliver_at() wants the deliverer up on it), and only squares
+## up there work the desk or tune the dish.
+##
 ## The station can be deployed turned (command.gd: the scroll wheel while
 ## placing, in 15 degree steps). Everything turns with the node: desk,
 ## desk, boxes, zones and collisions. `dish_heading` is a world heading, so
@@ -64,6 +72,7 @@ signal dish_tuned(heading: float)
 
 const World = preload("res://scripts/world.gd")
 const UiStyle = preload("res://scripts/ui_style.gd")
+const WatchTower = preload("res://scripts/watch_tower.gd")
 
 const DISH_AT := Vector2(0, 93.9)         ## the dish's post; matches DISH_AT in blender/scripts/radio_station.py
 const DISH_LOW_M := 0.78                  ## the turning parts' lowest and highest points (head to top of the rim), for their shadow
@@ -123,6 +132,20 @@ const DELIVER_M := 2.6         ## the player brings a part in within this far of
 ## centre from the anchor's position on screen] (keep_upright()).
 var _upright: Array = []
 var _turned_by := 0.0   ## the turn the dish heading has been carried along for
+## Where the dish's post is in the station's frame: DISH_AT, or moved onto the
+## roof when it's mounted on a watch tower (mount_on()).
+var dish_at := DISH_AT
+## The watch tower it's mounted on (mount_on()), or null on the ground.
+var mount: Node2D = null
+var _dish_shift := Vector2.ZERO
+## Mounted on a watch tower (Mike, 2026-11-01): the station sits turned
+## MOUNT_TURN from the tower at its STATION_AT (watch_tower.gd), which puts
+## the desk along the shelter's west wall with the operator's spot east of
+## it, in the shelter; the dish and its stand move MOUNT_DISH_SHIFT_M (in the station's
+## frame) up onto the roof. These are their nodes.
+const MOUNT_DISH_SHIFT_M := Vector2(-0.42, -2.78)
+const DISH_NODES := ["Stand", "Dish", "DishBody", "DishZone", "DishStandBox"]
+const MOUNTED_HIDDEN := ["ShadowDesk", "ShadowElectronics", "Ground"]   ## no ground under it for these
 
 @onready var _dish: Sprite2D = $Dish
 @onready var _dish_shadow: Sprite2D = $DishShadow
@@ -132,11 +155,14 @@ var _turned_by := 0.0   ## the turn the dish heading has been carried along for
 
 func _ready() -> void:
 	World.register_controls()
+	add_to_group("interactables")   # (player.gd interact_target(): nothing now, the dish is aimed from the radio)
 	_beam.draw.connect(_draw_beam)
 	# A big green F over the site's middle while the player's bringing a part.
 	_deliver_key = UiStyle.pad_key("F", Color(World.COMMAND_COLOR, 0.55))
-	add_child(_deliver_key)
-	keep_upright(_deliver_key, self)
+	_deliver_key.z_index = 30   # over whatever it's on (a watch tower's deck)
+	var key_at: Node2D = $StandBox if mount else self   # on a watch tower: over the desk
+	key_at.add_child(_deliver_key)
+	keep_upright(_deliver_key, key_at)
 	_show_parts()
 	# A big green F on the dish while the player's round it.
 	_pad_key = UiStyle.pad_key("F", Color(World.COMMAND_COLOR, 0.55))   # see-through, like the desk's
@@ -176,6 +202,7 @@ func _apply_turn() -> void:
 	var d := World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * SHADOW_HEIGHT_M * World.PX_PER_M
 	for shadow in [$ShadowDesk, $ShadowElectronics, $ShadowStand]:
 		shadow.position = d.rotated(-global_rotation) - d
+	$ShadowStand.position += _dish_shift   # (with the dish, on a watch tower's roof)
 	_place_upright()
 
 
@@ -206,12 +233,15 @@ func _place_upright() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact") and not event.is_echo():
-		if tuning:
+		if tuning:   # F again locks the pick in
 			_stop_tuning(true)
 			get_viewport().set_input_as_handled()
-		elif _player_at_dish() and not World.commanding():
-			_start_tuning()
-			get_viewport().set_input_as_handled()
+		return
+	if tuning and event.is_action_pressed("back") and not event.is_echo():
+		# X: the wheel closes without changing the pick, back to the RADIO menu.
+		_stop_tuning()
+		$Terminal.open_menu()
+		get_viewport().set_input_as_handled()
 		return
 	if not tuning:
 		return
@@ -234,15 +264,14 @@ func _process(delta: float) -> void:
 	_place_upright()   # labels can change size as their text changes
 	var player = _player()
 	_deliver_key.visible = (not built and player != null and player.carrying != "" and needs(player.carrying)
-			and player.global_position.distance_to(global_position) <= DELIVER_M * World.PX_PER_M)
-	var at_dish := _player_at_dish()
-	_pad_key.visible = at_dish and not tuning
-	if tuning and (not at_dish or World.commanding()):
+			and can_deliver_at(player.global_position, player) and player.interact_target() == self)
+	_pad_key.visible = false   # (the dish is aimed from the radio now)
+	if tuning and (not $Terminal._player_on_box() or World.commanding()):
 		_stop_tuning()
 	if turning:
 		_turn(delta)
 	if tuning:
-		_wheel.position = get_canvas_transform() * to_global(DISH_AT)
+		_wheel.position = get_canvas_transform() * to_global(dish_at)
 		_wheel.queue_redraw()
 	# The beam shows while tuning, and in command mode so you can see where
 	# each dish is pointed while giving orders.
@@ -258,15 +287,23 @@ func _player():
 ## Whether a world point is inside the dish's beam: the radio link reaches
 ## radio operators there (player.gd radio_reaches()).
 func beam_covers(point: Vector2) -> bool:
-	var to := point - to_global(DISH_AT)
+	var to := point - to_global(dish_at)
 	if to.length() > BEAM_LENGTH_M * World.PX_PER_M:
 		return false
 	return absf(angle_difference(dish_heading, to.angle())) <= deg_to_rad(BEAM_HALF_DEG)
 
 
-func _player_at_dish() -> bool:
-	var player = _player()
-	return built and player != null and _zone.overlaps_body(player)
+## Aiming the dish, from the radio at the desk (radio_terminal.gd Dish): the
+## wheel opens round the dish.
+func start_tuning() -> void:
+	if built and not tuning:
+		_start_tuning()
+
+
+## For the player's interact_target(): nothing at the dish any more (it's aimed
+## from the radio).
+func interact_point() -> Variant:
+	return null
 
 
 # -------------------------------------------------------------- building --
@@ -286,9 +323,57 @@ func needs(part: String) -> bool:
 	return not built and part in PARTS and not part in installed
 
 
-## Whether the player at `at` (world) can bring a part in here.
-func can_deliver_at(at: Vector2) -> bool:
-	return not built and at.distance_to(global_position) <= DELIVER_M * World.PX_PER_M
+## Whether `who` (the player or a squadmate) at `at` (world) can bring a part
+## in here: within DELIVER_M, and up on the watch tower if it's mounted on one.
+func can_deliver_at(at: Vector2, who: Node = null) -> bool:
+	if built or at.distance_to(global_position) > DELIVER_M * World.PX_PER_M:
+		return false
+	return mount == null or (who != null and who.get("tower") == mount)
+
+
+## Where a squadmate bringing a part heads (squadmate.gd): the station's
+## middle, or on a watch tower the shelter's door (up the stairs).
+func deliver_spot(_from: Vector2) -> Vector2:
+	return mount.door_out() if mount else global_position
+
+
+## On a watch tower: the dish and its stand fade with the roof (`alpha`) while
+## someone's in the shelter (watch_tower.gd).
+func fade_dish(alpha: float) -> void:
+	for node_name in ["Stand", "Dish"]:
+		get_node(node_name).self_modulate.a = alpha
+	var solid := alpha > 0.6   # see-through, it casts no shadow (the dish's is a shader, which a fade doesn't reach)
+	$ShadowStand.visible = solid and (built or "legs" in installed)
+	$DishShadow.visible = solid and (built or "dish" in installed)
+
+
+## Sets it up on watch tower `tower` (watch_tower.gd), before it's in the
+## tree (command.gd places it at the tower's STATION_AT, turned): the dish and
+## its stand up on the roof, drawn over it; the desk in the shelter, drawn
+## over the deck and under the squares (and under the roof while nobody's
+## in); no ground cable or ground shadows. The desk is solid only to squares
+## up on the tower (WatchTower.WALL_LAYER) and lets every shot by (they don't
+## know how high they fly); the dish isn't solid (nobody's on the roof). The
+## operator's spot notices squares up on the tower.
+func mount_on(tower: Node2D) -> void:
+	mount = tower
+	_dish_shift = MOUNT_DISH_SHIFT_M * World.PX_PER_M
+	dish_at = DISH_AT + _dish_shift
+	for node_name: String in DISH_NODES:
+		get_node(node_name).position += _dish_shift
+	for node_name in ["Desk", "Electronics"]:
+		get_node(node_name).z_index = 5
+	$ShadowStand.z_index = 8
+	$DishShadow.z_index = 8
+	$Stand.z_index = 9
+	$Dish.z_index = 10
+	$DeskBody.collision_layer = WatchTower.WALL_LAYER
+	$DeskBody.hit_chance = 0.0
+	$DishBody.collision_layer = 0
+	$OperatorZone.collision_mask = WatchTower.UNIT_LAYER
+	$DishZone.collision_mask = WatchTower.UNIT_LAYER
+	$StandBox.z_index = 7        # the desk's F, over the deck
+	$DishStandBox.z_index = 11   # the dish's F, over the roof and the dish
 
 
 ## A part's been brought in: it goes in; with all of them in, it's built.
@@ -309,7 +394,9 @@ func _show_parts() -> void:
 		var done := built or part in installed
 		for node_name: String in PART_NODES[part]:
 			var node := get_node(node_name)
-			if node is CollisionObject2D:
+			if mount and node_name in MOUNTED_HIDDEN:
+				node.visible = false   # (on a watch tower: no ground for it)
+			elif node is CollisionObject2D:
 				for shape in node.get_children():
 					if shape is CollisionShape2D:
 						shape.set_deferred("disabled", not done)
@@ -346,7 +433,7 @@ func _stop_tuning(lock := false, by_click := false) -> void:
 ## Picks the heading toward a world point (the mouse, while tuning). The
 ## dish doesn't move until the pick is locked in.
 func _pick_at(point: Vector2) -> void:
-	var from := to_global(DISH_AT)
+	var from := to_global(dish_at)
 	if from.distance_to(point) < 4.0:
 		return   # mouse on the hub: no clear direction
 	_pick = (point - from).angle()
@@ -374,7 +461,7 @@ func _update_dish() -> void:
 	_dish.rotation = dish_heading - PI / 2 - global_rotation
 	_dish_shadow.rotation = _dish.rotation
 	var sun := World.SUN_DIR * tan(deg_to_rad(World.SUN_TILT_DEG)) * World.PX_PER_M
-	_dish_shadow.position = DISH_AT + (sun * DISH_LOW_M).rotated(-global_rotation)
+	_dish_shadow.position = dish_at + (sun * DISH_LOW_M).rotated(-global_rotation)
 	# How far the shadow stretches from the dish's lowest to highest point,
 	# in the dish image's own (rotated, half-size) pixels.
 	var sweep: Vector2 = ((sun * (DISH_HIGH_M - DISH_LOW_M)).rotated(-(global_rotation + _dish_shadow.rotation))
@@ -393,13 +480,13 @@ func _draw_beam() -> void:
 	var heading := dish_heading - global_rotation   # in the station's frame, where the beam is drawn
 	var rim := PackedVector2Array()
 	for i in 25:
-		rim.append(DISH_AT + Vector2.from_angle(heading - half + 2.0 * half * i / 24.0) * reach)
+		rim.append(dish_at + Vector2.from_angle(heading - half + 2.0 * half * i / 24.0) * reach)
 	for i in rim.size() - 1:
-		_beam.draw_polygon(PackedVector2Array([DISH_AT, rim[i], rim[i + 1]]),
+		_beam.draw_polygon(PackedVector2Array([dish_at, rim[i], rim[i + 1]]),
 				PackedColorArray([near, far, far]))
 	var edge := Color(BEAM_COLOR, World.CONE_EDGE_ALPHA)
-	_beam.draw_line(DISH_AT, rim[0], edge, 1.5, true)
-	_beam.draw_line(DISH_AT, rim[rim.size() - 1], edge, 1.5, true)
+	_beam.draw_line(dish_at, rim[0], edge, 1.5, true)
+	_beam.draw_line(dish_at, rim[rim.size() - 1], edge, 1.5, true)
 	_beam.draw_polyline(rim, edge, 1.5, true)
 
 
@@ -430,3 +517,7 @@ func _draw_wheel() -> void:
 	var at := Vector2(-34, -r + 52)   # inside the ring, under the N mark
 	_wheel.draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, 4, Color.BLACK)
 	_wheel.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
+	var hint := "[X] BACK"   # to the RADIO menu
+	var hint_at := Vector2(-40, r + 46)   # under the S mark
+	_wheel.draw_string_outline(font, hint_at, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 4, Color.BLACK)
+	_wheel.draw_string(font, hint_at, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, WHEEL_COLOR)

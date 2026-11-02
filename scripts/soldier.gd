@@ -49,6 +49,7 @@ const RadioPack = preload("res://scripts/radio_pack.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
 const DeathFall = preload("res://scripts/death_fall.gd")
 const BattleLog = preload("res://scripts/battle_log.gd")
+const WatchTower = preload("res://scripts/watch_tower.gd")
 
 signal died
 
@@ -81,6 +82,13 @@ const CLIMB_NEAR_PX := 80.0        ## walls further than this from its centre ar
 ## BODY_SPEED of its pace right on top.
 const BODY_LIFT := 0.4
 const BODY_SPEED := 0.7
+## Up a watch tower it's drawn this much bigger a metre (1.24x on its 3 m deck).
+const GROW_PER_M := 0.08
+## Firing shows it: for this long after each shot it's exposed (`exposed_s`),
+## head and rifle up over whatever it's behind, so a sandbag wall it's at
+## covers it far less (sandbags.gd EXPOSED_STOP) and an enemy held up in a
+## standoff takes the chance (ai_soldier.gd _shielded()).
+const EXPOSED_S := 0.8
 
 @export var speed_mps := 1.6          ## walking speed, metres per second
 @export var acceleration_mps2 := 10.0
@@ -120,6 +128,14 @@ var health := 0.0      ## set to max_health on entering the tree
 var dead := false
 ## Whoever fired the last bullet that hit it (null if unknown).
 var last_hit_by: Node2D = null
+## Seconds it stays exposed from its last shot (EXPOSED_S); 0 = not exposed.
+var exposed_s := 0.0
+## Up a watch tower (watch_tower.gd): the one it's on (null: on the ground),
+## and how high it stands there. Drawn bigger the higher it is (view_scale()).
+var tower: Node2D = null
+var elevation_m := 0.0
+var _ground_layer := 1
+var _ground_mask := 1
 
 ## Multiplies walking speed; subclasses raise it to jog (e.g. catching up).
 var _speed_scale := 1.0
@@ -146,9 +162,12 @@ var _fall: Node   ## the ragdoll (death_fall.gd), once it's dead
 
 func _ready() -> void:
 	health = max_health
+	_ground_layer = collision_layer
+	_ground_mask = collision_mask
 	add_to_group("units")
 	var px := World.PX_PER_M
 	($CollisionShape2D.shape as RectangleShape2D).size = Vector2.ONE * SIZE_M * px
+	_rifle.fired.connect(func() -> void: exposed_s = EXPOSED_S)
 	if kit == "radio":
 		_radio_pack = RadioPack.new()
 		add_child(_radio_pack)   # after Body, so it's drawn over it
@@ -156,10 +175,11 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	exposed_s = maxf(exposed_s - delta, 0.0)
 	var intent := Vector2.ZERO if dead else _move_intent().limit_length(1.0)
 	var px := World.PX_PER_M
-	var cover := 0.0 if dead else _cover_under()
-	var body := 0.0 if dead else _body_under()
+	var cover := 0.0 if dead or tower else _cover_under()   # (up a tower: nothing on the ground underfoot)
+	var body := 0.0 if dead or tower else _body_under()
 	_climb = maxf(cover, body * BODY_LIFT)
 	var climb_scale := lerpf(1.0, CLIMB_SPEED, smoothstep(0.0, 0.3, cover)) * lerpf(1.0, BODY_SPEED, body)
 	if intent != Vector2.ZERO:
@@ -178,6 +198,7 @@ func _physics_process(delta: float) -> void:
 		move_and_collide((was + _knock) / 2.0 * delta)   # average speed over the tick: exact distance
 	_stay_in_arena()
 	_update_jostle(delta)
+	_update_tower()
 	if dead:   # no more looking round or shooting; death_fall.gd draws it now
 		return
 	var target := _aim_point()
@@ -187,7 +208,7 @@ func _physics_process(delta: float) -> void:
 	_update_visuals()
 	_rifle.update_steadiness(velocity.length(), delta)   # standing still steadies the aim
 	_rifle.update_aim(facing, _height_m + _climb_m, target, delta)
-	if _wants_to_fire():
+	if _wants_to_fire() and not _sheltered():
 		_rifle.fire(_shot_spread_deg(), _shot_distance_m())
 
 
@@ -390,9 +411,62 @@ func _update_climb(delta: float) -> void:
 	_jostle_turn_vel += deg_to_rad(CLIMB_JOLT_DEG) * randf_range(-1.0, 1.0) * kick
 
 
+## Steps onto a watch tower walking up into its stair's foot, and off it
+## walking back out (watch_tower.gd steps_on() / steps_off()); up there it's
+## on the tower's own collision layer, bumping only into its railings and
+## walls (it passes the others up there: a stair is only one square wide,
+## so two could never get by), and drawn over the deck.
+func _update_tower() -> void:
+	if dead:
+		return
+	if tower == null:
+		for t: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+			if t.steps_on(global_position, velocity) and _wants_onto(t):
+				_set_tower(t)
+				break
+	elif not is_instance_valid(tower) or tower.steps_off(global_position):
+		_set_tower(null)
+	elevation_m = tower.height_at(global_position) if tower else 0.0
+
+
+func _set_tower(t: Node2D) -> void:
+	tower = t
+	collision_layer = WatchTower.UNIT_LAYER if t else _ground_layer
+	collision_mask = WatchTower.WALL_LAYER if t else _ground_mask   # (not each other: a stair is one square wide)
+	z_index = WatchTower.UNIT_Z if t else 0
+
+
+## In a watch tower's shelter: it can't fire from in there (Mike, 2026-11-01;
+## nor can it be hit, watch_tower.gd `shelter_pass_through`).
+func _sheltered() -> bool:
+	return tower != null and tower.part_of(self) == "shelter"
+
+
+## Whether walking up into `t`'s stair foot puts it on the tower: it's
+## headed up there. Yes for the player (it goes where it's steered); the AI
+## says (ai_soldier.gd), so one coming off and turning for somewhere else
+## doesn't step straight back on.
+func _wants_onto(_t: Node2D) -> bool:
+	return true
+
+
+## How much bigger it's drawn for standing `elevation_m` up (a watch tower's
+## deck, 3 m: 1 + 3 x GROW_PER_M), so it looks nearer the camera.
+func view_scale() -> float:
+	return 1.0 + elevation_m * GROW_PER_M
+
+
 func _update_visuals() -> void:
 	var lift := _height_m + _climb_m
-	_body.scale = Vector2.ONE * (1.0 + lift)
+	var grow := view_scale()
+	_body.scale = Vector2.ONE * (1.0 + lift) * grow
+	_shadow.scale = Vector2.ONE * grow
+	_rifle.view_scale = grow
+	var carry: Node2D = get("_carry_view")
+	if carry:
+		carry.scale = Vector2.ONE * grow
+	if _radio_pack:
+		_radio_pack.scale = Vector2.ONE * grow
 	_shadow.position = (World.SUN_DIR * lift * tan(deg_to_rad(World.SUN_TILT_DEG))
 			* World.PX_PER_M)
 	_shadows.self_modulate.a = SHADOW_ALPHA * (1.0 - _height_m * 2.5)

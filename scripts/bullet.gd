@@ -30,6 +30,7 @@ const World = preload("res://scripts/world.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
 const ImpactSound = preload("res://scripts/impact_sound.gd")
 const BattleLog = preload("res://scripts/battle_log.gd")
+const Cover = preload("res://scripts/cover.gd")
 const LIFETIME_S := 1.0
 const OVER_Z := 6                 ## drawn over the station's desk (z 4) and dish (z 5) while going over them
 const UNDER_Z := -3               ## drawn under the station's art (z -1), over the ground (z -5)
@@ -76,18 +77,24 @@ func _physics_process(delta: float) -> void:
 	for i in 4:   # past up to a few walls it goes over this tick
 		query.exclude = _passed + ([shooter.get_rid()] if is_instance_valid(shooter) else [])
 		hit = get_world_2d().direct_space_state.intersect_ray(query)
-		if hit and hit.collider.has_method("lets_bullet_through") and hit.collider.lets_bullet_through(self):
+		if hit and (hit.collider.has_method("lets_bullet_through") and hit.collider.lets_bullet_through(self)
+				or _fired_down_past(hit) or Cover.overlook_past(hit.collider, self)):
 			_passed.append(hit.rid)
 			hit = {}
 			continue
 		break
 	if hit:
-		BattleLog.shot_end(self, hit.collider, hit.position)
-		if hit.collider.has_method("take_hit"):
-			hit.collider.take_hit(hit.position, velocity.normalized(), damage,
+		var struck: Object = hit.collider
+		if struck.has_method("take_hit"):   # in or under a watch tower: its steel may stop it first
+			var tower_body := Cover.tower_blocks(struck, shooter if is_instance_valid(shooter) else null)
+			if tower_body:
+				struck = tower_body
+		BattleLog.shot_end(self, struck, hit.position)
+		if struck.has_method("take_hit"):
+			struck.take_hit(hit.position, velocity.normalized(), damage,
 					shooter if is_instance_valid(shooter) else null)
-		elif hit.collider.has_method("bullet_hit"):   # cover that shows the hit (sandbags.gd)
-			hit.collider.bullet_hit(hit.position, velocity.normalized(), damage)
+		elif struck.has_method("bullet_hit"):   # cover that shows the hit (sandbags.gd)
+			struck.bullet_hit(hit.position, velocity.normalized(), damage)
 		queue_free()
 		return
 	_check_flyby(step)
@@ -133,12 +140,20 @@ func _check_flyby(step: Vector2) -> void:
 		ImpactSound.play(get_parent(), near, "flyby")
 
 
+## Fired from up a watch tower at lower cover: by the section it meets it in,
+## more of a chance it gets through (cover.gd fired_down_extra()). Asked
+## once, like lets_bullet_through(), after the cover itself has said no.
+func _fired_down_past(hit: Dictionary) -> bool:
+	return randf() < Cover.fired_down_extra(hit.collider, hit.position, shooter if is_instance_valid(shooter) else null)
+
+
 ## Into the ground here: a puff of dust and a thud, and the bullet's gone.
 func _hit_ground() -> void:
 	BattleLog.shot_end(self, null, position, "ground")
 	var dust := HitDust.new()
 	dust.setup(position, velocity.normalized(), HitDust.GROUND_STRENGTH, true)
 	get_parent().add_child(dust)
+	dust.tuck_under_towers()   # (into the ground under a watch tower: under its deck)
 	var on_road := get_tree().get_nodes_in_group("roads").any(func(road): return road.covers(position))
 	ImpactSound.play(get_parent(), position, "concrete" if on_road else "dirt")
 	queue_free()

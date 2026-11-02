@@ -26,6 +26,9 @@ const Cover = preload("res://scripts/cover.gd")
 @export_range(0.0, 1.0, 0.01) var over_chance := 0.5
 ## What a hit sounds like (an impact_sound.gd kind); "metal" also throws sparks.
 @export var impact := "metal"
+## How tall it is (cover.gd height classes): the radio station's desk and
+## dish are low, 1; the watch tower's legs and stair, 3.
+@export_range(1, 3, 1) var height_class := 1
 ## Whether sight lines see past it (a desk: yes).
 @export var see_through := true
 
