@@ -298,6 +298,11 @@ def build_stairs(galv, galv_dark, grating):
     beam("Stairs_TopFrame", (STAIR_X0 - 0.2, top_y1, DECK_Z - 0.1), (STAIR_X1, top_y1, DECK_Z - 0.1), 0.08, 0.14, galv)
     railing("Stairs_", (STAIR_X0 - 0.2, top_y1), (STAIR_X1, top_y1), DECK_Z, galv)
     railing("Stairs_", (STAIR_X1, STAIR_TOP_Y), (STAIR_X1, top_y1), DECK_Z, galv)
+    # Every open edge railed (Mike, 2026-11-02: three were missing): the
+    # landing's west side where it sticks out past the deck's north edge, and
+    # its south edge between the deck and the flight's handrail.
+    railing("Stairs_", (STAIR_X0 - 0.2, DECK_M / 2), (STAIR_X0 - 0.2, top_y1), DECK_Z, galv)
+    railing("Stairs_", (STAIR_X0 - 0.2, STAIR_TOP_Y), (STAIR_X0, STAIR_TOP_Y), DECK_Z, galv)
     flight("Stairs_", STAIR_TOP_Y, DECK_Z, MID_Y0, MID_Z, galv, grating)
     # Mid landing on four posts.
     box("Stairs_MidLanding", (xm, (MID_Y0 + MID_Y1) / 2, MID_Z - 0.025), (w, MID_Y0 - MID_Y1, 0.05), grating)
@@ -305,8 +310,10 @@ def build_stairs(galv, galv_dark, grating):
         for py in (MID_Y0 - 0.05, MID_Y1 + 0.05):
             beam("Stairs_LandingPost", (px, py, 0.0), (px, py, MID_Z - 0.05), 0.08, 0.08, galv)
             box("Stairs_PostFoot", (px, py, 0.01), (0.2, 0.2, 0.02), galv_dark)
+    # Both sides of the mid landing (it's open to the flights at its ends: no
+    # rail across the way down).
     railing("Stairs_", (STAIR_X1, MID_Y1), (STAIR_X1, MID_Y0), MID_Z, galv)
-    railing("Stairs_", (STAIR_X0, MID_Y1), (STAIR_X1, MID_Y1), MID_Z, galv, posts=False)
+    railing("Stairs_", (STAIR_X0, MID_Y1), (STAIR_X0, MID_Y0), MID_Z, galv)
     flight("Stairs_", MID_Y1, MID_Z, STAIR_FOOT_Y, 0.0, galv, grating)
 
 
@@ -411,10 +418,13 @@ def build_details(galv, galv_dark, white, black):
     vent = Vector((cx + 0.3, cy + 0.35, roof_z))
     rod("Details_Vent", vent, vent + Vector((0, 0, 0.25)), 0.06, galv, segs=12)
     rod("Details_VentCap", vent + Vector((0, 0, 0.25)), vent + Vector((0, 0, 0.29)), 0.11, galv, segs=16)
-    # Power conduit down the north-east leg.
+    # Power conduit down the north-east leg, with its box. They go with the base
+    # (drawn under the squares, like the leg they're on): in the details, drawn
+    # over everything, the box poked out past the deck's corner over anyone on
+    # the top landing (Mike, 2026-11-02).
     a, b = leg_at(1, 1, 0.1), leg_at(1, 1, FRAME_TOP)
-    beam("Details_Conduit", a + Vector((-0.09, 0.0, 0)), b + Vector((-0.09, 0.0, 0)), 0.04, 0.04, galv_dark)
-    box("Details_PowerBox", leg_at(1, 1, 1.1) + Vector((-0.14, -0.02, 0)), (0.12, 0.25, 0.32), galv_dark, bevel=0.01)
+    beam("Base_Conduit", a + Vector((-0.09, 0.0, 0)), b + Vector((-0.09, 0.0, 0)), 0.04, 0.04, galv_dark)
+    box("Base_PowerBox", leg_at(1, 1, 1.1) + Vector((-0.14, -0.02, 0)), (0.12, 0.25, 0.32), galv_dark, bevel=0.01)
 
 
 def build():

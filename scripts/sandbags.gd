@@ -499,7 +499,7 @@ func bullet_hit(point: Vector2, direction: Vector2, damage := 0.0) -> void:
 	dust.setup(point, direction)
 	var level := get_tree().current_scene
 	(level if level else get_parent()).add_child(dust)
-	dust.tuck_under_towers()   # (beside a watch tower's stairs: under them)
+	dust.tuck_under_towers()   # (low: under anything raised, a watch tower's stairs)
 	ImpactSound.play(level if level else get_parent(), point, "sand")
 	take_damage(damage)
 

@@ -379,12 +379,12 @@ func _keep_patrol_slot() -> Vector2:
 ## direction, with nothing solid in the way (a station, a landed
 ## helicopter, sandbags). Someone manning a wall shows over it, though
 ## (_clear_view() `seen_over`): only one hiding behind it, not at it, is unseen.
-## Someone up high on a watch tower it's in the overlook box of is in plain view
-## over sandbags and crates (cover.gd in_full_view()).
+## Someone standing somewhere high is seen over low cover if their Shots Into
+## says Seen for how far away it is (cover.gd seen_past()).
 func _check_intruders() -> void:
 	for hostile: Node2D in _hostiles():
 		if (hostile.global_position.distance_to(global_position) <= sight_m * World.PX_PER_M
-				and _clear_view(global_position, hostile.global_position, false, true, Cover.in_full_view(hostile, global_position))):
+				and _clear_view(global_position, hostile.global_position, false, true, hostile)):
 			alert(hostile)
 			return
 
@@ -415,8 +415,7 @@ func _look_for_targets() -> void:
 	var best_d := INF
 	for hostile: Node2D in _hostiles():
 		var d := global_position.distance_to(hostile.global_position)
-		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position, true, false,
-				Cover.in_full_view(hostile, global_position)):
+		if d > sight_m * World.PX_PER_M or not _clear_view(global_position, hostile.global_position, true, false, hostile):
 			continue
 		if hostile == threat:
 			d *= 0.7   # sticks with whoever it was fighting

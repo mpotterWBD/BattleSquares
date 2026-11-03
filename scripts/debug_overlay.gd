@@ -24,9 +24,10 @@ extends Node2D
 ## square's panel spells the same out in full. A click on a supply crate
 ## picks it instead: its contents, straps, the enemy working at it, and its
 ## `vicinity_m` drawn round it (enemy.gd CRATES). A click on a watch
-## tower's deck or stair picks it: its height class and its three sections
-## (watch_tower.gd), drawn round it. Each watch tower's overlook box is
-## drawn in green. A click on anything else solid
+## tower's deck or stair picks that part: its height class, pass-through and
+## height profile (height_profile.gd), its Shots Away sections drawn round
+## the tower as filled circles and its Shots Into as dashed ones. A click on
+## anything else solid
 ## (a sandbag wall, the station's desk or dish, a helicopter, a building)
 ## picks that: its cover class and the share of shots it stops
 ## (scripts/cover.gd), as a crate's panel also shows. Enemies' detection
@@ -49,8 +50,8 @@ const TITLE_FONT_SIZE := 22   ## the picked thing's panel: its title, bold
 const BODY_FONT_SIZE := 17    ## and the rest
 const SHORT := {"ATTENTION": "ATTN", "SURPRISED": "SURPRISE"}   ## over the square (the panel has it in full)
 const COVER_NAMES := ["NONE", "LIGHT", "MEDIUM", "HEAVY"]   ## by cover class (cover.gd)
-const SECTION_COLORS := [Color(1.0, 0.35, 0.3), Color(1.0, 0.65, 0.25), Color(1.0, 0.9, 0.35)]   ## a watch tower's sections 1..3
-const OVERLOOK_COLOR := Color(0.35, 1.0, 0.3)   ## a watch tower's overlook box
+const SECTION_COLORS := [Color(1.0, 0.35, 0.3), Color(1.0, 0.65, 0.25), Color(1.0, 0.9, 0.35), Color(0.6, 1.0, 0.4), Color(0.4, 0.85, 1.0)]   ## height profile sections 1.. (round again past 5)
+const INTO_COLOR := Color(0.55, 0.8, 1.0)   ## Shots Into sections (dashed; Shots Away are solid, SECTION_COLORS)
 
 var _layer: CanvasLayer
 var _view: Node2D
@@ -151,9 +152,9 @@ func _is_crate(node: Node2D) -> bool:
 	return "vicinity_m" in node
 
 
-## A watch tower (watch_tower.gd): it has sections round it.
+## A watch tower (watch_tower.gd): its parts have height profiles.
 func _is_tower(node: Node) -> bool:
-	return node != null and node.has_method("fired_down_pass")
+	return node != null and node.has_method("profile_for")
 
 
 ## A picked solid thing that isn't a square or a crate.
@@ -280,27 +281,94 @@ func _update_object_panel(node: Node2D) -> void:
 
 ## A picked part of a watch tower (the standard object panel, its cover for
 ## whoever's in it: watch_tower.gd part_pass()): then how many are in it, and
-## for a part you can stand on up there, firing down from it: its three
-## sections (drawn round the tower, _draw_numbers()), how far each reaches
-## and how much of the shots gets through lower cover in it.
+## for a part you stand on, its height profile (height_profile.gd): its Shots
+## Away sections (drawn round the part, _draw_numbers()), how far each
+## reaches and how much gets through cover as high or lower in it by class;
+## its Shots Into sections (by the shooter's distance), the pass-through from
+## there and whether low cover hides them from there.
 func _update_tower_panel(tower: Node2D) -> void:
 	var part := _picked_part
 	var height: int = tower.part_height_class(part)
 	var extra := []
 	var in_it := get_tree().get_nodes_in_group("units").filter(func(u): return not u.dead and tower.part_of(u) == part).size()
 	extra.append("units in it: %d" % in_it)
-	if part != "base":
-		extra.append("firing down from it, protection of cover below class %d:" % height)
-		var inner := 0.0
-		var all: Array = tower.sections()
-		for i in all.size():
-			var reach := "bullet range" if is_inf(all[i][0]) else "%.1f m" % all[i][0]
-			var classes := "class 1: %d%%" % roundi((1.0 - all[i][1]) * 100.0)
-			if height > 2:
-				classes += ", class 2: %d%%" % roundi((1.0 - all[i][2]) * 100.0)
-			extra.append("  section %d (%.1f m - %s): %s" % [i + 1, inner, reach, classes])
-			inner = all[i][0]
+	var profile: HeightProfile = tower.profile_for(part)
+	if profile != null:
+		extra.append("profile: %s" % (profile.resource_path.get_file() if profile.resource_path != "" else "its own"))
+		extra.append("shots away (firing from here), pass through of cover as high or lower:")
+		extra.append_array(_section_lines(profile.shots_away, height))
+		extra.append("shots into (shot at from this far), pass through of the %s:" % part.replace("_", " "))
+		extra.append_array(_into_lines(profile.shots_into))
 	_show_object(tower.name, part.replace("_", " "), 1.0 - tower.part_pass(part), height, extra, _picked_at)
+
+
+## A height profile's Shots Away sections as panel lines: each one's reach
+## and, for each class up to `height`, how much gets through.
+func _section_lines(sections: Array, height: int) -> Array:
+	var lines := []
+	if sections.is_empty():
+		lines.append("  none")
+	var inner := 0.0
+	for i in sections.size():
+		var section = sections[i]
+		if section == null:
+			continue
+		var last: bool = i == sections.size() - 1
+		var reach := "bullet range" if last else "%.1f m" % section.radius_m
+		var classes := []
+		for cls in range(1, height + 1):
+			classes.append("class %d: %d%%" % [cls, roundi(section.pass_for(cls) * 100.0)])
+		lines.append("  section %d (%.1f m - %s): %s" % [i + 1, inner, reach, ", ".join(classes) if not classes.is_empty() else "no lower cover"])
+		inner = section.radius_m
+	return lines
+
+
+## A height profile's Shots Into sections as panel lines: each one's reach
+## (the shooter's distance), the pass-through from there, and whether low
+## cover hides them from there.
+func _into_lines(sections: Array) -> Array:
+	var lines := []
+	if sections.is_empty():
+		lines.append("  none (its pass through from anywhere)")
+	var inner := 0.0
+	for i in sections.size():
+		var section = sections[i]
+		if section == null:
+			continue
+		var reach := "bullet range" if i == sections.size() - 1 else "%.1f m" % section.radius_m
+		lines.append("  section %d (%.1f m - %s): %d%%, above %d%%, %s" % [i + 1, inner, reach, section.pass_through,
+				section.above, "seen over low cover" if section.seen else "hidden by low cover"])
+		inner = section.radius_m
+	return lines
+
+
+## A height profile's sections round screen point `at`: Shots Away as filled
+## circles in SECTION_COLORS numbered on top, Shots Into (`into`) as dashed
+## INTO_COLOR circles numbered "In" below; the last runs on as far as a bullet
+## goes (just its number, outside the one before).
+func _draw_sections(sections: Array, at: Vector2, zoom: float, into: bool, font: Font) -> void:
+	var px := World.PX_PER_M * zoom
+	for i in sections.size():
+		if sections[i] == null:
+			continue
+		var color: Color = INTO_COLOR if into else SECTION_COLORS[i % SECTION_COLORS.size()]
+		var last: bool = i == sections.size() - 1
+		var r: float = (sections[i - 1].radius_m if i > 0 and sections[i - 1] else 0.0) * px if last else sections[i].radius_m * px
+		if not last:
+			if into:
+				var dashes := 64
+				for k in dashes:
+					var a0 := TAU * k / dashes
+					_view.draw_arc(at, r, a0, a0 + TAU / dashes * 0.5, 4, Color(color, 0.9), 2.0, true)
+			else:
+				_view.draw_circle(at, r, Color(color, 0.07))
+				_view.draw_arc(at, r, 0.0, TAU, 128, Color(color, 0.85), 2.0, true)
+		var label := at + Vector2(0.0, r if into else -r) + (Vector2(6.0, -6.0) if into else Vector2(6.0, 20.0))
+		if last:
+			label = at + Vector2(0.0, r if into else -r) + (Vector2(6.0, 24.0) if into else Vector2(6.0, -8.0))
+		var text := ("In %d" if into else "%d") % (i + 1)
+		_view.draw_string_outline(font, label, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, 4, Color(0, 0, 0, 0.8))
+		_view.draw_string(font, label, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, color)
 
 
 func _draw_numbers() -> void:
@@ -317,28 +385,11 @@ func _draw_numbers() -> void:
 			var r: float = _picked.vicinity_m * World.PX_PER_M * zoom
 			_view.draw_circle(to_screen * _picked.global_position, r, Color(1.0, 0.85, 0.3, 0.06))
 			_view.draw_arc(to_screen * _picked.global_position, r, 0.0, TAU, 96, Color(1.0, 0.85, 0.3, 0.8), 2.0, true)
-		if _is_tower(_picked) and _picked_part != "base":   # its sections: firing down from that part, more gets through lower cover
-			var at := to_screen * _picked.global_position
-			var all: Array = _picked.sections()
-			for i in all.size():
-				var label: Vector2
-				if is_inf(all[i][0]):   # the last runs on as far as a bullet goes: just its number, outside the one before
-					label = at + Vector2(0.0, -all[i - 1][0] * World.PX_PER_M * zoom) + Vector2(6.0, -8.0)
-				else:
-					var r: float = all[i][0] * World.PX_PER_M * zoom
-					_view.draw_circle(at, r, Color(SECTION_COLORS[i], 0.07))
-					_view.draw_arc(at, r, 0.0, TAU, 128, Color(SECTION_COLORS[i], 0.85), 2.0, true)
-					label = at + Vector2(0.0, -r) + Vector2(6.0, 20.0)
-				_view.draw_string_outline(font, label, str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, 4, Color(0, 0, 0, 0.8))
-				_view.draw_string(font, label, str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, SECTION_COLORS[i])
-	for tower: Node2D in get_tree().get_nodes_in_group("watch_towers"):   # each watch tower's overlook box
-		var box: Rect2 = tower.overlook_box
-		var corners := PackedVector2Array()
-		for c in [box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y), box.position]:
-			corners.append(to_screen * tower.to_global(c * World.PX_PER_M))
-		_view.draw_polyline(corners, Color(OVERLOOK_COLOR, 0.9), 3.0, true)
-		_view.draw_string_outline(font, corners[0] + Vector2(6, 20), "OVERLOOK", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0, 0, 0, 0.8))
-		_view.draw_string(font, corners[0] + Vector2(6, 20), "OVERLOOK", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, OVERLOOK_COLOR)
+		if _is_tower(_picked) and _picked.profile_for(_picked_part) != null:   # its height profile's sections
+			var profile: HeightProfile = _picked.profile_for(_picked_part)
+			var at: Vector2 = to_screen * _picked.part_middle(_picked_part)   # (round the part's own middle)
+			_draw_sections(profile.shots_away, at, zoom, false, font)
+			_draw_sections(profile.shots_into, at, zoom, true, font)
 	for unit: Node2D in get_tree().get_nodes_in_group("units"):
 		var n := BattleLog.number_of(unit)
 		if n < 0 or unit.dead or not unit.is_visible_in_tree():

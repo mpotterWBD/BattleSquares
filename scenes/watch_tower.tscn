@@ -122,9 +122,9 @@ position = Vector2(171, 226)
 shape = SubResource("RectangleShape2D_stair")
 
 [node name="FootWest" type="CollisionShape2D" parent="StairsBody" unique_id=387610346]
-position = Vector2(135, 316)
+position = Vector2(139.59, 316)
 shape = SubResource("RectangleShape2D_stringer")
 
 [node name="FootEast" type="CollisionShape2D" parent="StairsBody" unique_id=909682911]
-position = Vector2(206, 316)
+position = Vector2(202.41, 316)
 shape = SubResource("RectangleShape2D_stringer")

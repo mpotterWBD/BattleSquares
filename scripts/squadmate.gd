@@ -80,6 +80,13 @@ extends "res://scripts/ai_soldier.gd"
 ## Attention, Disperse) stops it, and a part it's carrying goes back on its
 ## crate, as it does if it's killed.
 
+## Sent to an ammo can (order_load_ammo(), command.gd: clicked in command
+## mode; Mike, 2026-11-02), it goes there and loads its spare magazines from
+## it (ammo_supply.gd work_load()) until they're full or the can's empty, then
+## stands there. The can serves one at a time: if someone else is at it or on
+## the way, it waits AMMO_WAIT_M off until it's free. Under orders it never
+## goes for ammo by itself; this is how to send it.
+
 ## Surprised (SURPRISED): attacked while idle (hit, or an enemy round passing
 ## or landing within NEAR_MISS_M), it runs for cover from the attacker and
 ## fights from there (ai_soldier.gd _find_hide(), _tick_hide(): sandbags,
@@ -178,6 +185,10 @@ var carrying := ""
 var _carried_from: Node2D = null
 var _build_site: Node2D = null
 var _build_from: Node2D = null   ## building from just this crate (null: any)
+var _build_goal := Vector2.INF   ## where it's walking while building (_watch_build_progress())
+## The ammo can it was sent to load from (order_load_ammo()), or null.
+var _sent_ammo: Node2D = null
+const AMMO_WAIT_M := 0.9         ## waiting its turn at an ammo can this far from it
 var _carry_view: Node2D
 
 
@@ -216,10 +227,61 @@ func order_disperse(point: Vector2) -> void:
 	under_orders = false
 
 
-## Any order puts it under orders (and ends being on its own).
+## Any order puts it under orders (and ends being on its own, and a trip to
+## an ammo can).
 func _take_orders() -> void:
 	on_own = false
 	under_orders = true
+	if _sent_ammo != null:
+		_sent_ammo = null
+		_drop_ammo_claim()
+
+
+## Go to ammo can `can` (ammo_supply.gd) and load the spares from it.
+func order_load_ammo(can: Node2D) -> void:
+	BattleLog.order(self, "ammo", [can])
+	_take_orders()
+	_stop_building()
+	follow_mode = ""
+	_cover = null
+	_drop_ammo_claim()
+	_start_walk(can.global_position, State.MOVE)
+	_sent_ammo = can
+
+
+## Each tick of a trip to an ammo can: there, loading; someone else at it,
+## waiting off to the side; done (spares full, can empty or gone), standing.
+func _tick_sent_ammo() -> Vector2:
+	var can := _sent_ammo
+	var px := World.PX_PER_M
+	if not is_instance_valid(can) or can.is_queued_for_deletion() or not can.useful_to(self):
+		_end_ammo_trip()
+		return Vector2.ZERO
+	var other = can.claimed_by
+	if is_instance_valid(other) and other != self and not other.dead:
+		return _head_for(can.global_position, AMMO_WAIT_M)   # its turn's next
+	can.claimed_by = self
+	_ammo = can
+	var d := global_position.distance_to(can.global_position)
+	if d <= can.REACH_M * px * 0.9:
+		_loading_ammo = true
+		_look_angle = (can.global_position - global_position).angle()
+		if can.work_load(self, get_physics_process_delta_time()):
+			_end_ammo_trip()
+		return Vector2.ZERO
+	_watch_build_progress(can.global_position)   # (getting nowhere: round the other way)
+	return _head_for(can.global_position, 0.0)
+
+
+func _end_ammo_trip() -> void:
+	_sent_ammo = null
+	_drop_ammo_claim()
+	if _rifle.rounds <= 0:
+		_rifle.start_reload()
+	if state == State.MOVE:
+		state = State.IDLE
+		_post = global_position
+		_next_idle_s = randf_range(idle_min_s, idle_max_s)
 
 
 ## In the player's command circle or selected (and not on its own): under
@@ -358,6 +420,16 @@ func _may_fetch_ammo() -> bool:
 
 func is_building() -> bool:
 	return state == State.BUILD
+
+
+## The crate it was sent just to undo the straps of (strapped, nothing owed),
+## while it's on its way there or at it; null otherwise (command.gd sends the
+## next nearest to another crate meanwhile).
+func unstrapping() -> Node2D:
+	if (state == State.BUILD and _build_from != null and is_instance_valid(_build_from)
+			and _build_from.strapped and not _build_from.wanted()):
+		return _build_from
+	return null
 
 
 ## Off building: a part in its hands goes back on its crate.
@@ -501,6 +573,8 @@ func _move_intent() -> Vector2:
 		var miss := _near_miss()
 		if miss != null:
 			_surprise(miss.shooter if is_instance_valid(miss.shooter) else null, miss.origin)
+	if _sent_ammo != null:
+		return _tick_sent_ammo()
 	if carrying == "":
 		var run := _ammo_run()   # out of ammo: off to get some first
 		if run != Vector2.INF:
@@ -534,8 +608,12 @@ func _move_intent() -> Vector2:
 					return Vector2.ZERO
 			_tick_scan()
 			return _head_for(_post, AT_ATTENTION_M)
-	if tower and tower.on_stairs(self):   # idle on a watch tower's stairs: up onto the deck, out of the way
-		return _tower_step(_tower_way(tower.deck_in()))
+	if tower and not tower.can_stay(global_position):
+		# Idle up a watch tower somewhere that's no place to stand (a flight, the
+		# walkway past the door): to the nearest place that is (watch_tower.gd
+		# STAY_AREAS; Mike, 2026-11-02: it used to go up onto the deck from
+		# anywhere on the stairs, the mid landing too).
+		return _tower_step(_tower_way(tower.stay_spots(global_position, 1)[0]))
 	_tick_idle()
 	return Vector2.ZERO
 
@@ -766,6 +844,7 @@ func _tick_build() -> Vector2:
 			return Vector2.ZERO
 		var spot: Vector2 = (_build_site.deliver_spot(global_position)
 				if _build_site.has_method("deliver_spot") else _build_site.global_position)
+		_watch_build_progress(spot)
 		var to_site := _head_for(spot, 0.0)
 		_speed_scale *= CARRY_SPEED
 		return to_site
@@ -785,7 +864,19 @@ func _tick_build() -> Vector2:
 		_carried_from = crate
 		_build_site = _site_needing(carrying)
 		return Vector2.ZERO
+	_watch_build_progress(crate.global_position)
 	return _head_for(crate.global_position, 0.0)
+
+
+## Walking to a crate or a site while building: getting nowhere (jammed on a
+## crate's corner in a dropped row, say), it tries the other way round now
+## and then, as on any walk, and never gives up (ai_soldier.gd _is_stuck();
+## Mike, 2026-11-02). A new place to go starts the watch afresh.
+func _watch_build_progress(spot: Vector2) -> void:
+	if spot.distance_to(_build_goal) > 0.3 * World.PX_PER_M:
+		_reset_progress()
+		_build_goal = spot
+	_is_stuck(spot.distance_to(global_position))
 
 
 ## The nearest supply crate, however far, that owes something a part (only

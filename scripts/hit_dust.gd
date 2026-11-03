@@ -15,7 +15,6 @@ extends Node2D
 const World = preload("res://scripts/world.gd")
 
 const UNDER_TOWER_Z := 3   ## under a watch tower's stairs (4) and deck (5), over the squares (0)
-const UNDER_TOWER_SLACK_M := 0.4
 const DUST_COLOR := Color(0.80, 0.74, 0.62)
 const GRIT_COLOR := Color(0.42, 0.37, 0.30)
 const POP_S := 0.07               ## the bright pop at the moment of impact
@@ -54,15 +53,14 @@ var _strength := 1.0
 ## A `strength` under 1 is a lighter scuff (fewer, slower puffs and no pop),
 ## e.g. a body skidding (scripts/death_fall.gd). `ground` = a shot into the
 ## dirt: the dust carries on along `direction` and leaves a scuff.
-## For dust off something on the ground (a sandbag wall, the dirt): if it's
-## under a watch tower's deck or stairs, or right beside them (within
-## UNDER_TOWER_SLACK_M: it puffs out under them), it's drawn under them (still
-## over the squares). Call once it's in the tree.
+## For dust off something on the ground (a sandbag wall, the dirt): it's low,
+## so it's drawn under anything raised (a watch tower's stairs and deck, the
+## squares up on it; still over the squares on the ground), wherever it is:
+## it puffs out and drifts, and from a wall a little way off the stair it
+## used to cloud over it (Mike, 2026-11-02; before, only within 0.4 m of a
+## tower). Call once it's in the tree.
 func tuck_under_towers() -> void:
-	for tower in get_tree().get_nodes_in_group("watch_towers"):
-		if tower.on_surface(global_position, UNDER_TOWER_SLACK_M):
-			z_index = UNDER_TOWER_Z
-			return
+	z_index = UNDER_TOWER_Z
 
 
 func setup(point: Vector2, direction: Vector2, strength := 1.0, ground := false) -> void:

@@ -29,8 +29,9 @@ extends Node
 ##            Let go on Equipment: the same, for supplies dropped by
 ##            parachute:
 ##              1. EQUIP_SLOTS slots, EQUIP_PER_ROW to a row (2 x 2). Press a
-##                 slot for the pop-out (Ammo crate, Sandbag crate or Comms
-##                 crate; a quick click gives an ammo crate).
+##                 slot for the pop-out (Ammo crate, Sandbag crate, Comms
+##                 crate or Watch tower crate; a quick click gives an ammo
+##                 crate).
 ##              2. filled slots are readied one after another,
 ##                 `seconds_per_crate` each
 ##              3. Send helicopter: a ghost of the drop, the crates in one
@@ -78,6 +79,8 @@ const EQUIPMENT_TYPES := [
 			tex = preload("res://assets/props/crate_sandbags.png")},
 	{id = "comms", text = "Comms crate", scene = preload("res://scenes/crate_comms.tscn"),
 			tex = preload("res://assets/props/crate_comms.png")},   ## the kit a radio station is built from
+	{id = "tower", text = "Watch tower crate", scene = preload("res://scenes/crate_tower.tscn"),
+			tex = preload("res://assets/props/crate_tower.png")},   ## the parts a watch tower is built from (Mike, 2026-11-02)
 ]
 const EQUIP_SLOTS := 4
 const EQUIP_PER_ROW := 2
@@ -90,6 +93,10 @@ const BURLAP := Color(0.76, 0.66, 0.48)
 const STRAP_BLACK := Color(0.06, 0.06, 0.06)
 const POLYMER := Color(0.1, 0.1, 0.1)
 const DISH_TAN := Color(0.80, 0.72, 0.58)
+const TOWER_GALV := Color(0.64, 0.65, 0.64)        ## the watch tower crate's steel (watch_tower.py GALV)
+const TOWER_GALV_DARK := Color(0.42, 0.43, 0.43)
+const TOWER_CREAM := Color(0.86, 0.79, 0.6)        ## its roof panels
+const TOWER_WHITE := Color(0.88, 0.88, 0.85)       ## its air conditioner
 ## Unit types a troop slot can hold.
 const UNIT_TYPES := [
 	{id = "infantry", text = "Infantry"},
@@ -878,13 +885,26 @@ func _draw_equip_slot(button: Button, index: int) -> void:
 
 
 ## A crate's icon from above: a wooden pallet edge round its load (olive
-## ammo cans, tan sandbags, or the comms kit's cases: black, olive, tan and a
-## cable reel) under a black strap cross.
+## ammo cans, tan sandbags, the comms kit's cases: black, olive, tan and a
+## cable reel, or the watch tower's parts: steel tubes across the top, the
+## deck grating and a stair flight, the cream roof panels and the white air
+## conditioner) under a black strap cross.
 func _draw_crate(canvas: CanvasItem, kind: String, center: Vector2, size: float, alpha: float) -> void:
 	var half := 12.0 * size
 	canvas.draw_rect(Rect2(center - Vector2(half, half), Vector2(half, half) * 2.0), Color(0.62, 0.47, 0.30, alpha))
 	var load := half * 0.8
-	if kind == "comms":
+	if kind == "tower":
+		var row := load * 2.0 / 3.0
+		var top := center.y - load
+		canvas.draw_rect(Rect2(center.x - load, top, load * 2.0, row).grow(-0.8), Color(TOWER_GALV, alpha))
+		for k in 2:   # the tubes' seams
+			var y := top + row * (k + 1) / 3.0
+			canvas.draw_line(Vector2(center.x - load + 1.0, y), Vector2(center.x + load - 1.0, y), Color(TOWER_GALV_DARK, alpha), 1.0)
+		canvas.draw_rect(Rect2(center.x - load, top + row, load, row).grow(-0.8), Color(TOWER_GALV_DARK, alpha))
+		canvas.draw_rect(Rect2(center.x, top + row, load, row).grow(-0.8), Color(TOWER_GALV, alpha))
+		canvas.draw_rect(Rect2(center.x - load, top + row * 2.0, load, row).grow(-0.8), Color(TOWER_CREAM, alpha))
+		canvas.draw_rect(Rect2(center.x, top + row * 2.0, load, row).grow(-0.8), Color(TOWER_WHITE, alpha))
+	elif kind == "comms":
 		var q := load
 		canvas.draw_rect(Rect2(center + Vector2(-q, -q), Vector2(q, q)).grow(-0.8), Color(POLYMER, alpha))
 		canvas.draw_circle(center + Vector2(-q / 2.0, -q / 2.0), q * 0.42, Color(OLIVE, alpha))

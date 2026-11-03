@@ -17,7 +17,7 @@
 [ext_resource type="PackedScene" path="res://scenes/crate_tower.tscn" id="16_jbj1t"]
 [ext_resource type="PackedScene" uid="uid://c1wt4tl5u1csq" path="res://scenes/watch_tower.tscn" id="16_muem4"]
 
-[sub_resource type="Curve2D" id="Curve2D_dp3eg"]
+[sub_resource type="Curve2D" id="Curve2D_jbj1t"]
 resource_local_to_scene = true
 bake_interval = 8.0
 _data = {
@@ -45,6 +45,7 @@ script = ExtResource("7_edge")
 [node name="Player" parent="." unique_id=571398669 instance=ExtResource("3_player")]
 position = Vector2(842, 1304)
 drop_off_animation = false
+unlimited_ammo = true
 radio_aura_multiplier = 2.0
 run_speed_mps = 3.2
 flyby_radius_m = 1.5
@@ -56,13 +57,14 @@ script = ExtResource("4_camera")
 
 [node name="Command" type="Node2D" parent="." unique_id=586087931]
 script = ExtResource("6_command")
+menu_toggle_px = 51.0
 
 [node name="Arrival" type="Node" parent="." unique_id=1577641184]
 script = ExtResource("8_arrival")
 
 [node name="Road" parent="." unique_id=1296387015 instance=ExtResource("10_road")]
 position = Vector2(-39, 1053)
-curve = SubResource("Curve2D_dp3eg")
+curve = SubResource("Curve2D_jbj1t")
 centre_line = false
 
 [node name="EnemySpawner" type="Node2D" parent="." unique_id=676917563]
@@ -87,16 +89,11 @@ extra_sandbags = 7
 [node name="AmmoCrate2" parent="." unique_id=2119421720 instance=ExtResource("15_jkv2x")]
 position = Vector2(3450, 912)
 
-[node name="Sandbags4" parent="." unique_id=1210167690 instance=ExtResource("10_choun")]
-position = Vector2(1661, 1243)
-rotation = 1.5707964
-extra_sandbags = 9
-
 [node name="CommsCrate" parent="." unique_id=1559053285 instance=ExtResource("11_ya4ey")]
-position = Vector2(851, 1450)
+position = Vector2(857, 1461)
 
 [node name="AmmoCrate" parent="." unique_id=394768539 instance=ExtResource("15_jkv2x")]
-position = Vector2(726, 1450)
+position = Vector2(729, 1459)
 
 [node name="SandbagCrate" parent="." unique_id=1018893238 instance=ExtResource("14_jkv2x")]
 position = Vector2(594, 1450)
@@ -154,12 +151,12 @@ idle_max_s = 5.0
 [node name="TowerCrate" parent="." unique_id=1445963139 instance=ExtResource("16_jbj1t")]
 position = Vector2(487, 1446)
 
-[node name="SandbagCrate2" parent="." unique_id=699755534 instance=ExtResource("14_jkv2x")]
-position = Vector2(1746, 1365)
-
-[node name="SandbagCrate3" parent="." unique_id=2051643551 instance=ExtResource("14_jkv2x")]
-position = Vector2(2319, 1386)
-
 [node name="WatchTower" parent="." unique_id=1092398650 instance=ExtResource("16_muem4")]
 position = Vector2(1438, 1335)
 radio_has_station = true
+
+[node name="AmmoCrate3" parent="." unique_id=493564160 instance=ExtResource("15_jkv2x")]
+position = Vector2(1899, 1418)
+
+[node name="AmmoCrate4" parent="." unique_id=589850017 instance=ExtResource("15_jkv2x")]
+position = Vector2(2218, 1430)

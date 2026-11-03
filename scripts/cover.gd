@@ -11,13 +11,14 @@ extends RefCounted
 ## Firing over cover drops it: a square that's just fired (soldier.gd
 ## `exposed_s`) right behind a sandbag wall is covered by it only
 ## EXPOSED_STOP (40%, class 1) of the time (stop_chance_for()).
-## Fired down on from up a watch tower, more gets through lower cover
-## (fired_down_extra(), by its height class: height_class_of()).
+## Height (Mike, 2026-11-02): someone standing somewhere with a height profile
+## (height_profile.gd: a watch tower's parts) fires past cover as high as
+## where they stand or lower by its Shots Away (away_pass(), height_extra());
+## shot at there, its Shots Into says by the shooter's distance how much gets
+## through the part (watch_tower.gd cover_pass()) and whether low cover hides
+## them (seen_past()).
 ## A watch tower covers whoever's in or under it: only so much of the shots
 ## at them get through its steel (tower_pass(), tower_blocks()).
-## From inside its overlook box, someone up high on it has only the tower to
-## protect them: class 1 and 2 cover in between doesn't count (in_full_view(),
-## overlook_past()).
 ## Something with cover_stop_chance() says what it stops (crate.gd,
 ## sandbags.gd, partial_cover.gd); any other solid body stops every shot.
 ## Load with:
@@ -31,7 +32,6 @@ const MEDIUM := 2
 const HEAVY := 3
 const LIGHT_MAX := 0.4
 const MEDIUM_MAX := 0.6
-const OVERLOOK_LINE_M := 0.5   ## a shot passing this close to someone up a watch tower is at them (overlook_past())
 
 
 ## The class for cover that stops `stops` (0..1) of the shots reaching it.
@@ -85,25 +85,63 @@ static func height_class_of(node: Node) -> int:
 	return 3
 
 
-## Of `shooter`'s shots that `node` would stop where they meet it at world
-## `point`, the share (0..1) that get through anyway: firing down on it from
-## up a watch tower, so that in all the tower's new pass-through for its
-## height class and section gets through (watch_tower.gd fired_down_pass()).
-## `stops`: what it stops otherwise (its stop_chance() if not given). None on
-## the ground.
-static func fired_down_extra(node: Node, point: Vector2, shooter: Node, stops := -1.0) -> float:
-	if shooter == null or not is_instance_valid(shooter) or node == null or node.has_method("take_hit"):
-		return 0.0
-	var tower = shooter.get("tower")
+## The height profile of where `unit` stands (height_profile.gd: up a watch
+## tower, its part's), or null on the ground.
+static func profile_of(unit: Node) -> HeightProfile:
+	if unit == null or not is_instance_valid(unit):
+		return null
+	var tower = unit.get("tower")
 	if tower == null or not is_instance_valid(tower):
+		return null
+	return tower.profile_of(unit)
+
+
+## The middle its sections are measured from: the middle of the part of the
+## tower `unit` stands on (watch_tower.gd part_middle()).
+static func _profile_middle(unit: Node) -> Vector2:
+	var tower = unit.get("tower")
+	return tower.part_middle(tower.part_of(unit))
+
+
+## Of `shooter`'s shots meeting cover of height class `cls` at world `point`,
+## letting `normal` (0..1) through anyway, the share that get through: more
+## by the Shots Away of where it stands if the cover's lower (never less).
+static func away_pass(shooter: Node, cls: int, point: Vector2, normal: float) -> float:
+	var profile := profile_of(shooter)
+	if profile == null or cls > profile.height_class:   # (as high or lower: Mike, 2026-11-02)
+		return normal
+	var section := profile.away_section(_profile_middle(shooter).distance_to(point) / World.PX_PER_M)
+	return maxf(normal, section.pass_for(cls)) if section else normal
+
+
+## Of the shots `node` would stop where they meet it at world `point`, the
+## share (0..1) that get through anyway by the shooter's height (away_pass()),
+## for a roll after the cover's own (bullet.gd). `stops`: what it stops
+## otherwise (its stop_chance() if not given). None for squares, or fired from
+## the ground.
+static func height_extra(node: Node, point: Vector2, shooter: Node, stops := -1.0) -> float:
+	if node == null or not is_instance_valid(node) or node.has_method("take_hit"):
 		return 0.0
 	if stops < 0.0:
 		stops = stop_chance(node)
 	if stops <= 0.0:
 		return 0.0
-	var through: float = tower.fired_down_pass(height_class_of(node), point, 1.0 - stops, shooter.elevation_m,
-			tower.height_class_of_unit(shooter))
+	var through := away_pass(shooter, height_class_of(node), point, 1.0 - stops)
 	return clampf(1.0 - (1.0 - through) / stops, 0.0, 1.0)
+
+
+## Whether `node` (cover met looking from world `from` at `target`) leaves
+## `target` in view: it's low (height class 1 or 2, and no higher than where
+## `target` stands), and `target`'s Shots Into section for that distance says
+## Seen.
+static func seen_past(node: Node, target: Node, from: Vector2) -> bool:
+	var profile := profile_of(target)
+	if profile == null or node == null or node.has_method("take_hit"):
+		return false
+	if height_class_of(node) > mini(profile.height_class, 2):
+		return false
+	var section := profile.into_section(_profile_middle(target).distance_to(from) / World.PX_PER_M)
+	return section != null and section.seen
 
 
 ## The share (0..1) of `shooter`'s shots that get through a watch tower's
@@ -128,35 +166,3 @@ static func tower_blocks(target: Node, shooter: Node) -> Node:
 		if randf() >= tower.cover_pass(target, shooter):
 			return tower.get_node("LegsBody")
 	return null
-
-
-## Whether height class 1 and 2 cover between world `from` and `target`
-## doesn't count, for seeing it or shooting it: it's up high on a watch tower
-## and `from` is in that tower's overlook box (watch_tower.gd in_full_view()).
-static func in_full_view(target: Node, from: Vector2) -> bool:
-	if target == null or not is_instance_valid(target):
-		return false
-	for tower in target.get_tree().get_nodes_in_group("watch_towers"):
-		if tower.in_full_view(target, from):
-			return true
-	return false
-
-
-## For a bullet that's reached `node`: whether it flies on over it, being
-## height class 1 or 2 cover on the way to someone up high on a watch tower
-## that it was fired at from inside that tower's overlook box (passing
-## within OVERLOOK_LINE_M of them, beyond it).
-static func overlook_past(node: Node, bullet: Node2D) -> bool:
-	if node == null or node.has_method("take_hit") or height_class_of(node) > 2:
-		return false
-	var ahead: Vector2 = bullet.velocity.normalized()
-	for tower in node.get_tree().get_nodes_in_group("watch_towers"):
-		if not tower.overlooks(bullet.origin):
-			continue
-		for unit: Node2D in node.get_tree().get_nodes_in_group("units"):
-			if unit.dead or not tower.is_up_high(unit):
-				continue
-			var to: Vector2 = unit.global_position - bullet.global_position
-			if to.dot(ahead) > 0.0 and absf(to.cross(ahead)) <= OVERLOOK_LINE_M * World.PX_PER_M:
-				return true
-	return false

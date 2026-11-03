@@ -52,38 +52,31 @@ extends Node2D
 ## the tower's parts (PART_NAMES: base, under the deck; lower and upper
 ## stairs, split at the mid landing; top, the deck; shelter, the cabin;
 ## part_of()) each cover whoever's in them (Mike, 2026-11-01): of the shots
-## at them from anywhere else, only `<part>_pass_through` % get through
-## (Inspector groups Base / Lower Stairs / Upper Stairs / Top / Shelter: 75,
-## 80, 80, 50, 0); the rest stop in its steel, sparks and a clang
+## at them from anywhere else, only their part's pass-through gets through
+## (75, 80, 80, 50, 0%); the rest stop in its steel, sparks and a clang
 ## (cover_pass(), cover.gd tower_blocks(), bullet.gd). That share makes each
 ## part's cover class (part_cover_class(): the base and stairs 1 LIGHT, the
 ## top 2 MEDIUM, the shelter 3 HEAVY), and the AI goes by it (ai_soldier.gd
-## _shielded()). Each part has its own height class too (`<part>_height_class`:
-## both stairs 2, the rest 3): how high someone there fires down from, and how
-## tall it is as cover for someone fired down on there from higher up.
+## _shielded()). The shelter stops every shot, but nobody can fire out of it
+## (soldier.gd _sheltered()).
 ##
-## Its overlook box (Mike, 2026-11-01; `overlook_box`, drawn in debug mode):
-## from inside it, someone up high on the tower (the upper stairs, the top,
-## the shelter: is_up_high()) is in full view (in_full_view()): height class
-## 1 and 2 cover in between (sandbags, the radio station, crates) neither
-## hides them nor stops shots at them (ai_soldier.gd _clear_view(), _shielded();
-## cover.gd overlook_past(), bullet.gd), so enemies there spot and shoot them,
-## and only their part of the tower protects them. The shelter stops every
-## shot (100% protection), but nobody can fire out of it (soldier.gd
-## _sheltered()).
-##
-## Firing down from it (Mike, 2026-11-01): three sections round it (two circles, `section_1_radius_m` and
-## `section_2_radius_m`, set in the Inspector, and section 3 everything past
-## them, as far as a bullet goes; drawn round it when it's clicked in debug
-## mode, Q) say how much of the shots fired by someone up here gets
-## through cover lower than where they stand (its height class: sandbags and
-## the radio station 1, crates and someone on another tower's stairs 2):
-## where a shot meets class 1 or class 2 cover in section n, `section_<n>_class_<c>_new_pass_through`
-## % of them get through (the Inspector's "Class 1 New Pass Through"; never
-## less than gets through anyway; fired_down_pass(): in full from the deck,
-## less lower down the stair). The bullets go by it (bullet.gd) and so does
-## the AI judging whether a foe's behind heavy cover (ai_soldier.gd
-## _shielded()).
+## Height (Mike, 2026-11-02): the parts you stand on each have a height
+## profile (height_profile.gd, in the Inspector: Lower Stairs, Upper Stairs,
+## Top, Shelter; files in assets/height_profiles/): its height class (both
+## stairs 2, the top and shelter 3), its pass-through, and two lists of
+## sections round that part's own middle (part_middle()), nearest first
+## (drawn round it when the part's clicked in debug mode, Q):
+##   - Shots Away: firing from up there, past cover as high as where they
+##     stand or lower, by how far that cover is from the part: how much gets
+##     through, by its height class (cover.gd height_extra(), bullet.gd).
+##   - Shots Into: shot at up there, by how far the shooter is from the part:
+##     the part's pass-through for shots from that far (part_pass_from(),
+##     cover_pass(): easier to hit them from close up), and whether low cover
+##     hides them from there (Seen: cover.gd seen_past()).
+## Each part's profile counts the same all over it (flat, no slope up the
+## stairs). The AI goes by them too, judging whether a foe's behind heavy
+## cover or in view (ai_soldier.gd _shielded(), _clear_view()). The base (the ground under the
+## deck) has no profile, just its height class and pass-through.
 ##
 ## The shadows (one per part, in a CanvasGroup so where they overlap it's no
 ## darker) are rendered for the unturned tower; turned (the scroll wheel while
@@ -146,12 +139,12 @@ const WALLS := [
 	[Vector2(-1.4, -1.4), Vector2(-1.4, 1.4)], [Vector2(-1.4, 1.4), Vector2(1.4, 1.4)],
 	[Vector2(1.4, -0.6), Vector2(1.4, 1.4)], [Vector2(-1.4, -1.4), Vector2(1.4, -1.4)],
 	[Vector2(1.4, -1.8), Vector2(1.4, -1.4)], [Vector2(1.4, -1.8), Vector2(2.4, -1.8)],
-	[Vector2(2.4, -1.8), Vector2(2.4, 3.3)], [Vector2(1.6, -0.6), Vector2(1.6, 3.3)],
-	# Near the foot the sides taper in a few cm (so nothing coming up meets the
-	# blunt end of a side head-on, and nothing going down catches on a lip),
-	# then flare out, funnelling anyone coming up a little off the middle in.
-	[Vector2(1.6, 3.3), Vector2(1.66, 3.75)], [Vector2(2.4, 3.3), Vector2(2.34, 3.75)],
-	[Vector2(1.66, 3.75), Vector2(1.2, 4.8)], [Vector2(2.34, 3.75), Vector2(2.8, 4.8)],
+	[Vector2(2.4, -1.8), Vector2(2.4, 4.1)], [Vector2(1.6, -0.6), Vector2(1.6, 4.1)],
+	# The sides run straight to the bottom step, then flare out, funnelling
+	# anyone coming up a little off the middle in. (They used to taper in a few
+	# cm first, a bump going down: Mike, 2026-11-02. As lines meeting end to
+	# end there's no lip or corner to catch on without it.)
+	[Vector2(1.6, 4.1), Vector2(1.2, 4.8)], [Vector2(2.4, 4.1), Vector2(2.8, 4.8)],
 	[Vector2(1.4, -0.6), Vector2(1.6, -0.6)],
 	[Vector2(-1.3, -1.3), Vector2(0.7, -1.3)], [Vector2(-1.3, -1.3), Vector2(-1.3, 0.7)],
 	[Vector2(-1.3, 0.7), Vector2(0.7, 0.7)],
@@ -160,10 +153,27 @@ const WALLS := [
 ## Getting on: walking north (up the stair) with the middle in FOOT_ON, which
 ## reaches out past the bottom step (at 4.1) by more than half a square, so
 ## it's on (drawn over the stair) before any of it touches the stair. Off:
-## once back out past FOOT_OFF_Y (meanwhile it's on the FOOT_APRON in front).
+## once back out past FOOT_OFF_Y (meanwhile it's on the FOOT_APRON in front),
+## or, walking down, as soon as it's clear of the bottom step (FOOT_CLEAR_Y), so
+## the foot's flared guides don't steer one turning off it (Mike, 2026-11-02:
+## an invisible curve at the end of the ramp).
 const FOOT_ON := Rect2(1.45, 3.55, 1.1, 1.2)
 const FOOT_OFF_Y := 4.9
+const FOOT_CLEAR_Y := 4.35     ## the bottom step (4.1) plus half a square and a little
+## The foot's flared guides (WALLS) widen this much each side per metre out past
+## the bottom step. A square only steps on wholly between them (_in_funnel()):
+## one stepping on across a flare, coming at the foot slantwise from beside it,
+## ended up on the tower outside the stair's side (Mike, 2026-11-02).
+const FLARE_PER_M := 0.4 / 0.7
+const UNIT_HALF_M := 0.2       ## half a square (soldier.gd SIZE_M)
 const FOOT_APRON := Rect2(1.1, 3.8, 1.8, 1.2)
+## Down by the stair's foot its rails are below a square's head (the flight's
+## under 0.8 m up south of 3.0 m), so a square on the ground beside or in
+## front of it (FOOT_OVER: within a turned square's reach of its sides) is
+## drawn over the stairs, at GROUND_OVER_FOOT_Z (Mike, 2026-11-02: a rail end
+## drawn on top of him); anywhere else on the ground it's under them.
+const FOOT_OVER := Rect2(1.25, 3.0, 1.5, 2.0)
+const GROUND_OVER_FOOT_Z := 5
 ## The way up and down for squadmates (route()).
 const FOOT_OUT := Vector2(2.0, 5.2)        ## on the ground, just out past the stair's foot (FOOT_OFF_Y)
 const FOOT_UP := Vector2(2.0, 3.3)         ## up into the foot (they're on the tower by then)
@@ -176,6 +186,19 @@ const DECK_IN := Vector2(1.0, -1.0)        ## on the deck, in from the top landi
 const DOOR_OUT := Vector2(1.05, -0.75)
 const DOOR_IN := Vector2(0.35, -0.75)
 const NEAR_M := 0.3                        ## a waypoint this close is passed
+## Where a squadmate sent up here can stand (Mike, 2026-11-02): the top
+## landing, the east walkway from its north end past the door, the south
+## walkway, the mid landing, and in the shelter. Sent anywhere else up here
+## (the flights, the walkway between the door and the shelter's south-east
+## corner), it goes to the nearest of these (stay_spots()).
+const STAY_AREAS := [
+	Rect2(1.4, -1.8, 1.0, 1.2),    # the top landing
+	Rect2(0.7, -1.4, 0.7, 1.1),    # the east walkway, from its north end past the door
+	Rect2(-1.4, 0.7, 2.8, 0.7),    # the south walkway
+	Rect2(1.6, 1.1, 0.8, 0.9),     # the mid landing
+	CABIN,                         # in the shelter (only for a spot in it: it's walled off)
+]
+const STAY_PITCH_M := 0.45     ## squadmates sent up here together stand this far apart (a square and a little)
 ## A radio station mounted on it (radio_station.gd mount_on(); command.gd puts
 ## it here): its origin, in metres in the tower's frame (on the deck's north
 ## edge, which puts its desk along the shelter's west wall, Mike 2026-11-01),
@@ -187,78 +210,22 @@ const STATION_TURN := PI
 @export var built := true
 
 # Its parts, as cover for whoever's in or under them and as somewhere to fire
-# down from (PART_NAMES): each a height class (cover.gd) and the share of
-# shots from anywhere else that get through it to them (which makes its cover
-# class: part_cover_class()).
+# from (PART_NAMES).
 @export_group("Base", "base_")
 ## Under the deck, among the legs (on the ground).
 @export_range(1, 3, 1) var base_height_class := 3
 ## Of the shots at someone under the deck, this share gets through the steel.
 @export_range(0, 100, 1, "suffix:%") var base_pass_through := 75
 
-@export_group("Lower Stairs", "lower_stairs_")
-## The lower flight, from the ground up to the mid landing. Firing down from
-## it, it's from this high.
-@export_range(1, 3, 1) var lower_stairs_height_class := 2
-## Of the shots at someone on the lower stairs, this share gets through.
-@export_range(0, 100, 1, "suffix:%") var lower_stairs_pass_through := 80
-
-@export_group("Upper Stairs", "upper_stairs_")
-## The mid landing and the upper flight up to the top. Firing down from it,
-## it's from this high.
-@export_range(1, 3, 1) var upper_stairs_height_class := 2
-## Of the shots at someone on the upper stairs, this share gets through.
-@export_range(0, 100, 1, "suffix:%") var upper_stairs_pass_through := 80
-
-@export_group("Top", "top_")
-## The deck, outside the shelter. Firing down from it, it's from this high.
-@export_range(1, 3, 1) var top_height_class := 3
-## Of the shots at someone on the deck, this share gets through.
-@export_range(0, 100, 1, "suffix:%") var top_pass_through := 50
-
-@export_group("Shelter", "shelter_")
-## The cabin on the deck. Nobody fires out of it (soldier.gd: Mike,
-## 2026-11-01), but it's as high as the top for being fired down on.
-@export_range(1, 3, 1) var shelter_height_class := 3
-## Of the shots at someone in the shelter, this share gets through (none:
-## 100% protection).
-@export_range(0, 100, 1, "suffix:%") var shelter_pass_through := 0
-
-@export_group("Overlook", "overlook_")
-## The box round the tower, in metres in its frame (x right, y down, from the
-## deck's middle; drawn in debug mode, Q). From inside it, someone up high on
-## the tower (the upper stairs, the top or the shelter: is_up_high()) is seen,
-## and shot at, past height class 1 and 2 cover (sandbags, the radio station,
-## crates): only the tower protects them (in_full_view()).
-@export var overlook_box := Rect2(-6.0, -4.0, 14.5, 13.0)
-
-# (Each group's prefix is left off in the Inspector: "Radius M", "Class 1 New Pass Through".)
-@export_group("Section 1", "section_1_")
-## The nearest circle: out to this far from the tower's middle.
-@export_range(0.0, 60.0, 0.5, "suffix:m") var section_1_radius_m := 5.0
-## Fired down from up here at class 1 cover (sandbags, the radio station) in
-## this section, this share of the shots gets through it (sandbags let 10%
-## through from the ground). Never less than the cover lets through anyway.
-@export_range(0, 100, 1, "suffix:%") var section_1_class_1_new_pass_through := 78
-## The same for class 2 cover (crates: none gets through from the ground).
-@export_range(0, 100, 1, "suffix:%") var section_1_class_2_new_pass_through := 50
-
-@export_group("Section 2", "section_2_")
-## Out to this far from the tower's middle (from section 1's edge).
-@export_range(0.0, 60.0, 0.5, "suffix:m") var section_2_radius_m := 10.0
-## The share of shots fired down from up here that gets through class 1 cover
-## (sandbags, the radio station) in this section.
-@export_range(0, 100, 1, "suffix:%") var section_2_class_1_new_pass_through := 55
-## The same for class 2 cover (crates).
-@export_range(0, 100, 1, "suffix:%") var section_2_class_2_new_pass_through := 25
-
-@export_group("Section 3", "section_3_")
-## (No radius: it's everything past section 2, as far as a bullet goes.)
-## The share of shots fired down from up here that gets through class 1 cover
-## (sandbags, the radio station) in this section.
-@export_range(0, 100, 1, "suffix:%") var section_3_class_1_new_pass_through := 33
-## The same for class 2 cover (crates).
-@export_range(0, 100, 1, "suffix:%") var section_3_class_2_new_pass_through := 10
+@export_group("Height Profiles")
+## The lower flight, from the ground up to the mid landing (height_profile.gd).
+@export var lower_stairs: HeightProfile = preload("res://assets/height_profiles/watch_tower_lower_stairs.tres")
+## The mid landing and the upper flight up to the top.
+@export var upper_stairs: HeightProfile = preload("res://assets/height_profiles/watch_tower_upper_stairs.tres")
+## The deck, outside the shelter, and the stair's top landing.
+@export var top: HeightProfile = preload("res://assets/height_profiles/watch_tower_top.tres")
+## The cabin on the deck (nobody fires out of it: its Shots Away don't count).
+@export var shelter: HeightProfile = preload("res://assets/height_profiles/watch_tower_shelter.tres")
 
 @export_group("Radio", "radio_")
 ## Starts with a radio station fitted (the desk in the shelter, the dish on
@@ -279,6 +246,12 @@ var _open := 0.0               ## how far the roof's faded off the cabin (1 whil
 var _stairs := 1.0             ## the stairs' alpha (fading while the player's under the upper ones)
 ## The radio station mounted on it, if any (command.gd).
 var station: Node2D = null
+## Run from the editor, its profile files are watched for saves (live tuning):
+## when each was last saved, and the countdown to the next look.
+var _profile_saved := {}
+var _profile_look_s := 0.0
+const PROFILE_LOOK_S := 1.0
+const PROFILE_PARTS := ["lower_stairs", "upper_stairs", "top", "shelter"]
 
 
 func _ready() -> void:
@@ -293,7 +266,7 @@ func _ready() -> void:
 		_make_walls()
 	# The legs and stair as cover in their own right take their parts' height classes.
 	$LegsBody.height_class = base_height_class
-	$StairsBody.height_class = lower_stairs_height_class   # (the lower flight)
+	_apply_stair_profile()
 	_show_parts()
 	set_notify_transform(true)
 	_place_shadows()
@@ -336,6 +309,8 @@ func _make_walls() -> void:
 
 
 func _process(delta: float) -> void:
+	if OS.has_feature("editor"):
+		_reload_saved_profiles(delta)
 	var player = get_tree().get_first_node_in_group("player")
 	_deliver_key.visible = (not built and player != null and player.carrying != "" and needs(player.carrying)
 			and can_deliver_at(player.global_position) and player.interact_target() == self)
@@ -358,6 +333,48 @@ func _process(delta: float) -> void:
 		station.fade_dish(minf(_upper, roof))
 
 
+## Live tuning (Mike, 2026-11-02): the game run from the editor has its own
+## copy of the height profiles, so an edit in the editor's Inspector doesn't
+## reach it. Every PROFILE_LOOK_S it looks at each profile's file, and one
+## that's been saved since (Ctrl+S, or the Inspector's save) is loaded afresh.
+## (A profile made unique to this tower lives in the scene: not watched.)
+func _reload_saved_profiles(delta: float) -> void:
+	_profile_look_s -= delta
+	if _profile_look_s > 0.0:
+		return
+	_profile_look_s = PROFILE_LOOK_S
+	for part: String in PROFILE_PARTS:
+		var profile: HeightProfile = get(part)
+		if profile == null or not profile.resource_path.begins_with("res://") or "::" in profile.resource_path:
+			continue
+		var path := profile.resource_path
+		var saved := FileAccess.get_modified_time(path)
+		if not _profile_saved.has(path):
+			_profile_saved[path] = saved
+		elif saved != _profile_saved[path]:
+			_profile_saved[path] = saved
+			var fresh = ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE_DEEP)
+			if fresh is HeightProfile:
+				for other in get_tree().get_nodes_in_group("watch_towers"):   # every tower sharing it
+					for p: String in PROFILE_PARTS:
+						var theirs: HeightProfile = other.get(p)
+						if theirs != null and theirs.resource_path == path:
+							other.set(p, fresh)
+				print("%s: reloaded %s" % [name, path.get_file()])
+	_apply_stair_profile()
+
+
+## The lower flight as something in the way (StairsBody, partial_cover.gd: a
+## shot at anyone or anything past it) goes by the lower stairs' profile too:
+## its height class, and its Pass Through is the share of shots that get
+## through it (Mike, 2026-11-02: at 0%, he could still shoot through the stair).
+func _apply_stair_profile() -> void:
+	if lower_stairs == null:
+		return
+	$StairsBody.height_class = lower_stairs.height_class
+	$StairsBody.hit_chance = 1.0 - lower_stairs.pass_through / 100.0
+
+
 ## Whether a live square up on this tower is inside the cabin.
 func _anyone_in_cabin() -> bool:
 	for unit: Node2D in get_tree().get_nodes_in_group("units"):
@@ -371,33 +388,38 @@ func _metres(point: Vector2) -> Vector2:
 	return to_local(point) / World.PX_PER_M
 
 
-# ------------------------------------------------------- firing down from it --
+# ------------------------------------------------------- height profiles --
 
-## The three sections, nearest first: [radius m, class 1 new pass-through,
-## class 2 new pass-through] (0..1).
-func sections() -> Array:
-	return [
-		[section_1_radius_m, section_1_class_1_new_pass_through / 100.0, section_1_class_2_new_pass_through / 100.0],
-		[section_2_radius_m, section_2_class_1_new_pass_through / 100.0, section_2_class_2_new_pass_through / 100.0],
-		[INF, section_3_class_1_new_pass_through / 100.0, section_3_class_2_new_pass_through / 100.0],   # out as far as a bullet goes
-	]
+## `part`'s height profile (height_profile.gd): null for the base (the ground
+## under the deck) or none.
+func profile_for(part: String) -> HeightProfile:
+	return get(part) if part in PART_NAMES and part != "base" else null
 
 
-## The share (0..1) of shots fired from up here, by someone standing
-## `elevation_m` up on a part of height class `from_height`, that get through
-## cover of height class `cls` where they meet it at world `point`, given it
-## lets `normal` through from the ground: its section's new pass-through for
-## that class (never less than `normal`), in full from the deck and less the
-## lower down the stair; just `normal` for cover as tall as where they stand.
-func fired_down_pass(cls: int, point: Vector2, normal: float, elevation_m: float, from_height: int) -> float:
-	if cls >= from_height:
-		return normal
-	var d := global_position.distance_to(point) / World.PX_PER_M
-	for section: Array in sections():
-		if d <= section[0]:
-			var through: float = section[1] if cls <= 1 else section[2]
-			return lerpf(normal, maxf(normal, through), clampf(elevation_m / DECK_Z, 0.0, 1.0))
-	return normal
+## The middle of `part` (world), which its profile's sections are measured
+## from (Mike, 2026-11-02: each part's own, not the tower's): the lower and
+## upper stairs' flights (the upper with the mid landing), the deck, the
+## cabin; the tower's middle for the base or none.
+func part_middle(part: String) -> Vector2:
+	var stair_x := (STAIR_X.x + STAIR_X.y) / 2.0
+	var m := Vector2.ZERO
+	match part:
+		"lower_stairs":
+			m = Vector2(stair_x, (FLIGHT2_Y.x + FLIGHT2_Y.y) / 2.0)
+		"upper_stairs":
+			m = Vector2(stair_x, (FLIGHT1_Y.x + MID_Y.y) / 2.0)
+		"top":
+			m = DECK.get_center()
+		"shelter":
+			m = CABIN.get_center()
+	return to_global(m * World.PX_PER_M)
+
+
+## The height profile of where `unit` stands up on this tower (null if it isn't).
+func profile_of(unit: Node) -> HeightProfile:
+	if unit == null or not is_instance_valid(unit) or unit.get("tower") != self:
+		return null
+	return profile_for(part_of(unit))
 
 
 ## Which part of the tower `unit` is in, as cover goes: "base" (on the ground
@@ -431,13 +453,75 @@ func part_at(point: Vector2) -> String:
 
 
 ## `part`'s height class and the share (0..1) of shots that get through it to
-## whoever's in it (its Inspector group).
+## whoever's in it (the base's Inspector group; the rest, their profiles).
 func part_height_class(part: String) -> int:
-	return get(part + "_height_class") if part in PART_NAMES else 0
+	if part == "base":
+		return base_height_class
+	var profile := profile_for(part)
+	return profile.height_class if profile else 0
 
 
 func part_pass(part: String) -> float:
-	return get(part + "_pass_through") / 100.0 if part in PART_NAMES else 1.0
+	if part == "base":
+		return base_pass_through / 100.0
+	var profile := profile_for(part)
+	return profile.pass_through / 100.0 if profile else 1.0
+
+
+## The share (0..1) of shots by `shooter` that get through `part` to whoever's
+## in it: its profile's Shots Into section for how far the shooter is from the
+## part's middle (Mike, 2026-11-02: easier to hit them from close up), or its
+## Pass Through with no sections or no shooter.
+func part_pass_from(part: String, shooter: Node) -> float:
+	var profile := profile_for(part)
+	if profile == null or profile.shots_into.is_empty() or shooter == null or not is_instance_valid(shooter):
+		return part_pass(part)
+	var section := profile.into_section(part_middle(part).distance_to(shooter.global_position) / World.PX_PER_M)
+	return section.pass_through / 100.0 if section else part_pass(part)
+
+
+## Whether a shot fired from world `from`, high or low by `roll` (0..1, as
+## it was fired: bullet.gd), passes `unit` by (Mike, 2026-11-02): `unit` on a
+## part here and the shot below it, or on the ground under a part here and the
+## shot above it, by that part's Shots Into section for how far away `from`
+## is (its Above %: under it, the shot's above). False with no sections.
+func passes_by(unit: Node, from: Vector2, roll: float) -> bool:
+	if not built or unit == null or not is_instance_valid(unit) or not unit is Node2D:
+		return false
+	var on: bool = unit.get("tower") == self
+	var part := part_of(unit) if on else (part_above(unit.global_position) if unit.get("tower") == null else "")
+	var share := above_share(part, from)
+	if share < 0.0:
+		return false
+	var high := roll < share
+	return not high if on else high
+
+
+## Of the shots fired from world `from`, the share (0..1) that go above
+## `part`: its Shots Into section for that distance; -1 with none.
+func above_share(part: String, from: Vector2) -> float:
+	var profile := profile_for(part)
+	if profile == null or profile.shots_into.is_empty():
+		return -1.0
+	var section := profile.into_section(part_middle(part).distance_to(from) / World.PX_PER_M)
+	return section.above / 100.0 if section else -1.0
+
+
+## The part of the tower over world `point` on the ground (someone under it):
+## the shelter over the cabin's floor, the top over the deck and the stair's
+## top landing, the upper stairs over the upper flight and mid landing; ""
+## elsewhere (the lower flight's solid to the ground: nobody's under it).
+func part_above(point: Vector2) -> String:
+	if not built:
+		return ""
+	var m := _metres(point)
+	if CABIN.has_point(m):
+		return "shelter"
+	if DECK.has_point(m) or TOP_LANDING.has_point(m):
+		return "top"
+	if Rect2(STAIR_X.x, FLIGHT1_Y.x, STAIR_X.y - STAIR_X.x, MID_Y.y - FLIGHT1_Y.x).has_point(m):
+		return "upper_stairs"
+	return ""
 
 
 ## `part`'s cover class (cover.gd) for whoever's in it, from how much it stops.
@@ -454,20 +538,17 @@ func height_class_of_unit(unit: Node) -> int:
 
 
 ## The share (0..1) of `shooter`'s shots that get through the tower's steel
-## to `target` in it (its part's `<part>_pass_through`), more if the shooter's
-## firing down on it from higher up (on this or another tower: that one's
-## sections, with the part's height class); all of them if the target isn't
-## in or under it, or the shooter's in the same part (both on the top).
+## to `target` in it (its part's pass-through for how far away the shooter
+## is: part_pass_from()), more if the shooter's firing
+## from higher up (on this or another tower: the Shots Away of where it
+## stands, with the part's height class: cover.gd away_pass()); all of them
+## if the target isn't in or under it, or the shooter's in the same part
+## (both on the top).
 func cover_pass(target: Node, shooter: Node) -> float:
 	var part := part_of(target)
 	if part == "" or (shooter != null and part_of(shooter) == part):
 		return 1.0
-	var through := part_pass(part)
-	var from = shooter.get("tower") if shooter != null and is_instance_valid(shooter) else null
-	if from != null and is_instance_valid(from):
-		through = from.fired_down_pass(part_height_class(part), target.global_position, through,
-				shooter.elevation_m, from.height_class_of_unit(shooter))
-	return through
+	return Cover.away_pass(shooter, part_height_class(part), target.global_position, part_pass_from(part, shooter))
 
 
 ## Whether `unit` is on the stairs (either flight or the mid landing).
@@ -485,50 +566,108 @@ func deck_in() -> Vector2:
 	return to_global(DECK_IN * World.PX_PER_M)
 
 
-## Whether `unit` is up high on the tower: on the upper stairs, the top or in
-## the shelter.
-func is_up_high(unit: Node) -> bool:
-	return part_of(unit) in ["upper_stairs", "top", "shelter"]
-
-
-## Whether world `point` is inside the overlook box.
-func overlooks(point: Vector2) -> bool:
-	return overlook_box.has_point(_metres(point))
-
-
-## Whether, seen or shot at from world `from`, `unit` has only the tower to
-## protect it, with height class 1 and 2 cover in between not counting: it's
-## up high here and `from` is in the overlook box.
-func in_full_view(unit: Node, from: Vector2) -> bool:
-	return is_up_high(unit) and overlooks(from)
-
-
-## Which section (1..3) world `point` is in (3: anywhere past section 2).
-func section_at(point: Vector2) -> int:
-	var d := global_position.distance_to(point) / World.PX_PER_M
-	var all := sections()
-	for i in all.size():
-		if d <= all[i][0]:
-			return i + 1
-	return 0
-
-
 # ------------------------------------------------------------- the levels --
 
 ## Whether a square on the ground at world `at`, moving at `velocity`, steps
-## onto the stair here: it's built, and the square is walking up into its foot.
+## onto the stair here: it's built, and the square is walking up into its foot,
+## inside the flared guides.
 func steps_on(at: Vector2, velocity: Vector2) -> bool:
 	if not built:
 		return false
 	var heading := velocity.rotated(-global_rotation)
-	return FOOT_ON.has_point(_metres(at)) and heading.y < -1.0
-
-
-## Whether a square up on the tower at world `at` has walked back off it,
-## out of the stair's foot (or it's somehow off its outline, or the tower's gone).
-func steps_off(at: Vector2) -> bool:
 	var m := _metres(at)
-	return not built or m.y > FOOT_OFF_Y or not (on_surface(at, 0.3) or FOOT_APRON.has_point(m))
+	return FOOT_ON.has_point(m) and _in_funnel(m) and heading.y < -1.0
+
+
+## Whether a square at `m` (metres) is wholly between the stair's sides and
+## the flared guides out in front of its foot (a few cm' slack).
+func _in_funnel(m: Vector2) -> bool:
+	var half_width := (STAIR_X.y - STAIR_X.x) / 2.0 + maxf(0.0, m.y - FLIGHT2_Y.y) * FLARE_PER_M
+	return absf(m.x - (STAIR_X.x + STAIR_X.y) / 2.0) + UNIT_HALF_M <= half_width + 0.03
+
+
+## Where `count` squadmates sent to world `point` up here stand (world): in the
+## STAY_AREA nearest it (the shelter only if it's in the shelter), on a grid
+## STAY_PITCH_M apart filling it, nearest `point` first; once that's full, on
+## into the next nearest. More than they all hold share the first spot (up
+## here squares pass each other).
+func stay_spots(point: Vector2, count: int) -> Array[Vector2]:
+	var m := _metres(point)
+	# On the stair, its landings; on the deck, its walkways (and the shelter if
+	# it's in it): never across a railing to the other.
+	var stair := _on_stair(m)
+	var areas: Array = []
+	for area: Rect2 in STAY_AREAS:
+		if area == CABIN and not CABIN.has_point(m):
+			continue
+		if _on_stair(area.get_center()) != stair:
+			continue
+		areas.append(_room_in(area))
+	areas.sort_custom(func(a: Rect2, b: Rect2): return (m.distance_to(m.clamp(a.position, a.end))
+			< m.distance_to(m.clamp(b.position, b.end))))
+	var spots: Array[Vector2] = []
+	for room: Rect2 in areas:
+		var start := m.clamp(room.position, room.end)
+		var grid: Array[Vector2] = [start]   # where it was sent first, then the grid's points nearest it
+		var cols := floori(room.size.x / STAY_PITCH_M) + 1
+		var rows := floori(room.size.y / STAY_PITCH_M) + 1
+		var cells: Array[Vector2] = []
+		for i in cols:
+			for j in rows:
+				cells.append(room.position + room.size * Vector2(
+						0.5 if cols == 1 else float(i) / (cols - 1), 0.5 if rows == 1 else float(j) / (rows - 1)))
+		cells.sort_custom(func(a, b): return a.distance_to(start) < b.distance_to(start))
+		grid.append_array(cells)
+		for spot in grid:
+			if spots.any(func(s): return s.distance_to(spot) < STAY_PITCH_M * 0.8):
+				continue
+			spots.append(spot)
+			if spots.size() == count:
+				break
+		if spots.size() == count:
+			break
+	while spots.size() < count:
+		spots.append(spots[0])
+	var out: Array[Vector2] = []
+	for spot in spots:
+		out.append(to_global(spot * World.PX_PER_M))
+	return out
+
+
+## Whether world `at` (a square up here) is on the stair: its landings or
+## flights, not the deck.
+func on_stair_at(at: Vector2) -> bool:
+	return _on_stair(_metres(at))
+
+
+## Whether world `at` (a square up here) is somewhere to stand (STAY_AREAS).
+func can_stay(at: Vector2) -> bool:
+	var m := _metres(at)
+	return STAY_AREAS.any(func(area: Rect2): return area.has_point(m))
+
+
+## Where a square's middle can be in `area` (metres) without poking out of it.
+func _room_in(area: Rect2) -> Rect2:
+	var h := Vector2(minf(UNIT_HALF_M, area.size.x / 2.0), minf(UNIT_HALF_M, area.size.y / 2.0))
+	return area.grow_individual(-h.x, -h.y, -h.x, -h.y)
+
+
+## Whether a square on the ground at world `at` is down by the stair's foot,
+## where it's drawn over the stairs (FOOT_OVER).
+func by_foot(at: Vector2) -> bool:
+	return FOOT_OVER.has_point(_metres(at))
+
+
+## Whether a square up on the tower at world `at`, moving at `velocity`, has
+## walked back off it, out of the stair's foot (or it's somehow off its
+## outline, or the tower's gone). Walking down (south), that's once it's clear
+## of the bottom step; otherwise out past FOOT_OFF_Y, so one that's just
+## stepped on walking up isn't put straight off again.
+func steps_off(at: Vector2, velocity := Vector2.ZERO) -> bool:
+	var m := _metres(at)
+	var heading := velocity.rotated(-global_rotation)
+	return (not built or m.y > FOOT_OFF_Y or (m.y > FOOT_CLEAR_Y and heading.y > 1.0)
+			or not (on_surface(at, 0.3) or FOOT_APRON.has_point(m)))
 
 
 ## Whether world `at` is on the deck, the stair's top landing, flights or mid

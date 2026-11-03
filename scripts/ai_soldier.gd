@@ -404,6 +404,12 @@ func _walk_to(point: Vector2, speed_fraction: float) -> Vector2:
 		_arrive()
 		return Vector2.ZERO
 	var ease_off := clampf(to.length() / (SLOW_DOWN_M * px), 0.3, 1.0)
+	# On a watch tower's stair, the last stretch is straight at it too (as
+	# _tower_step()): steering round the stair's railings turned it back up the
+	# flight, and it gave up there (Mike, 2026-11-02: sent onto the ramp, it
+	# went to the top). On the deck it steers as usual, round the shelter's corners.
+	if tower and tower.on_stair_at(global_position):
+		return (point - global_position).normalized() * speed_fraction * ease_off
 	return _steer(to) * speed_fraction * ease_off
 
 
@@ -542,10 +548,11 @@ func _line_blocked() -> bool:
 ## doesn't hide them either: they're looking over the top, so they show
 ## (spotting someone, enemy.gd _check_intruders(): two sides each dug in
 ## behind a wall see each other).
-## With `over_low`, nothing of height class 1 or 2 hides it (someone up high
-## on a watch tower, seen from its overlook box: cover.gd in_full_view()).
+## Looking at `seen` (a square) standing somewhere with a height profile,
+## low cover doesn't hide it if its Shots Into says Seen for how far away
+## `from` is (cover.gd seen_past()).
 ## A watch tower's railings and cabin walls never do (tower_walls.gd).
-func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := false, over_low := false) -> bool:
+func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := false, seen: Node2D = null) -> bool:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.create(from, to)
 	var skip: Array[RID] = []
@@ -560,7 +567,7 @@ func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := f
 		var over_cover: bool = ((hit.collider.has_method("in_zone") and (past_cover
 				or hit.collider.in_zone(from) or (seen_over and hit.collider.in_zone(to))))
 				or (hit.collider.has_method("sees_through") and hit.collider.sees_through()))
-		if over_low and Cover.height_class_of(hit.collider) <= 2:
+		if seen != null and Cover.seen_past(hit.collider, seen, from):
 			over_cover = true
 		if not hit.collider.has_method("take_hit") and not over_cover:
 			return false
@@ -614,7 +621,7 @@ func _in_standoff() -> bool:
 	for foe: Node2D in _foes():
 		var d := global_position.distance_to(foe.global_position)
 		if (d < best_d and not _shielded(foe)
-				and _clear_view(global_position, foe.global_position, true, false, Cover.in_full_view(foe, global_position))):
+				and _clear_view(global_position, foe.global_position, true, false, foe)):
 			best_d = d
 			window = foe
 	if window != null:
@@ -630,30 +637,23 @@ func _in_standoff() -> bool:
 ## its shots go over that one (sandbags.gd lets_bullet_through(), as the
 ## bullets judge it). Nor does one the foe is firing over (its head up,
 ## soldier.gd `exposed_s`; sandbags.gd EXPOSED_STOP): that's a window.
-## And firing down from up a watch tower, lower cover counts for less
-## (cover.gd fired_down_extra(), the tower's sections). A foe in or under a
-## watch tower is shielded by its steel if that's class 3 cover for it (the
-## cabin: cover.gd tower_pass()).
-## Someone up high on a watch tower seen from inside its overlook box has only
-## the tower to shield them: height class 1 and 2 cover doesn't count
-## (cover.gd in_full_view()).
+## And from somewhere high, cover as high or lower counts for less (cover.gd
+## height_extra(): the Shots Away of where it stands). A foe in or under a watch
+## tower is shielded by its steel if that's class 3 cover for it (the cabin:
+## cover.gd tower_pass()).
 func _shielded(foe: Node2D) -> bool:
 	if Cover.class_for(1.0 - Cover.tower_pass(foe, self)) == Cover.HEAVY:
 		return true
 	var from: Vector2 = _rifle.muzzle_position()
-	var full_view := Cover.in_full_view(foe, global_position)
 	var space := get_world_2d().direct_space_state
 	var ray := PhysicsRayQueryParameters2D.create(from, foe.global_position, HIDE_MASK, _unit_rids())
 	for i in 6:   # past cover it shoots over, and anything light
 		var hit := space.intersect_ray(ray)
 		if hit.is_empty():
 			return false
-		if full_view and Cover.height_class_of(hit.collider) <= 2:
-			ray.exclude = ray.exclude + [hit.rid]
-			continue
 		var over: bool = hit.collider.has_method("in_zone") and hit.collider.in_zone(from)
 		var stops := Cover.stop_chance_for(hit.collider, hit.position, foe)
-		stops *= 1.0 - Cover.fired_down_extra(hit.collider, hit.position, self, stops)
+		stops *= 1.0 - Cover.height_extra(hit.collider, hit.position, self, stops)
 		if not over and Cover.class_for(stops) == Cover.HEAVY:
 			return true   # (firing over it, the foe's exposed: not heavy then, a window)
 		ray.exclude = ray.exclude + [hit.rid]

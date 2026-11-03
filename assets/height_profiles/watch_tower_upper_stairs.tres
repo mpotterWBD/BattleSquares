@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="HeightProfile" format=3 uid="uid://ccvuksmxgqo1q"]
+
+[ext_resource type="Script" uid="uid://ce0j4l5ttr6kj" path="res://scripts/height_profile.gd" id="1_exnsh"]
+[ext_resource type="Script" uid="uid://b6ydr3escjnkt" path="res://scripts/shot_section.gd" id="2_l3oxq"]
+[ext_resource type="Script" uid="uid://xf2l48yqkqtc" path="res://scripts/shot_into_section.gd" id="3_wxedj"]
+
+[sub_resource type="Resource" id="Resource_wqyk7"]
+resource_name = "Section 1"
+script = ExtResource("2_l3oxq")
+class_1_pass_through = 60
+
+[sub_resource type="Resource" id="Resource_dfne0"]
+resource_name = "Section 2"
+script = ExtResource("2_l3oxq")
+radius_m = 10.0
+class_1_pass_through = 45
+
+[sub_resource type="Resource" id="Resource_jgnba"]
+resource_name = "Section 3"
+script = ExtResource("2_l3oxq")
+radius_m = 0.0
+class_1_pass_through = 30
+
+[sub_resource type="Resource" id="Resource_6r0w7"]
+resource_name = "Into Section 1"
+script = ExtResource("3_wxedj")
+radius_m = 3.0
+pass_through = 97
+seen = false
+
+[sub_resource type="Resource" id="Resource_exnsh"]
+resource_name = "Into Section 2"
+script = ExtResource("3_wxedj")
+seen = false
+metadata/_custom_type_script = "uid://xf2l48yqkqtc"
+
+[resource]
+script = ExtResource("1_exnsh")
+height_class = 2
+pass_through = 80
+shots_away = Array[ExtResource("2_l3oxq")]([SubResource("Resource_wqyk7"), SubResource("Resource_dfne0"), SubResource("Resource_jgnba")])
+shots_into = Array[ExtResource("3_wxedj")]([SubResource("Resource_6r0w7"), SubResource("Resource_exnsh")])

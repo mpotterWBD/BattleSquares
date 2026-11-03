@@ -51,6 +51,14 @@ const DEATH_MENU_DELAY_S := 0.6   ## real seconds after coming to rest
 ## square is placed (scripts/arrival.gd). Untick to start on the ground
 ## there (early-deploy crates still parachute in first).
 @export var drop_off_animation := true
+## Testing: endless spare magazines, always full (the rifle's `spare_mags` at
+## -1: Mike, 2026-11-02). You still reload (R); the ammo panel says MAGS
+## unlimited. Unticked (even mid-game, from the Remote tree) it's back to the
+## magazines it really carries.
+@export var unlimited_ammo := false:
+	set(value):
+		unlimited_ammo = value
+		_apply_unlimited_ammo()
 ## The command circle: how far its voice carries, all round. (Until
 ## 2026-10-29 this was 2.475 m plus an 8 m voice cone out of its front face.)
 @export var aura_radius_m := 8.0
@@ -115,11 +123,13 @@ var _carry_view: Node2D
 var _ammo_hud: PanelContainer
 var _ammo_label: Label
 var _mags_label: Label
+var _spare_mags_was := -2   ## the rifle's own spare magazines, while unlimited ammo's on (-2: not yet known)
 
 
 func _ready() -> void:
 	super()
 	add_to_group("player")
+	_apply_unlimited_ammo()
 	# A fresh start (statics and the time scale outlive a scene reload).
 	World.player_dead = false
 	World.placing = false
@@ -225,6 +235,19 @@ func _update_run_steps(delta: float) -> void:
 		_run_steps.volume_db -= (RUN_STEPS_DB - RUN_STEPS_QUIET_DB) / RUN_STEPS_FADE_S * delta
 		if _run_steps.volume_db <= RUN_STEPS_QUIET_DB:
 			_run_steps.stop()
+
+
+## Unlimited ammo on: the rifle's spares endless (its own count kept, to go
+## back to); off: its own count again. (Before it's ready, _ready() does it.)
+func _apply_unlimited_ammo() -> void:
+	var rifle := get_node_or_null("Rifle")
+	if rifle == null or not is_node_ready():
+		return
+	if unlimited_ammo and rifle.spare_mags >= 0:
+		_spare_mags_was = rifle.spare_mags
+		rifle.spare_mags = -1
+	elif not unlimited_ammo and rifle.spare_mags < 0 and _spare_mags_was >= -1:
+		rifle.spare_mags = _spare_mags_was
 
 
 ## Holding the right mouse button: the ammo panel beside the square, with

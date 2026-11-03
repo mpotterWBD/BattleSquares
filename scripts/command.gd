@@ -46,6 +46,11 @@ extends Node2D
 ##     on release (as many as fit and as are carried; red ones out of reach
 ##     or on top of another are skipped). Right click cancels. The
 ##     player carries a limited number of each (player.gd `deployables`).
+##   - click the little triangle just left of the player to fold the menus
+##     away (and again to bring them back); they stay how they were left.
+##   - click a supply crate: the selection (or everyone in the circle) build
+##     from it, or if it's strapped with nothing to build, the nearest of
+##     them alone goes and undoes its straps.
 ## The circle limits who hears and can be selected, not where they can go.
 ## Anyone who leaves the circle drops out of the selection (they can't hear
 ## further orders), and the selection is cleared whenever Space is pressed
@@ -65,6 +70,13 @@ const PICK_RADIUS_M := 0.24      ## a click this close to a squadmate's centre p
 const SPACING_M := 0.7           ## gap between squadmates sent to the same spot
 const RING_RADIUS_M := 0.34
 const CRATE_PICK_PX := 6.0        ## a click this far outside a crate's pallet still picks it
+const AMMO_CAN_PICK_M := 0.35     ## a click this close to an ammo can's middle picks it
+## Out of ammo (ai_soldier.gd is_out_of_ammo()): over a squadmate's upper
+## right while commanding, a red "no" sign over a magazine (Mike, 2026-11-02).
+const NO_AMMO_AT_M := Vector2(0.4, -0.22)
+const NO_AMMO_RADIUS_M := 0.15
+const NO_AMMO_RED := Color(0.9, 0.12, 0.1)
+const NO_AMMO_MAG := Color(0.16, 0.16, 0.15)
 ## DEPLOY items that are built from supply crates (crate.gd `builds`) rather
 ## than carried: there has to be one with stock somewhere on the map, and
 ## what's laid is a site until its parts are brought from it.
@@ -119,6 +131,10 @@ const ATTENTION_MIN_M := 0.5
 const ATTENTION_TURN_DEG := 15.0   ## how far one scroll-wheel notch turns the formation (or equipment being placed)
 const FORMATIONS := ["follow", "lead"]   ## orders that put squadmates in a formation
 const MENU_GAP_PX := 36.0   ## screen gap between the player's square and the menus
+## The little triangle in that gap that folds the menus away and back (Mike,
+## 2026-11-02): its gap from the player's square (its size: the Inspector's
+## Menu Toggle Px).
+const TOGGLE_GAP_PX := 5.0
 const DEPLOY_GAP_PX := 28.0   ## between the ORDERS buttons and DEPLOY under them
 const MENU_PICKING_ALPHA := 0.35   ## the menus while a click on the field is wanted
 const SNAP_M := 0.4   ## a row-laid item's ghost snaps onto a free end within this of the mouse
@@ -156,6 +172,8 @@ var _order_buttons: Array[Button] = []
 var _deploy_menu: VBoxContainer
 var _deploy_button: Button
 var _back_button: Button   ## in radio command mode: back to the RADIO menu
+var _menu_toggle: Button   ## the triangle beside the player that shows or hides the menus
+var _menus_open := true    ## (kept from one go in command mode to the next)
 var _ground_layer: Node2D
 
 ## Pop-outs (scripts/hold_popout.gd): formation shapes, opened for
@@ -191,6 +209,11 @@ var _attention_shape := ""
 ## The way the formation will face once the scroll wheel has turned it
 ## (radians); NAN until then, when it faces the player.
 var _attention_facing := NAN
+
+## The size of the triangle beside the player in command mode that shows and
+## hides the menus (screen pixels, square). Bigger than fits in the gap
+## beside the player, the menus move out to make room.
+@export_range(12, 80, 1, "suffix:px") var menu_toggle_px := 26.0
 
 
 func _ready() -> void:
@@ -387,6 +410,9 @@ func _draw() -> void:
 			draw_rect(box, COLOR, false, 1.5)
 		_draw_fire(px)
 		_draw_attention(px)
+		for unit in _squad():
+			if not unit.dead and unit.is_out_of_ammo():
+				_draw_no_ammo(unit.global_position + NO_AMMO_AT_M * px, px)
 	for ping in _pings:
 		var t: float = ping.age / PING_TIME_S
 		draw_arc(ping.pos, (0.1 + 0.3 * t) * px, 0.0, TAU, 32, Color(ping.get("color", COLOR), 1.0 - t), 2.0, true)
@@ -421,6 +447,32 @@ func _draw_fire(px: float) -> void:
 	draw_arc(at, size, 0.0, TAU, 40, color, 2.0, true)
 	for dir in [Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT, Vector2.UP]:
 		draw_line(at + dir * size * 0.6, at + dir * size * 1.4, color, 2.0, true)
+
+
+## Out of ammo, at `at`: a curved magazine inside a red ring with a slash
+## across it, top left to bottom right.
+func _draw_no_ammo(at: Vector2, px: float) -> void:
+	var r := NO_AMMO_RADIUS_M * px
+	draw_circle(at, r, Color(1, 1, 1, 0.55))   # a pale disc behind, so it reads on grass
+	# The magazine: a banana shape, curving away toward its foot, leaning
+	# across the slash so both show.
+	var mag := PackedVector2Array()
+	var half_w := r * 0.26
+	var steps := 6
+	var spine: Array[Vector2] = []
+	for i in steps + 1:
+		var t := float(i) / steps
+		spine.append(at + Vector2(lerpf(0.12, -0.24, t * t) * r, lerpf(-0.62, 0.62, t) * r))
+	for p in spine:
+		mag.append(p + Vector2(-half_w, 0))
+	for i in range(spine.size() - 1, -1, -1):
+		mag.append(spine[i] + Vector2(half_w, 0))
+	draw_colored_polygon(mag, NO_AMMO_MAG)
+	draw_line(spine[0] + Vector2(-half_w, 0), spine[0] + Vector2(half_w, 0), Color(0.45, 0.45, 0.42), 2.0, true)   # its lips
+	var w := maxf(2.0, r * 0.2)
+	draw_arc(at, r - w / 2.0, 0.0, TAU, 32, NO_AMMO_RED, w, true)
+	var d := Vector2(-1, -1).normalized() * (r - w / 2.0)
+	draw_line(at + d, at - d, NO_AMMO_RED, w, true)
 
 
 ## The player's command circle, drawn by the ground-level layer while
@@ -516,24 +568,61 @@ func _click(point: Vector2, shift: bool) -> void:
 		else:
 			for unit in _squad():
 				unit.selected = unit == hit
+	elif _ammo_can_at(point) != null:
+		# An ammo can: the selection (nobody selected: everyone in the circle)
+		# with room in their spares go and load from it, one at a time
+		# (squadmate.gd order_load_ammo(); Mike, 2026-11-02). Nobody with room:
+		# a red ping.
+		var can := _ammo_can_at(point)
+		var units := _order_targets().filter(func(u): return can.useful_to(u))
+		if units.is_empty():
+			_pings.append({pos = can.global_position, age = 0.0, color = REFUSE_COLOR})
+			return
+		for unit in units:
+			unit.order_load_ammo(can)
+			_pings.append({pos = unit.global_position, age = 0.0})
+		_pings.append({pos = can.global_position, age = 0.0})
 	elif _crate_at(point) != null:
 		# A supply crate with parts owed to something already laid: the
 		# selection (nobody selected: everyone in the circle) go and build
 		# from it (it takes over what's owed by other crates of its kind,
 		# if that's the one picked). A strapped crate with nothing to
-		# build: they go and undo its straps.
+		# build: only the nearest of them goes and undoes its straps (it's a
+		# one-person job: Mike, 2026-11-02), the nearest that isn't already
+		# off undoing another's, so clicking crate after crate sends one each.
+		# Nobody new if someone's already on this one; a red ping if they're
+		# all busy.
 		var units := _order_targets()
 		if units.is_empty():
 			return
 		var crate := _crate_at(point)
 		if not crate.wanted() and crate.could_take_over() > 0:
 			crate.take_over()
+		elif not crate.wanted():
+			if _squad().any(func(u): return u.unstrapping() == crate):
+				_pings.append({pos = crate.global_position, age = 0.0})
+				return
+			units = units.filter(func(u): return u.unstrapping() == null)
+			if units.is_empty():
+				_pings.append({pos = crate.global_position, age = 0.0, color = REFUSE_COLOR})
+				return
+			units.sort_custom(func(a, b): return (a.global_position.distance_to(crate.global_position)
+					< b.global_position.distance_to(crate.global_position)))
+			units = units.slice(0, 1)
 		for unit in units:
 			unit.order_build(crate)
 			_pings.append({pos = unit.global_position, age = 0.0})
 		_pings.append({pos = crate.global_position, age = 0.0})
 	else:
 		_order_move(point, _order_targets())   # nobody selected: everyone in the circle
+
+
+## The ammo can (ammo_supply.gd, up and not empty) under `point`, or null.
+func _ammo_can_at(point: Vector2) -> Node2D:
+	for can: Node2D in get_tree().get_nodes_in_group("ammo_pickups"):
+		if can.has_method("work_load") and can.global_position.distance_to(point) <= AMMO_CAN_PICK_M * World.PX_PER_M:
+			return can
+	return null
 
 
 ## The supply crate under `point` that owes parts to something being built,
@@ -587,8 +676,18 @@ func _order_move(point: Vector2, units: Array = []) -> void:
 
 
 ## Lines `units` up side by side at `point`, across the way they're going.
-## They take up the defensive if that's behind sandbags (squadmate.gd).
+## They take up the defensive if that's behind sandbags (squadmate.gd). Up a
+## watch tower they go where there's somewhere to stand, the nearest to
+## `point` (watch_tower.gd stay_spots(): not on the flights), the nearest of
+## them to each spot.
 func _send_in_line(units: Array, point: Vector2) -> void:
+	for tower: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+		if tower.built and tower.on_surface(point):
+			var left := units.duplicate()
+			for spot: Vector2 in tower.stay_spots(point, units.size()):
+				left.sort_custom(func(u, v): return u.global_position.distance_to(spot) < v.global_position.distance_to(spot))
+				left.pop_front().order_move(spot)
+			return
 	var center := Vector2.ZERO
 	for unit in units:
 		center += unit.global_position
@@ -1147,16 +1246,28 @@ func _place_menus() -> void:
 				control.set_meta("mouse_filter_was", control.mouse_filter)   # its own setting, to go back to
 			control.mouse_filter = (Control.MOUSE_FILTER_IGNORE if picking
 					else control.get_meta("mouse_filter_was"))
+		menu.visible = _menus_open
 	var speaker = _speaker()
 	if speaker == null:
 		return
 	var screen: Vector2 = get_viewport().get_canvas_transform() * speaker.global_position
 	var half_square: float = 0.2 * World.PX_PER_M * get_viewport().get_canvas_transform().get_scale().x
 	var view := get_viewport().get_visible_rect()
-	# The two stacked, ORDERS over DEPLOY, centred on the player as one.
+	# The triangle, just left of the player's square (sized every frame, so the
+	# Inspector's Menu Toggle Px shows at once).
+	var toggle_size := Vector2.ONE * menu_toggle_px
+	if _menu_toggle.size != toggle_size:
+		_menu_toggle.custom_minimum_size = toggle_size
+		_menu_toggle.size = toggle_size
+		_menu_toggle.queue_redraw()
+	var toggle_at := Vector2(screen.x - half_square - TOGGLE_GAP_PX - menu_toggle_px, screen.y - menu_toggle_px / 2.0)
+	_menu_toggle.position = toggle_at.clamp(view.position, view.end - toggle_size)
+	# The two stacked, ORDERS over DEPLOY, centred on the player as one, past
+	# the triangle.
+	var gap := maxf(MENU_GAP_PX, menu_toggle_px + TOGGLE_GAP_PX * 2.0)
 	var below := DEPLOY_GAP_PX + _deploy_menu.size.y if _deploy_menu.visible else 0.0
 	var stack := Vector2(maxf(_menu.size.x, _deploy_menu.size.x), _menu.size.y + below)
-	var left := Vector2(screen.x - half_square - MENU_GAP_PX - stack.x, screen.y - stack.y / 2.0)
+	var left := Vector2(screen.x - half_square - gap - stack.x, screen.y - stack.y / 2.0)
 	left = left.clamp(view.position, view.end - stack)
 	_menu.position = left + Vector2(stack.x - _menu.size.x, 0.0)
 	_deploy_menu.position = left + Vector2(stack.x - _deploy_menu.size.x, _menu.size.y + DEPLOY_GAP_PX)
@@ -1211,6 +1322,21 @@ func _build_hud() -> CanvasLayer:
 	_deploy_menu.add_child(_back_button)
 	layer.add_child(_deploy_menu)
 
+	# The triangle beside the player: folds the menus away and back. It points
+	# at the menus' side while they're hidden (open them that way) and back at
+	# the player while they're shown.
+	_menu_toggle = UiStyle.menu_button("", Vector2.ONE * menu_toggle_px)
+	for style in ["normal", "hover", "pressed"]:
+		var box: StyleBoxFlat = _menu_toggle.get_theme_stylebox(style).duplicate()
+		box.set_content_margin_all(0)
+		box.set_corner_radius_all(4)
+		_menu_toggle.add_theme_stylebox_override(style, box)
+	_menu_toggle.size = Vector2.ONE * menu_toggle_px
+	_menu_toggle.tooltip_text = "Show or hide the menus"
+	_menu_toggle.pressed.connect(_toggle_menus)
+	_menu_toggle.draw.connect(_draw_menu_toggle)
+	layer.add_child(_menu_toggle)
+
 	_shape_popout = HoldPopout.new()
 	_shape_popout.setup(SHAPES, _draw_shape_icon, -1.0)
 	_shape_popout.chosen.connect(func(shape, _at): _give_order(_shape_order, shape))
@@ -1230,6 +1356,24 @@ func _build_hud() -> CanvasLayer:
 	_menu.reset_size()
 	_deploy_menu.reset_size()
 	return layer
+
+
+## The triangle: shows or hides the ORDERS and DEPLOY menus (and closes any
+## pop-out off them).
+func _toggle_menus() -> void:
+	_menus_open = not _menus_open
+	_shape_popout.close()
+	_deploy_popout.close()
+	_menu_toggle.queue_redraw()
+
+
+func _draw_menu_toggle() -> void:
+	var c := _menu_toggle.size / 2.0
+	var r := _menu_toggle.size.x * 0.26
+	var color := Color.WHITE if _menu_toggle.is_hovered() else COLOR
+	var tip := -1.0 if not _menus_open else 1.0   # left (toward the menus) while hidden
+	_menu_toggle.draw_colored_polygon(PackedVector2Array([
+			c + Vector2(tip * r, 0.0), c + Vector2(-tip * r * 0.7, -r), c + Vector2(-tip * r * 0.7, r)]), color)
 
 
 ## A formation shape's icon: little squares at its (column, row) cells.

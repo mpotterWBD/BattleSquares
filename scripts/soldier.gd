@@ -424,9 +424,15 @@ func _update_tower() -> void:
 			if t.steps_on(global_position, velocity) and _wants_onto(t):
 				_set_tower(t)
 				break
-	elif not is_instance_valid(tower) or tower.steps_off(global_position):
+	elif not is_instance_valid(tower) or tower.steps_off(global_position, velocity):
 		_set_tower(null)
 	elevation_m = tower.height_at(global_position) if tower else 0.0
+	if tower == null:   # on the ground: over a stair's foot beside it, under the rest of a tower
+		z_index = 0
+		for t: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+			if t.by_foot(global_position):
+				z_index = WatchTower.GROUND_OVER_FOOT_Z
+				break
 
 
 func _set_tower(t: Node2D) -> void:

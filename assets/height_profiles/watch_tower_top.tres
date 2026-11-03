@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="HeightProfile" format=3 uid="uid://cl256bf3vb1o2"]
+
+[ext_resource type="Script" uid="uid://ce0j4l5ttr6kj" path="res://scripts/height_profile.gd" id="1_8yqwj"]
+[ext_resource type="Script" uid="uid://b6ydr3escjnkt" path="res://scripts/shot_section.gd" id="2_6qc6p"]
+[ext_resource type="Script" uid="uid://xf2l48yqkqtc" path="res://scripts/shot_into_section.gd" id="3_giyci"]
+
+[sub_resource type="Resource" id="Resource_gm7l5"]
+resource_name = "Section 1"
+script = ExtResource("2_6qc6p")
+class_1_pass_through = 78
+class_2_pass_through = 50
+
+[sub_resource type="Resource" id="Resource_eokjn"]
+resource_name = "Section 2"
+script = ExtResource("2_6qc6p")
+radius_m = 10.0
+class_1_pass_through = 55
+class_2_pass_through = 25
+
+[sub_resource type="Resource" id="Resource_vij2y"]
+resource_name = "Section 3"
+script = ExtResource("2_6qc6p")
+radius_m = 0.0
+class_1_pass_through = 33
+class_2_pass_through = 10
+
+[sub_resource type="Resource" id="Resource_2qyh3"]
+resource_name = "Into Section 1"
+script = ExtResource("3_giyci")
+pass_through = 70
+
+[sub_resource type="Resource" id="Resource_n38tk"]
+resource_name = "Into Section 2"
+script = ExtResource("3_giyci")
+radius_m = 10.0
+
+[sub_resource type="Resource" id="Resource_7xmas"]
+resource_name = "Into Section 3"
+script = ExtResource("3_giyci")
+radius_m = 0.0
+pass_through = 35
+seen = false
+
+[resource]
+script = ExtResource("1_8yqwj")
+shots_away = Array[ExtResource("2_6qc6p")]([SubResource("Resource_gm7l5"), SubResource("Resource_eokjn"), SubResource("Resource_vij2y")])
+shots_into = Array[ExtResource("3_giyci")]([SubResource("Resource_2qyh3"), SubResource("Resource_n38tk"), SubResource("Resource_7xmas")])

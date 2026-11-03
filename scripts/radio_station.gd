@@ -145,7 +145,9 @@ var _dish_shift := Vector2.ZERO
 ## frame) up onto the roof. These are their nodes.
 const MOUNT_DISH_SHIFT_M := Vector2(-0.42, -2.78)
 const DISH_NODES := ["Stand", "Dish", "DishBody", "DishZone", "DishStandBox"]
-const MOUNTED_HIDDEN := ["ShadowDesk", "ShadowElectronics", "Ground"]   ## no ground under it for these
+## No ground under it for these on a watch tower; nor the stand's legs' shadow,
+## which spilled off the roof across the deck (Mike, 2026-11-02).
+const MOUNTED_HIDDEN := ["ShadowDesk", "ShadowElectronics", "ShadowStand", "Ground"]
 
 @onready var _dish: Sprite2D = $Dish
 @onready var _dish_shadow: Sprite2D = $DishShadow
@@ -343,7 +345,7 @@ func fade_dish(alpha: float) -> void:
 	for node_name in ["Stand", "Dish"]:
 		get_node(node_name).self_modulate.a = alpha
 	var solid := alpha > 0.6   # see-through, it casts no shadow (the dish's is a shader, which a fade doesn't reach)
-	$ShadowStand.visible = solid and (built or "legs" in installed)
+	# (The stand casts none up here: MOUNTED_HIDDEN.)
 	$DishShadow.visible = solid and (built or "dish" in installed)
 
 

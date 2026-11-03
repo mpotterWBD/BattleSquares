@@ -46,6 +46,9 @@ var ground_at_m := INF           ## goes into the ground this far from the muzzl
 var _age := 0.0
 var _travelled := 0.0
 var _passed: Array[RID] = []   ## cover this shot has gone over
+## High or low, decided as it's fired (0..1, against a watch tower part's
+## Shots Into Above %: watch_tower.gd passes_by()).
+var _height_roll := randf()
 var _whizzed := false          ## has played its flyby
 var _over_left := 0.0          ## px still to fly drawn over what it's going over
 
@@ -78,7 +81,7 @@ func _physics_process(delta: float) -> void:
 		query.exclude = _passed + ([shooter.get_rid()] if is_instance_valid(shooter) else [])
 		hit = get_world_2d().direct_space_state.intersect_ray(query)
 		if hit and (hit.collider.has_method("lets_bullet_through") and hit.collider.lets_bullet_through(self)
-				or _fired_down_past(hit) or Cover.overlook_past(hit.collider, self)):
+				or _height_past(hit) or _passes_by(hit.collider)):
 			_passed.append(hit.rid)
 			hit = {}
 			continue
@@ -140,11 +143,26 @@ func _check_flyby(step: Vector2) -> void:
 		ImpactSound.play(get_parent(), near, "flyby")
 
 
-## Fired from up a watch tower at lower cover: by the section it meets it in,
-## more of a chance it gets through (cover.gd fired_down_extra()). Asked
-## once, like lets_bullet_through(), after the cover itself has said no.
-func _fired_down_past(hit: Dictionary) -> bool:
-	return randf() < Cover.fired_down_extra(hit.collider, hit.position, shooter if is_instance_valid(shooter) else null)
+## Fired from somewhere high past cover as high or lower: by the section of
+## the shooter's Shots Away it meets it in (cover.gd height_extra()), more of
+## a chance it gets through. Asked once, like lets_bullet_through(), after the cover itself
+## has said no.
+func _height_past(hit: Dictionary) -> bool:
+	var by: Node = shooter if is_instance_valid(shooter) else null
+	return randf() < Cover.height_extra(hit.collider, hit.position, by)
+
+
+## A square at the wrong height for it: on a watch tower part while this
+## shot flies low (under the part), or on the ground under a part while it
+## flies high (over it): it passes them (watch_tower.gd passes_by(), the
+## part's Shots Into Above % for how far away it was fired from).
+func _passes_by(struck: Object) -> bool:
+	if not struck.has_method("take_hit"):
+		return false
+	for tower: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+		if tower.passes_by(struck, origin, _height_roll):
+			return true
+	return false
 
 
 ## Into the ground here: a puff of dust and a thud, and the bullet's gone.
@@ -153,7 +171,7 @@ func _hit_ground() -> void:
 	var dust := HitDust.new()
 	dust.setup(position, velocity.normalized(), HitDust.GROUND_STRENGTH, true)
 	get_parent().add_child(dust)
-	dust.tuck_under_towers()   # (into the ground under a watch tower: under its deck)
+	dust.tuck_under_towers()   # (low: under anything raised, a watch tower's deck and stairs)
 	var on_road := get_tree().get_nodes_in_group("roads").any(func(road): return road.covers(position))
 	ImpactSound.play(get_parent(), position, "concrete" if on_road else "dirt")
 	queue_free()
