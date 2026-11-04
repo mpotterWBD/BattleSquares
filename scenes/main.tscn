@@ -152,7 +152,7 @@ idle_max_s = 5.0
 position = Vector2(487, 1446)
 
 [node name="WatchTower" parent="." unique_id=1092398650 instance=ExtResource("16_muem4")]
-position = Vector2(1438, 1335)
+position = Vector2(1438, 1334)
 radio_has_station = true
 
 [node name="AmmoCrate3" parent="." unique_id=493564160 instance=ExtResource("15_jkv2x")]

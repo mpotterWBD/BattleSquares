@@ -30,6 +30,18 @@ extends Node
 ## Off for the player (`drops_ammo`).
 ## An anchored square (the dummy) only topples and spins: it doesn't skid.
 ##
+## Up a watch tower (Mike, 2026-11-03) it lies where it falls, on the deck or
+## the stairs: as high as they are (drawn as big, its shadow on them) and over
+## them, under the squares still up there. Toppling or skidding into a railing
+## (watch_tower.gd wall_near()) it hits it with a clang; going outward faster
+## than OVER_RAIL_MPS it goes over (_roll_over(): tipping over the top rail),
+## drops under gravity (_drop(): smaller as it falls, its shadow out on the
+## ground below), and lands with a thump and a bounce on the ground, or on
+## the stair if that's what's under it. Slower, or at the cabin's wall, or
+## where what's past the rail is higher (the deck, from the stairs), it's
+## stopped there and slumps down against it. Its rifle comes down on whatever
+## is under it too, and can slide off the deck's edge.
+##
 ## The toppling block is pre-rendered (blender/scripts/fall_square.py): one
 ## sheet row per fall direction (FALL_DIRS, all the way round, since the
 ## fixed sun lights each direction differently) and one column per tip step
@@ -41,6 +53,8 @@ const World = preload("res://scripts/world.gd")
 const Rifle = preload("res://scripts/rifle.gd")
 const HitDust = preload("res://scripts/hit_dust.gd")
 const AmmoPickup = preload("res://scripts/ammo_pickup.gd")
+const ImpactSound = preload("res://scripts/impact_sound.gd")
+const WatchTower = preload("res://scripts/watch_tower.gd")
 
 const FALL_DIRS := 30          ## matches DIRS in fall_square.py
 const FALL_FRAMES := 12        ## matches TIPS in fall_square.py
@@ -93,6 +107,24 @@ const GUN_REST_MPS := 0.5      ## landing slower than this, it stays down
 const GUN_SKID_MPS2 := 6.0
 const GUN_SPIN_DAMP := 6.0     ## spin dies away this fast on the ground
 const GUN_DOWN_Z := -4         ## once down it's on the ground, under every square (as a dropped magazine, rifle.gd)
+const GUN_HALF_M := 0.05       ## landing on a stair, kept this far in from its side rails
+
+## Up a watch tower.
+const GROW_PER_M := 0.08       ## as soldier.gd: drawn this much bigger a metre up
+const OVER_RAIL_MPS := 0.9     ## meeting a railing going outward faster than this, it goes over
+const CLANG_MPS := 0.3         ## meeting a railing or wall faster than this, it clangs
+const OVER_S := 0.18           ## going over the rail takes this long...
+const OVER_LIFT_M := 0.25      ## ...rising this much over the top...
+const OVER_CLEAR_M := 0.3      ## ...its middle ending this far out past the rail
+const OVER_OUT_MPS := 0.7      ## then it drops, drifting on outward this fast...
+const FALL_GRAVITY := 29.4     ## three times real gravity (Mike, 2026-11-03: the fall faster, twice): 3 m in 0.45 s
+const FALL_SPIN_DPS := 120.0   ## ...turning a little, up to this fast
+const LAND_KEEP := 0.25        ## landing, it keeps this much of the drift as a skid
+const LAND_BOUNCE_DPS := 120.0 ## and rocks back up off the ground, at most this fast
+const LAND_BOUNCE_PER_MPS := 30.0   ## (this many degrees a second for each m/s it landed at)
+const LAND_STEP_M := 0.15      ## coming down, it lands on the stair rising under it by up to this much a tick
+const SHADOW_FADE_PER_M := 0.15     ## its shadow fades this much a metre it's above it...
+const SHADOW_FADE_MIN := 0.3        ## ...to no fainter than this
 
 ## Fired once, when the body has settled and stopped skidding and the rifle is down.
 signal came_to_rest
@@ -123,7 +155,24 @@ var _gun_vh := 0.0             ## m/s, up
 var _gun_turn := 0.0
 var _gun_spin := 0.0
 var _gun_down := false
+var _gun_floor := 0.0          ## the height of what's under the rifle (m)
+var _gun_from := 0.0           ## the height it last left or landed on, for its lift (m)
 var _at_rest := false
+
+var _shadows: CanvasGroup
+var _died_on: Node2D = null    ## the watch tower it died on (null: on the ground)
+var _tower: Node2D = null      ## the one it's lying on now (null once it's gone over the side)
+var _h := 0.0                  ## its height (m): the deck or stair it's on, or as it falls
+var _floor := 0.0              ## the height of what's under it (m)
+var _vh := 0.0                 ## m/s, up
+var _phase := ""               ## "" toppling and lying; "over" a railing; "falling" off it
+var _met_wall := false         ## it's met a railing or wall once (and gone over or not)
+var _over_t := 0.0
+var _over_from := Vector2.ZERO
+var _over_to := Vector2.ZERO
+var _over_tip := 0.0
+var _over_angle := 0.0
+var _over_out := Vector2.ZERO
 
 
 ## Called once, as the square dies, killed by a shot that struck `point`
@@ -136,6 +185,12 @@ func setup(square: CharacterBody2D, body_sheet: Texture2D, point: Vector2, direc
 	if _rifle.has_method("abandon_reload"):
 		_rifle.abandon_reload()
 	_rifle_shadow = square.get_node("Shadows/RifleShadow")
+	_shadows = square.get_node("Shadows")
+	if is_instance_valid(square.tower):
+		_died_on = square.tower
+		_tower = square.tower
+		_h = square.elevation_m
+		_floor = _h
 	var px := World.PX_PER_M
 	var facing: float = square.facing
 	var ahead := Vector2.from_angle(facing)
@@ -163,8 +218,9 @@ func setup(square: CharacterBody2D, body_sheet: Texture2D, point: Vector2, direc
 		sprite.scale = Vector2.ONE
 	_body.texture = body_sheet
 	_shadow.texture = SHADOW_SHEET
-	(square.get_node("Shadows") as CanvasGroup).self_modulate.a = SHADOW_ALPHA
+	_shadows.self_modulate.a = SHADOW_ALPHA
 	_set_frame()
+	_place_view()
 
 	# The rifle leaves the shoulder from wherever it was, away from the side
 	# it falls on.
@@ -172,7 +228,9 @@ func setup(square: CharacterBody2D, body_sheet: Texture2D, point: Vector2, direc
 	_rifle.get_node("Flash").visible = false
 	_gun_pos = _rifle.global_position
 	_gun_turn = _rifle.rotation
-	_gun_h = GUN_HELD_M
+	_gun_h = _h + GUN_HELD_M
+	_gun_floor = _h
+	_gun_from = _h
 	var side := -right if face == 1 else right
 	if face == 2:
 		_gun_vel = side * GUN_FLING_MPS * randf_range(0.8, 1.2)
@@ -186,11 +244,24 @@ func setup(square: CharacterBody2D, body_sheet: Texture2D, point: Vector2, direc
 
 func _physics_process(delta: float) -> void:
 	_t += delta
-	_topple(delta)
-	_skid(delta)
+	if _phase == "over":
+		_roll_over(delta)
+	elif _phase == "falling":
+		_drop(delta)
+	else:
+		_topple(delta)
+		if _tower:
+			_meet_walls()
+		_skid(delta)
+		if _tower and _phase == "":   # lying on the stair: as high as it is under its middle
+			var under: float = _landing(_lying_centre(), _h, SIZE_M / 2)[1]
+			if under > 0.0:   # (its railings keep it up here)
+				_floor = under
+				_h = under
 	_set_frame()
+	_place_view()
 	_update_gun(delta)
-	if not _at_rest and _settled and _gun_down and _vel == Vector2.ZERO:
+	if not _at_rest and _phase == "" and _settled and _gun_down and _vel == Vector2.ZERO:
 		_at_rest = true
 		_square.collision_mask = 0   # lying there: nothing moves it now
 		came_to_rest.emit()
@@ -202,7 +273,7 @@ func _offer_ammo() -> void:
 	if not drops_ammo or not _rifle.visible or _rifle.rounds <= 0:
 		return
 	var pickup := AmmoPickup.new()
-	pickup.setup(_rifle)
+	pickup.setup(_rifle, _died_on if _gun_floor > 0.0 else null)
 	var level := get_tree().current_scene
 	(level if level else _square.get_parent()).add_child(pickup)
 
@@ -241,6 +312,10 @@ func _skid(delta: float) -> void:
 	if _vel != Vector2.ZERO:
 		var hit := _square.move_and_collide(_vel * delta)
 		if hit:
+			# Up a tower, into a railing: maybe over it.
+			var touch: Dictionary = _tower.wall_near(hit.get_position(), 0.1, _square.global_position) if _tower else {}
+			if not touch.is_empty() and _meet(touch, -_vel.dot(hit.get_normal()) / px):
+				return
 			_vel = _vel.bounce(hit.get_normal()) * BUMP_KEEP
 	_spin *= exp(-SPIN_DAMP * (1.0 + flat) * delta)
 	_fall_angle += _spin * delta
@@ -250,6 +325,135 @@ func _skid(delta: float) -> void:
 		_skid_dust_in = SKID_DUST_S
 		var along := _vel.normalized()
 		_dust(_lying_centre() - along * SIZE_M / 2 * px, along, 0.4)
+
+
+## Up a tower: the body meeting a railing or the cabin's wall as it topples or
+## skids toward it (watch_tower.gd wall_near()). Over it (_meet()), or stopped
+## by it: kept clear of it, it slides down against it and stays up here.
+func _meet_walls() -> void:
+	var px := World.PX_PER_M
+	var touch: Dictionary = _tower.wall_near(_lying_centre(), SIZE_M / 2, _square.global_position)
+	if touch.is_empty():
+		return
+	var out: Vector2 = touch.out
+	var tipping := _tip_vel * SIZE_M / (PI / 2) * _fall_dir().dot(out) if _tip < PI / 2 else 0.0
+	var toward := _vel.dot(out) / px + tipping
+	if toward <= 0.0 or _meet(touch, toward):
+		return
+	_square.global_position -= out * maxf(SIZE_M / 2 - touch.distance_m, 0.0) * px
+	_vel -= out * maxf(_vel.dot(out), 0.0)
+
+
+## The first railing or wall it meets, going `toward` m/s outward: a clang,
+## and over it if that's a railing, it's going fast enough, and what's past
+## it isn't higher (from the stairs toward the deck). True if it goes over.
+func _meet(touch: Dictionary, toward: float) -> bool:
+	if _met_wall:
+		return false
+	_met_wall = true
+	if toward > CLANG_MPS:
+		ImpactSound.play(_level(), touch.point, "metal")
+	if not touch.rail or toward < OVER_RAIL_MPS:
+		return false
+	var beyond: Array = _tower.landing(touch.point + touch.out * OVER_CLEAR_M * World.PX_PER_M)
+	if not beyond.is_empty() and beyond[1] > _h + 0.05:
+		return false
+	_phase = "over"
+	_over_t = 0.0
+	_over_from = _square.global_position
+	# Flat, its middle lies a square past where it stands: that ends OVER_CLEAR_M past the rail.
+	_over_to = touch.point + touch.out * (OVER_CLEAR_M - SIZE_M) * World.PX_PER_M
+	_over_tip = _tip
+	_over_angle = _fall_angle
+	_over_out = touch.out
+	_vel = Vector2.ZERO
+	_tip_vel = 0.0
+	_square.collision_mask = 0   # over the rail and down, through nothing
+	return true
+
+
+## Going over the railing: it tips on over the top rail, turning to go over
+## it square on, then drops (_drop()).
+func _roll_over(delta: float) -> void:
+	_over_t += delta
+	var k := minf(_over_t / OVER_S, 1.0)
+	var eased := smoothstep(0.0, 1.0, k)
+	_square.global_position = _over_from.lerp(_over_to, eased)
+	_tip = lerpf(_over_tip, PI / 2, eased)
+	_fall_angle = lerp_angle(_over_angle, _over_out.angle(), eased)
+	_h = _floor + OVER_LIFT_M * sin(PI * k)
+	if k < 1.0:
+		return
+	_phase = "falling"
+	_vh = 0.0
+	_vel = _over_out * OVER_OUT_MPS * World.PX_PER_M
+	_spin = deg_to_rad(randf_range(-FALL_SPIN_DPS, FALL_SPIN_DPS))
+
+
+## Dropping off the tower under gravity, until it lands on what's under it:
+## the ground, or a lower part of the tower (the stair, over the deck's
+## railing), where it's pulled in between the stair's rails. It lands with a
+## thump and dust, rocks back up a little, and skids a short way.
+func _drop(delta: float) -> void:
+	var was := _h   # (what's under it is judged from where it was: it may be past the stair's slope by now)
+	_vh -= FALL_GRAVITY * delta
+	_h += _vh * delta
+	_square.global_position += _vel * delta
+	_fall_angle += _spin * delta
+	var below := _landing(_lying_centre(), was, SIZE_M / 2)
+	_floor = below[1]
+	if _h > _floor:
+		return
+	_h = _floor
+	_square.global_position += below[0] - _lying_centre()
+	var impact := -_vh
+	_vh = 0.0
+	_phase = ""
+	_vel *= LAND_KEEP
+	_tip = PI / 2
+	_tip_vel = -deg_to_rad(minf(LAND_BOUNCE_DPS, impact * LAND_BOUNCE_PER_MPS))
+	_settled = false
+	if _floor > 0.0:
+		# On the stair, wedged between its rails: no rocking back up, which would
+		# swing it back over the deck's railing it came over.
+		_tip_vel = 0.0
+		_settled = true
+		_square.collision_mask = WatchTower.WALL_LAYER
+	else:
+		_tower = null
+		_square.tower = null
+		_square.collision_mask = _square._ground_mask
+	_landed = true
+	_land()
+	ImpactSound.play(_level(), _lying_centre(), "metal" if _tower else "dirt")
+
+
+## What something coming down at world `at` from `from_m` up lands on:
+## [world point, height (m)]: the tower it died on where it's over a part no
+## higher, or only LAND_STEP_M higher (the stair rising under it), pulled
+## `half_m` in from a stair's side rails; else the ground (under the deck too).
+func _landing(at: Vector2, from_m: float, half_m: float) -> Array:
+	if is_instance_valid(_died_on):
+		var on: Array = _died_on.landing(at, half_m)
+		if not on.is_empty() and on[1] <= from_m + LAND_STEP_M:
+			return on
+	return [at, 0.0]
+
+
+## Drawn bigger the higher it is (as soldier.gd view_scale()), its shadow on
+## whatever's under it: further off the higher it is above it (out on the
+## ground below as it drops), and fainter.
+func _place_view() -> void:
+	var above := _h - _floor
+	_body.scale = Vector2.ONE * (1.0 + _h * GROW_PER_M)
+	_shadow.scale = Vector2.ONE * (1.0 + _floor * GROW_PER_M)
+	_shadow.position = World.SUN_DIR * above * tan(deg_to_rad(World.SUN_TILT_DEG)) * World.PX_PER_M
+	_shadows.self_modulate.a = SHADOW_ALPHA * clampf(1.0 - above * SHADOW_FADE_PER_M, SHADOW_FADE_MIN, 1.0)
+
+
+func _level() -> Node:
+	var level := get_tree().current_scene
+	return level if level else _square.get_parent()
 
 
 func _fall_dir() -> Vector2:
@@ -269,9 +473,15 @@ func _set_frame() -> void:
 
 
 ## Thump: dust bursts out from under the edges it lands on, then it darkens
-## and lies there, on the ground under the living.
+## and lies there, on the ground under the living. Up a tower it lies over the
+## deck and stairs with the squares up there (UNIT_Z), moved first in the
+## level so they're all drawn over it.
 func _land() -> void:
-	_square.z_index = BODY_DOWN_Z
+	if _tower:
+		_square.z_index = WatchTower.UNIT_Z
+		_square.get_parent().move_child(_square, 0)
+	else:
+		_square.z_index = BODY_DOWN_Z
 	add_to_group("bodies")
 	var px := World.PX_PER_M
 	var centre := _lying_centre()
@@ -285,6 +495,8 @@ func _land() -> void:
 ## How much a square at `point` (world) is on top of the body: 1 right on
 ## it, easing to 0 off its edge.
 func under_at(point: Vector2) -> float:
+	if _floor > 0.0:   # up a tower: nobody on the ground steps over it
+		return 0.0
 	var px := World.PX_PER_M
 	var d := point.distance_to(_lying_centre()) / px
 	return 1.0 - smoothstep(BODY_REACH_M, BODY_REACH_M + BODY_EDGE_M, d)
@@ -300,13 +512,26 @@ func _dust(point: Vector2, direction: Vector2, strength: float) -> void:
 
 ## The rifle flies under gravity, bounces, then skids and stops spinning.
 ## It's placed in the world, so it doesn't ride along with the body's skid.
+## Up a tower it comes down on the deck or stair under it, or past their edge
+## to the ground (the railings don't stop it); skidding off the deck's edge,
+## it falls again.
 func _update_gun(delta: float) -> void:
 	var px := World.PX_PER_M
+	var below := _landing(_gun_pos, _gun_h, GUN_HALF_M)
+	_gun_floor = below[1]
+	if _gun_down and _gun_h > _gun_floor + LAND_STEP_M:   # slid off the edge
+		_gun_down = false
+		_rifle.z_as_relative = true
+		_rifle.z_index = 0
+		_rifle_shadow.visible = true
+	elif _gun_down:   # (on a stair, up or down its slope)
+		_gun_h = _gun_floor
 	if not _gun_down:
 		_gun_vh -= GUN_GRAVITY * delta
 		_gun_h += _gun_vh * delta
-		if _gun_h <= 0.0:
-			_gun_h = 0.0
+		if _gun_h <= _gun_floor:
+			_gun_h = _gun_floor
+			_gun_from = _gun_floor
 			if -_gun_vh > GUN_REST_MPS:
 				_gun_vh = -_gun_vh * GUN_BOUNCE
 				_gun_vel *= 0.6
@@ -314,10 +539,12 @@ func _update_gun(delta: float) -> void:
 			else:
 				_gun_vh = 0.0
 				_gun_down = true
+				_gun_pos = below[0]   # (between a stair's side rails)
 				# Lying on the ground: under the squares, and flat, so no shadow
-				# of its own (it would be drawn over it).
+				# of its own (it would be drawn over it). Up a tower, over its
+				# deck and stairs with the squares up there, under its body.
 				_rifle.z_as_relative = false
-				_rifle.z_index = GUN_DOWN_Z
+				_rifle.z_index = WatchTower.UNIT_Z if _gun_floor > 0.0 else GUN_DOWN_Z
 				_rifle_shadow.visible = false
 	else:
 		_gun_vel = _gun_vel.move_toward(Vector2.ZERO, GUN_SKID_MPS2 * delta)
@@ -329,7 +556,9 @@ func _update_gun(delta: float) -> void:
 	_gun_turn += _gun_spin * delta
 	_rifle.global_position = _gun_pos
 	_rifle.rotation = _gun_turn
-	_rifle.scale = Vector2.ONE * (1.0 + _gun_h)
-	_rifle_shadow.global_position = _gun_pos + World.SUN_DIR * _gun_h * tan(deg_to_rad(World.SUN_TILT_DEG)) * px
+	# Lifted toward the camera a little above where it left or last landed
+	# (dropping off the tower that's nothing), and bigger the higher it is.
+	_rifle.scale = Vector2.ONE * (1.0 + maxf(_gun_h - _gun_from, 0.0)) * (1.0 + _gun_h * GROW_PER_M)
+	_rifle_shadow.global_position = _gun_pos + World.SUN_DIR * (_gun_h - _gun_floor) * tan(deg_to_rad(World.SUN_TILT_DEG)) * px
 	_rifle_shadow.rotation = _gun_turn
 	_rifle_shadow.scale = _rifle.scale * Rifle.SPRITE_SCALE

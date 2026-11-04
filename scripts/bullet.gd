@@ -35,6 +35,10 @@ const LIFETIME_S := 1.0
 const OVER_Z := 6                 ## drawn over the station's desk (z 4) and dish (z 5) while going over them
 const UNDER_Z := -3               ## drawn under the station's art (z -1), over the ground (z -5)
 const OVER_CLEAR_M := 1.5
+## Fired from up on a watch tower at the cabin's height (watch_tower.gd
+## up_high()): drawn over its stairs (4), deck (5) and the squares up there (6,
+## added after them), under its roof (7), not as if under the deck (Mike, 2026-11-03).
+const HIGH_Z := 6
 const COLOR := Color(1.0, 0.95, 0.7, 0.9)
 
 var velocity := Vector2.ZERO
@@ -51,6 +55,7 @@ var _passed: Array[RID] = []   ## cover this shot has gone over
 var _height_roll := randf()
 var _whizzed := false          ## has played its flyby
 var _over_left := 0.0          ## px still to fly drawn over what it's going over
+var _base_z := 0               ## drawn at this when not going over or under something (HIGH_Z from up a tower)
 
 
 func setup(from: Vector2, angle: float, speed_mps: float, shot_by: CollisionObject2D = null,
@@ -62,6 +67,11 @@ func setup(from: Vector2, angle: float, speed_mps: float, shot_by: CollisionObje
 	velocity = Vector2.from_angle(angle) * speed_mps * World.PX_PER_M
 	shooter = shot_by
 	damage = hit_damage
+	if shot_by != null and shot_by.is_inside_tree():
+		for tower: Node2D in shot_by.get_tree().get_nodes_in_group("watch_towers"):
+			if tower.up_high(shot_by):
+				_base_z = HIGH_Z
+	z_index = _base_z
 
 
 ## Into the level, so the rifle has set where it goes into the ground: logged.
@@ -80,6 +90,8 @@ func _physics_process(delta: float) -> void:
 	for i in 4:   # past up to a few walls it goes over this tick
 		query.exclude = _passed + ([shooter.get_rid()] if is_instance_valid(shooter) else [])
 		hit = get_world_2d().direct_space_state.intersect_ray(query)
+		if hit and hit.collider.has_method("stops_bullet") and hit.collider.stops_bullet(self, hit.shape):
+			break   # (a watch tower's cabin wall, fired at from up there: tower_walls.gd)
 		if hit and (hit.collider.has_method("lets_bullet_through") and hit.collider.lets_bullet_through(self)
 				or _height_past(hit) or _passes_by(hit.collider)):
 			_passed.append(hit.rid)
@@ -105,7 +117,7 @@ func _physics_process(delta: float) -> void:
 	if _over_left > 0.0:
 		_over_left -= step.length()
 		if _over_left <= 0.0:
-			z_index = 0
+			z_index = _base_z
 	if lands:
 		_hit_ground()
 		return
@@ -119,7 +131,7 @@ func _physics_process(delta: float) -> void:
 
 ## Going over something tall: drawn over it for the next OVER_CLEAR_M.
 func go_over() -> void:
-	z_index = OVER_Z
+	z_index = maxi(OVER_Z, _base_z)
 	_over_left = OVER_CLEAR_M * World.PX_PER_M + velocity.length() / Engine.physics_ticks_per_second
 
 
@@ -155,12 +167,13 @@ func _height_past(hit: Dictionary) -> bool:
 ## A square at the wrong height for it: on a watch tower part while this
 ## shot flies low (under the part), or on the ground under a part while it
 ## flies high (over it): it passes them (watch_tower.gd passes_by(), the
-## part's Shots Into Above % for how far away it was fired from).
+## part's Shots Into Above % for how far away it was fired from). Never
+## when its shooter's up on the same tower as them.
 func _passes_by(struck: Object) -> bool:
 	if not struck.has_method("take_hit"):
 		return false
 	for tower: Node2D in get_tree().get_nodes_in_group("watch_towers"):
-		if tower.passes_by(struck, origin, _height_roll):
+		if tower.passes_by(struck, origin, _height_roll, shooter if is_instance_valid(shooter) else null):
 			return true
 	return false
 

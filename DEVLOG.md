@@ -28,71 +28,53 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 
 ---
 
-## Start Here: Current State (updated 2026-10-29, afternoon)
+## Start Here: Current State (updated 2026-11-03)
 
-**Read this first in a new session.** Details are in the sections below and the dated Log.
+**Read this first in a new session.** The dated Log at the bottom has every change in detail (what, why, how it was tested); this is the summary. Work is on the `watch_tower` branch (pushed); `main` is at the commit before it.
 
 ### Controls
 
 | Input | Action |
 |-------|--------|
 | WASD / arrows | Walk (screen directions; you can strafe) |
-| **Shift** (hold) | Run, at the Player's `run_speed_mps` (Inspector; 3.2 m/s, walking 1.6). Not while carrying a part or in command mode. Aim spreads more on the move, so running shots stray more |
-| Mouse | Aim: the square turns loosely toward the cursor, and the rifle aims within its sweep |
-| Left click | Fire (one shot per click). Dead-on within the rifle's accurate range (6 m) of the click; strays more the further past it you click |
-| **Right mouse** (hold) | Aim: shows the aiming line (solid = accurate range, then a red-shading spread wedge out to the mouse, labelled with the chance the shot goes into the ground) |
-| **Space** (hold) | Command mode: command circle (8 m), ORDERS menu (left) with DEPLOY under it (hold Deploy), selection and orders. Left click a squadmate to select it; left click anywhere else orders the selection, or with nobody selected everyone in the circle: on open ground they go there, at a sandbag wall's box they dig in along it, on a supply crate they build from it |
-| **F** | Interact: at a station's desk (platform box), open/close the RADIO menu or hang up radio command; in the dish box, open/close the dish tuning wheel |
-| Esc | Close the RADIO menu (or step back out of marking an LZ) |
-| **Q** | Debug mode on/off: each square's number over it (you 0, everyone else 1, 2...), the same numbers the battle log uses. Your square takes no controls while it's on (no moving, aiming, shooting, F, or command mode). Each square also shows its state and tags (target, cover, holding fire, ammo run...). Click a square to see its ammo, spare magazines and what it's doing in full; click a crate for its contents, straps and vicinity; click anything else solid (sandbags, the desk or dish, a helicopter) for its cover class and the share of shots it stops; click open ground to clear it. Enemies' detection circles only show here. Hold the wheel button and drag to pan the view; the wheel zooms. Q again gives you control back and the view eases back onto you |
-| **F9** | Start / stop the battle log (or the BATTLE LOG button, top left). Starting wipes the last log. Written to `logs/battle_log.txt`, for Claude to assess (the battle-log skill) |
-| Right click | In command mode: move order for the selection only (or cancel equipment placement). While marking an LZ: back to the request |
+| **Shift** (hold) | Run (the Player's `run_speed_mps`, 3.2 m/s; walking 1.6). Not while carrying or commanding. Running shots stray more |
+| Mouse / left click | Aim / fire (one shot per click). Accurate to 6 m past the rifle, then a spreading cone; some shots go into the ground at range. Standing still steadies the aim |
+| **Right mouse** (hold) | The aiming line and spread wedge, and the ammo panel (rounds, spare magazines) |
+| **R** | Reload (the player's rifle doesn't reload by itself; empty, the trigger clicks) |
+| **Space** (hold) | Command mode: the 8 m command circle, the ORDERS and DEPLOY menus left of you (a small triangle beside you folds them away). Click a squadmate to select (Shift-click adds, drag a box). Left click orders the selection (nobody selected: everyone in the circle): open ground, go there; a sandbag wall's box, dig in along it; a supply crate, build from it (a strapped one with nothing to build: the nearest free one unstraps it); an ammo can, load from it; a spot on a watch tower, the nearest place to stand up there. Right click: the selection only |
+| **X** | Back: out of placing equipment or aiming the dish to the menu; X again closes it |
+| **F** | Interact with the closest thing: the radio desk (RADIO menu, hang up radio command), take a part off a crate, deliver it to a site; hold F at a strapped crate to undo its straps |
+| **Q** | Debug mode: each square's number (the battle log's) and state over it; click a square, crate, tower part or anything solid for its panel (cover class, height class, protection, and for a tower part its height profile and section circles). Enemy detection circles show only here. Wheel-button drag pans |
+| **F9** | Start / stop the battle log (`logs/battle_log.txt`; the battle-log skill reads it) |
 
-### What's in the game (`scenes/main.tscn`)
+### What's in the game
 
-- The **grass field** fills whatever the camera sees.
-- The **player** (`player.tscn`, inheriting `soldier.tscn`). Mike's `main.tscn` holds Field, Edge, Player, Camera, Command and **Arrival**: **no squadmates or helicopters are placed**. The game opens with the player **flown in by helicopter** (`scripts/arrival.gd`): it lands so the player steps out of the front starboard door exactly where the Player node is placed, after about 6.6 s. Until then the player is hidden and switched off and command mode is shut (`World.player_aboard`). Troops arrive by helicopter from a radio station (below), and tests add their own squadmates.
-- **Helicopters** (`helicopter.tscn`) appear only when sent from a station's terminal (`scripts/insertion.gd` flies them in and out).
-- **Command system** (`scripts/command.gd`):
-  - a command circle all round the player (`aura_radius_m` 8 m; the voice cone was removed on 2026-10-29). Radio operators' circles are their own setting, `radio_circle_radius_m` 4.95 m, and equipment is placed within `deploy_reach_m` 4.95 m (a brighter ring while placing; 2.475 m until 2026-10-30);
-  - selection by box or click;
-  - move orders to anywhere;
-  - an ORDERS menu: Follow me / Lead (hold for a Line/Column pop-out), **Attention** (hold for Line/Column, then click where they fall in: they form up there facing the player and stand still), Disperse, and the orange fighting orders **Fire** (arms everyone the order reaches; the next left click on a square picks the target, right click cancels; they shoot it until it dies, on top of whatever they were doing, holding fire while anyone is in the line of fire) and **Stop** (cease fire); with nothing selected, an order goes to everyone who can hear;
-  - a DEPLOY menu: Equipment → Radio station, placed as a ghost inside the aura. The player carries 1 (`player.gd` `deployables`).
-- **Deployed radio station** (`radio_station.tscn` + `scripts/radio_station.gd`):
-  - compact: an operator platform with a desk, and just south of it (no wider than the platform) the antenna, a small steerable dish, with its green tuning box to its west;
-  - **the radio terminal** (`Terminal` node, `scripts/radio_terminal.gd`). In the platform's green box (`OperatorZone`), F opens the **RADIO** menu:
-    - **Command:** radio command mode (`World.radio_commanding`, `World.radio_station`). **The command structure:** your voice (cone + aura) still works. On top of it, radio operators (`kit = "radio"`) inside *this station's* dish beam are linked, and they and anyone within their **command circle** (2× the player's aura, 4.95 m) can be commanded. You see your cone, the beam, and a circle round each operator: solid when linked, dashed when out of the beam. F or stepping off the box hangs up.
-    - **Deploy** (hold) → **Troops** / Vehicles (disabled, "soon"). Troops opens **10 slots** (2 rows of 5); fill as many as you want sent. Press a slot for the unit-type pop-out, which opens left of the panel: **Infantry** or **Radio** (a radio operator: infantry with a radio pack, `kit = "radio"`); a quick click = Infantry. **Clear** empties them.
-    - Filled slots ready one after another, `seconds_per_troop` = **1 s each (testing value; it was 30 s)**. Then **Send helicopter** gives a ghost helicopter to mark the LZ (anywhere inside the play area). A click sends the real one: it flies in from the west at 25 m, lands, unloads the troopers (who join the squad and step about 1 m clear of the doors, spread over 3 m along each side), lifts off and flies away. The request survives walking away from the desk, and while the menu is closed a timer above the box shows "3 troopers  1:30" (total time left), then "3 troopers READY";
-  - a satellite dish with its own green box. F there opens a tuning wheel. The mouse only picks a heading (white line; a green line shows where the dish points now). A left click or F locks the pick in (`target_heading`), and the dish turns to it slowly: at most 12°/s, easing in and out, so 180° takes about 15 s. A 60 m, ±18° beam shows where it actually points, in the same green and see-through as the command circles (the alphas are shared in `world.gd`). It shows while tuning and in command mode, not while the dish turns on its own. The current heading is in `dish_heading`, and `dish_tuned(heading)` is emitted when the dish arrives. **Nothing consumes it yet.**
-- **Bullets hit.** A bullet traces a ray along each tick's flight (`bullet.gd`), ignores its shooter, and stops at the first solid thing (squares, a landed helicopter's hull, a radio station). A square that's hit (`soldier.gd take_hit()`) is shoved back 0.3 m along the shot in 0.12 s (`hit_knockback_m`, `hit_knockback_s`), twists up to 20° (`hit_twist_deg`) when the hit lands off-centre, and dust bursts off the hit spot back toward the shooter (`scripts/hit_dust.gd`). **Anchored** squares (`anchored`, on for the dummy) don't move: they rock on a spring, up to 0.1 m and the same twist, and settle back where they stand. **Health:** every square has `max_health` 2 for testing (normally 100) and a rifle hit does 25 (`rifle.gd damage`), so one hit kills (4 at 100). A dead square leaves every group and the collision layers (bullets and squares pass over it) and goes down as a **ragdoll** (`scripts/death_fall.gd`): the killing shot sends it skidding ~0.3–0.45 m and spinning (if hit off-centre), it topples over whichever face was pushed (front, back or a side) under gravity, bounces and settles with dust, and bumps off anything solid it skids into. Its rifle flies free under gravity: dropped to the side, or flung and spinning when it goes over backwards. It darkens, lies 5 s, fades and is removed. The player (`max_health` 4 in `main.tscn`: two hits) dies too: it falls in slow motion with the camera closing in, stays down, and a Restart / Quit menu comes up (see 2026-10-30). Friendly fire hits too. The dummy is `invincible` for now: it takes hits (rocks, dust) but never loses health.
-- **Menu building blocks:** `scripts/ui_style.gd` (shared button and panel look) and `scripts/hold_popout.gd` (the reusable press-hold-slide-release pop-out), used by command mode and the terminal.
+- **The level** (`scenes/main.tscn`): field and road, the Player (Inspector: Drop Off Animation off, Unlimited Ammo on, as Mike has it), 10 squadmates (`Squadmate`…`Squadmate10`), supply crates (ammo, sandbags, comms, watch tower), three sandbag walls, a watch tower with a radio station on it, the Command node (Menu Toggle Px 51), Arrival (the helicopter drop-off) and the EnemySpawner (a HUD top right that sends enemy patrols in; no enemies are placed).
+- **Squares** (`soldier.gd`, everyone): health, hit reactions, ragdoll deaths, a rifle with magazines (everyone carries 2 spares, can be empty; ammo from cans, crates and the dead), climbing sandbags, going up the watch tower's stairs.
+- **Squadmates** (`squadmate.gd`, `ai_soldier.gd`): states IDLE, MOVE, FOLLOW (Follow me / Lead), ATTENTION, DEFEND (dug in at a sandbag wall), BUILD (fetch parts from crates to sites), SURPRISED (attacked while idle: run for cover, fight from it), PINNED (outnumbered against dug-in enemies: get down). Any order puts them **under orders** (no surprises, no ammo runs on their own) until Disperse. Fire / Stop orders; the standoff (hold fire with no window on a dug-in foe).
+- **Enemies** (`enemy.gd`): CALM, ENGAGE, SEARCH, RETURN, SURPRISED; 10 m detection circles, sight, hearing shots; take cover, dig in at sandbags, use ammo crates.
+- **Cover** (`cover.gd`): cover classes 1-3 by how much they stop; sandbags (exposed while you fire over them), crates, the radio desk and dish, the tower. Height classes 1-3 (sandbags 1, crates 2, the tower 3).
+- **Watch tower** (`watch_tower.gd`, built from its crate in 5 parts): climbable stair with seamless steps on and off, railings, roof and stairs fade to show who's in or under them, places to stand (top landing, east walkway by the door, south walkway, mid landing, shelter), squadmates route up and down, a radio station can go on it. Squares killed up there lie on it, or hit a railing and go over it to the ground (`death_fall.gd`). **Height profiles** (`height_profile.gd`, files in `assets/height_profiles/`), one per part (Lower Stairs, Upper Stairs, Top, Shelter): Height Class, Pass Through, **Shots Away** (firing from there: per section by the cover's distance, pass-through per cover class, for cover as high as the part or lower) and **Shots Into** (shot at there: per section by the shooter's distance, the part's Pass Through from that far, Seen, Above %). Saving a profile while the game runs is picked up live. Sections are measured from each part's own middle and drawn in debug mode.
+- **Radio station** (`radio_station.gd`, `radio_terminal.gd`): built from a comms crate; the RADIO menu: radio command (through radio operators in the dish beam), troop requests by helicopter, equipment drops by parachute (ammo, sandbag, comms and watch tower crates), the dish aimed from the menu.
+- **Deploy** (command mode): radio station, sandbags (unlimited), ammo cans, watch tower; crate-built ones go down as sites and get built from crates.
 
-### Next steps (Mike's stated direction)
+### Next steps
 
-1. **Vehicles** in the terminal's Deploy menu (currently a disabled "soon" option).
-2. **More unit types** for troop slots (only Infantry so far; add to `UNIT_TYPES` in `radio_terminal.gd`, and spawn the right scene in `insertion.gd`).
-3. **Radio soldiers / long-range comms:** the dish heading (`dish_tuned`) should matter, e.g. a contact must be inside the beam.
-4. **Helicopter extraction** (insertion is done, from the terminal). Open questions: who boards (listeners or selected? the player?) and how it's called.
-5. **Gunshot sound:** proposed a generated placeholder now and a Sonniss/Kenney recording later; the rifle's `fired` signal is ready. Not done yet.
+1. **Enemies going up a nearby watch tower** (agreed with Mike, 2026-11-02; not crates).
+2. **Seen in Shots Into:** Mike was offered making Seen off mean "can't be seen from this distance" (now it only means cover isn't ignored). Undecided.
+3. Older ideas: vehicles in the Deploy menu, more unit types, the dish heading mattering for comms, helicopter extraction.
 
 ### Loose ends and known issues
 
-- **Git:** the project is now in git (`main`, with an `origin` remote).
-- **Testing values to restore:** `seconds_per_troop` is 1 s (was 30 s) in `radio_terminal.gd`; `max_health` is 2 (was 100) in `soldier.gd`.
-
-- The `Field` node in `main.tscn` was scaled to (0.9896, 1.0028) and moved to (0, 3), probably by an accidental drag in the editor. Mike was told and it was left alone.
-- Soldier collision boxes don't rotate with facing.
-- Art is rendered for 1× zoom: at 3× the grass and squares are soft (the rifle and station are rendered at 2–4× density and stay sharp). At 0.5× the 12 m grass tile repeats visibly.
-- Flowers in the far-zoom grass are fairly dense.
-- `main.tscn` has a **Dummy nested inside another Dummy** (`Dummy/Dummy`, probably dropped onto the first one in the Scene panel). The inner one moves with the outer one, so when the outer one is shot both get shoved. Drag it onto Main to fix it. Left alone for Mike.
-- Ideas raised but not built: a speed penalty for strafing or backing up; squadmates firing; a faint dish beam always visible; choosing the helicopter's approach direction.
-- The LZ only needs its centre inside the play area: nothing stops a helicopter landing on squares, the station or another helicopter. Troopers dispersing past the play area's edge are held at the edge.
+- **Testing values to restore:** `seconds_per_troop` and `seconds_per_crate` 1 s in `radio_terminal.gd`; `max_health` 2 in `soldier.gd`; enemies' health 4 in the EnemySpawner; unlimited sandbags (`player.gd deployables`); the Player's Unlimited Ammo on.
+- The AI doesn't weigh Shots Into Above % when choosing whom to shoot (it's a roll per shot).
+- A crate on the ground under the tower's deck counts as up on the tower to the AI (a squadmate sent to it climbs the stair). A drop can land one there.
+- `scenes/main.tscn5089658625.tmp` is a leftover Godot temp file; safe to delete.
+- Tests: `tests/` (see its README). `test_ammo_can.gd`'s mate 2 doesn't fetch ammo: it's under orders, so by the ORDERS rule it won't (the test predates the rule).
 
 ### How to work on this project
 
-See `CLAUDE.md` in this folder for the working rules: testing on a scratch copy while Mike's editor is open, headless tests, and the scale and lighting rules for new art.
+See `CLAUDE.md` for the working rules (scratch-copy testing while Mike's editor is open, headless tests, art scale and lighting) and `tests/README.md` for rerunning the tests.
 
 ---
 
@@ -149,6 +131,7 @@ BattleSquares/
 │   ├── debug_overlay.gd ← Q debug mode: each square's log number over it
 │   └── sandbags.gd      ← deployable sandbag wall: solid cover, sand puffs, swept shadow
 ├── logs/                ← battle logs (has a .gdignore; not in git)
+├── tests/               ← headless test scripts (has a .gdignore; README.md says how to run them)
 ├── .claude/skills/battle-log/ ← Claude skill for reading a battle log and tuning the AI
 ├── blender/             ← ignored by Godot
 │   ├── scripts/         ← Python generators (source of truth for assets)
@@ -3046,3 +3029,81 @@ Major choices and the reasons behind them.
   - With the default 50%, shots at someone on the tower, or under it, now miss half the time from every section: tune it per part.
 - (A type slip in passes_by() broke watch_tower.gd for a minute or two; fixed.)
 - Tested (test_above_below.gd, the top's Above set to 80%, shot at from 8 m): someone on the top hit 43% of 300 (80% above x 50% through the steel = 40%); someone on the ground under the deck 18% (20% below x 75% through = 15%). test_height_smoke.gd (no script errors) and test_debug_circles.gd pass.
+
+## 2026-11-03 — Start Here brought up to date; the tests kept in the project
+
+- Mike's moving between accounts, so everything a new session needs has to live in the project.
+- **Start Here** (top of this file) rewritten for the current game. It was last updated 2026-10-29, before enemies, crates, sandbags, the tower and height profiles. It now covers the controls, what's in the level, the AI states, cover and height, next steps and loose ends.
+- **`tests/`** (with a .gdignore, so Godot never loads it): the headless test scripts from the last two sessions, which had only lived in temporary scratch folders. 82 current tests, `obsolete/` (four testing things since replaced: the overlook box, the old sections, cover-based Shots Into), `screenshots/` (windowed screenshot scripts), `tools/make_height_profiles.gd` (writes the tower's default profiles; overwrites Mike's tuning, so scratch copy only). `tests/README.md` says how to run them.
+- CLAUDE.md: Testing points to `tests/`; the note on what `main.tscn` places is corrected (10 squadmates, crates, sandbag walls and the watch tower are placed; enemies come from the EnemySpawner).
+
+## 2026-11-03 — Adding a height profile section works
+
+- **Mike:** adding a section to Shots Away didn't add one, and he expected section 3's radius to become adjustable.
+  - The last section reaches as far as a bullet goes, so its radius never counted, and the top's section 3 was saved with Radius 0. Once a 4th went after it, section 3 was an ordinary ring 0 m out: it covered nothing and drew as a dot. And the Inspector's Add Element only adds an empty slot, which counted as nothing, so past 10 m there was no section at all until one was made in it.
+- `height_profile.gd _tidy_sections()` (was `_name_sections()`), run whenever either list changes (added to, taken from, reordered, loaded):
+  - An empty slot gets a section: a copy of the one before it (a new one if it's the first). Add Element now adds a ring out past the rest, starting with the old outer ring's settings.
+  - A section that isn't the last and reaches no further than the one inside it is put RADIUS_STEP_M (5 m) past it. The top's section 3 becomes 15 m, to adjust from.
+  - Naming as before (Section 1..., Into Section 1...). Changing a radius by hand in a section doesn't come through here, so it's never undone.
+- Tested on the scratch copy:
+  - test_add_section.gd (new): the top as loaded keeps 5 / 10 / 0. Add Element on Shots Away: 4 sections, section 3 at 15 m, section 4 a separate copy with section 3's 33% / 10%, named Section 1-4; 12 m is in section 3, 20 m in section 4. Section 3 set to 25 m by hand stays; a 5th puts section 4 at 30 m. Shots Into the same (section 4 copies 35%, hidden). A first section in an empty list is a new ShotSection.
+  - test_section_names.gd and test_height_smoke.gd (no script errors) still pass.
+
+## 2026-11-03 — Shots Away greys out the classes a part doesn't count
+
+- **Mike:** grey out the section settings that won't apply. Shots Away only counts cover as high as the part or lower (`cover.gd away_pass()`: higher is just cover), so on a height class 2 part (the stairs) every section's Class 3 Pass Through did nothing.
+- `shot_section.gd` is now a @tool script with `height_class` (not saved) and `_validate_property()`: the class pass-throughs above it are read-only, which the Inspector shows greyed out. `height_profile.gd _share_height()` hands each Shots Away section the profile's height class, whenever the height class or the list changes (and on load), so changing Height Class greys or ungreys them at once. Greyed values are still saved, and come back if the height class goes up again.
+- Shots Into has no per-class settings, so nothing there is greyed.
+- Tested on the scratch copy (test_section_greyed.gd, new): upper stairs (2): Class 3 greyed in all three sections; top (3): none. The top set to 1: classes 2 and 3 greyed; a section added then is greyed the same; back to 3: none. Saved at height 1 with class 2 = 42: loads back as 42, greyed. test_add_section.gd, test_section_names.gd and test_height_smoke.gd (no script errors) still pass.
+- **Mike, later: errors adding a section.** In the editor, sections loaded before `shot_section.gd` was a @tool script are placeholders, and `_share_height()` called a method on each (`set_height_class()`): "Attempt to call a method on a placeholder instance". `height_class` is now a property with a setter, set with `section.set("height_class", ...)`, which a placeholder ignores. (Those sections don't grey until Project > Reload Current Project.)
+  - Reproduced and checked in a headless editor on the scratch copy (a throwaway plugin doing what Add Element does, through undo/redo): the method call on a placeholder gave the error; set() gives none; Mike's upper stairs file adds a section to both lists without errors (Shots Away 3 → 4, section 3 to 15 m; Shots Into 2 → 3). test_section_greyed.gd, test_add_section.gd and test_height_smoke.gd still pass.
+
+## 2026-11-03 — Deaths up the watch tower: bodies stay up there, or go over the railing
+
+- **Mike (screenshot):** a square killed on the top or the stairs always ended up on the ground below. He likes that when they fall over the side, but one falling back onto the tower should stay on it, and going over the side they clipped through the floor and the rails: make it look like they hit the rail and go over.
+  - Why: the ragdoll (`death_fall.gd`) knew nothing about the tower. Landing, the body went to the ground's draw order (BODY_DOWN_Z, under the deck) and ground size, wherever it was, so it looked like it had dropped through.
+- `death_fall.gd`, up a tower:
+  - It lies where it falls, on the deck or stair: at their height (drawn bigger, as soldier.gd view_scale(); on a stair, the height under its middle), over them with the squares up there (watch_tower.gd UNIT_Z), moved first in the level so the living are drawn over it. Its shadow lies on them.
+  - Toppling or skidding into a railing or the cabin's wall (`_meet_walls()`, and the skid's own collisions): a clang (the metal impact sound, a placeholder). Into a railing going outward faster than OVER_RAIL_MPS (0.9 m/s), it goes over (`_meet()`, `_roll_over()`): in OVER_S (0.35 s) it tips the rest of the way over the rail, turning to go over it square on and rising OVER_LIFT_M, its middle ending OVER_CLEAR_M past the rail. Then it drops under gravity (`_drop()`), drifting outward, turning a little, smaller as it falls, its shadow out on the ground below and fainter. It lands with dust, a thump (dirt, or metal on the stair) and a rock back up, and skids a short way.
+  - Not over: slower than that, at the cabin's wall, or where what's past the rail is higher (off the upper flight toward the deck). It's stopped there and slides down against it.
+  - It lands on the ground, or on the stair if that's under it (over the deck's east railing), pulled in between the stair's side rails.
+  - Its rifle comes down on whatever's under it: the deck or stair, or the ground past their edge (the railings don't stop it). On a stair it follows the slope, and skidding off the deck's edge it falls again. Its magazine pickup (`ammo_pickup.gd tower`) is drawn on the deck, and the player only takes it from up there (and a ground one only from the ground).
+  - A body up there isn't stepped over by squares walking underneath (`under_at()`).
+- `watch_tower.gd`: WALLS split into RAILS and CABIN_WALLS (WALLS is both, as before). `wall_near()`: the railing or wall nearest a point, which way is across it, and whether it's a railing. `landing()`: the deck or stair under a point and its height.
+- Tested on the scratch copy (test_tower_deaths.gd, new; 13 cases × 4 runs, a tower of its own): over the rail to the ground from the south walkway pushed south, the west of the deck pushed west, the upper flight pushed east, the top landing pushed north, the lower flight pushed west, and the mid landing pushed east (on the ground, BODY_DOWN_Z, after peaking 0.25 m over where it stood). Stays up there: the south walkway pushed north (the cabin's wall), pushed west along it, the upper flight pushed west (the deck's past its rail: slumps at x 1.80), pushed down the stair (lies 0.6-0.8 m lower down it), and in the shelter pushed west. The east walkway pushed east: over its rail onto the upper flight (1.5-1.9 m up, between its rails). On open ground: as before. Every run came to rest. (A first run had a body falling through the stair's slope to the ground under it; fixed by judging what's under it from where it was a tick before, with a small LAND_STEP_M step.)
+  - test_height_smoke.gd (squadmates up the tower in a 25 s fight; no script errors), test_tower_ways.gd, test_tower_squad.gd, test_tower_squad_climb.gd, test_watch_tower.gd, test_tower_cover.gd, test_debug_circles.gd and test_ammo_can.gd still pass.
+  - A windowed screenshot run showed a body landed on the ground below the deck in dust, but the window stopped redrawing partway, so the test's numbers are the check.
+
+## 2026-11-03 — Shots between two squares up on the tower don't go through them
+
+- **Mike:** shooting someone else on the top level with him, the shots went through them.
+  - Why: Shots Into's Above % (`watch_tower.gd passes_by()`) rolls each shot high or low as it's fired, and a low shot flies under the part, past anyone on it. That's for shots from the ground, but it was rolled whoever fired, so from the top at someone beside him half went "under" them.
+- `passes_by()` takes the shooter (`bullet.gd _passes_by()` passes it): a shooter up on the same tower as the square it reaches is firing at their level, so neither high nor low. The steel between parts (Shots Into Pass Through) still counts, as before; on the same part nothing's between.
+- Tested on the scratch copy (test_same_level_shot.gd, new; 300 real bullets each): top to top along the south walkway, 1.4 m: before 49% hit, now 100%. Top to the upper flight: before 47%, now 97% (the upper stairs' Shots Into pass-through from there, 97%). From the ground 8 m off at someone on the top: 24% (Above 50% x steel 50%), as before. test_above_below.gd, test_tower_cover.gd and test_height_smoke.gd (no script errors) still pass.
+
+## 2026-11-03 — Falling off the tower, faster
+
+- **Mike:** increase the speed of the fall. `death_fall.gd`: FALL_GRAVITY 9.8 → 19.6 (twice real gravity: off the deck, 3 m in 0.55 s, was 0.78 s), and going over the rail OVER_S 0.35 → 0.25 s. From the hit to landing, off the top: about 0.8 s, was 1.1 s.
+- Tested on the scratch copy: test_tower_deaths.gd, all 13 cases still pass (4 runs each).
+- **Found by it:** falling faster, a body going over the deck's east railing landed on the stair with less drift, its pivot edge still on the deck's side of the railing, so the rock back up after landing swung it back over the rail onto the deck (at the stair's height). Landing on the stair it now doesn't rock back (wedged between its rails); on the ground it still does. test_tower_deaths.gd: all 13 pass, twice over (8 runs of each); test_height_smoke.gd, no script errors.
+- **Mike, later: still a bit slow.** FALL_GRAVITY 19.6 → 29.4 (three times real gravity: 3 m in 0.45 s) and OVER_S 0.25 → 0.18 s. From the hit to landing off the top, about 0.65 s. test_tower_deaths.gd: all 13 pass, twice over.
+  - (test_tower_deaths.gd: the stair case's check on where the body lies widened from x 1.75-2.25 to 1.7-2.3: one run in eight ended at 1.74, 6 cm over the stair's side rail, which doesn't show.)
+
+## 2026-11-03 — The shelter stops every shot, from anywhere
+
+- **Mike:** the shelter on the watch tower has 0% pass through regardless of where it's shot from, unless a bullet goes under.
+  - With his saved profiles it already did (the shelter's Pass Through and Shots Into all 0%), but only through the tuning: shooting from the deck goes by the shooter's Shots Away for class 3 cover, and the top's could let shots in, as could the shelter's own settings.
+- `watch_tower.gd cover_pass()`: a target in the shelter gets 0 through, before anything else, whatever the profiles say. Shots flying under it (Shots Into Above, `passes_by()`) still go on to whoever's on the ground under the deck. The shelter profile's Pass Through and Shots Into Pass Through now do nothing for shots at it (its Above and Seen still count).
+- Tested on the scratch copy (test_shelter_sealed.gd, new; 200 real bullets from each place, at a square in the shelter): from the ground at 3, 7 and 15 m, from the deck east and south of the cabin, the top landing, the upper and lower flights: 0 hits each. With leaky settings (the shelter at 100% everywhere, the top's Shots Away class 3 at 100%): before the rule 93 of 200 from the ground and 200 of 200 from the deck; now 0. Someone on the ground under the shelter, from 7 m: 80 of 200 hit (low shots), as before. test_tower_cover.gd (the cabin 0%, 0 hits) passes.
+  - test_same_level_shot.gd's top-to-stair check now expects what cover_pass() says (Mike's saved top lets class 2 past fully now, so 100%, not the stairs' steel alone).
+
+## 2026-11-03 — From the top, the cabin stops shots through it
+
+- **Mike:** still shooting through the shelter when on the top. Shots at someone in it were stopped (above), but shots past it, at someone beyond the cabin, went straight through: the railings and cabin walls (`tower_walls.gd`) let every bullet through, since a bullet doesn't know how high it flies, and one fired on the ground under the deck mustn't stop in walls 3 m up.
+- `tower_walls.gd stops_bullet()`: a bullet reaching one of the cabin's walls (its shapes are WALLS in order, the railings first: `rail_count`, set by watch_tower.gd) stops there if its shooter's up on this tower on the top, in the shelter or on the upper stairs (CABIN_HIGH_PARTS: at the cabin's height). Sparks and a clang, as off the legs (`bullet_hit()`). `bullet.gd` asks it before letting anything else through. The railings still let shots through, and from the ground (and the lower stairs) shots still go under.
+- The AI the same: `blocks_sight()`, asked by `ai_soldier.gd _clear_view()`: from up there it doesn't see (so doesn't fire) through the cabin.
+- Not done: a shot from the ground at someone on the far side of the deck, past the cabin, still isn't stopped by it (those go by the deck part's Shots Into as before).
+- Tested on the scratch copy (test_shelter_sealed.gd, added to; 200 real bullets each): from the south walkway through the cabin at someone on the ground north: 0 hit; from the east walkway through it at someone on the ground west: 0. From the south walkway at someone south (open): 200. Ground to ground under the cabin: 199. The AI on the south walkway can't see through the cabin to the north, can to the south; from the ground it sees under it. The shelter checks still pass. test_height_smoke.gd (no script errors), test_same_level_shot.gd, test_tower_cover.gd, test_tower_radio_squad.gd and test_wall_sight.gd pass.
+- **Mike (screenshot), later:** shooting from the top (both walkways, the top landing, the stair by the deck), the tracer went under the deck and the cabin and came out the other side, under; he expected it over. The cabin stopped the shots, but the tracer couldn't be seen doing it: every tracer was drawn at ground level (z 0), under the tower.
+  - `bullet.gd`: fired by someone up on a tower at the cabin's height (`watch_tower.gd up_high()`: the top, the shelter, the upper stairs; HIGH_PARTS, now shared with tower_walls.gd), a tracer is drawn at HIGH_Z (6): over the stairs, deck and squares up there, under the roof. Going over or under something it comes back to that, not 0. From the ground and the lower stairs it's as before.
+  - Tested (test_shelter_sealed.gd, added to): tracer z from the top 6, the upper flight 6, the lower flight 0, the ground 0. The rest of that test, test_height_smoke.gd (no script errors), test_same_level_shot.gd and test_tower_cover.gd pass.

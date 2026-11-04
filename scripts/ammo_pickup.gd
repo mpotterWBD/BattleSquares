@@ -33,17 +33,23 @@ var _rifle: Node2D
 var _t := 0.0
 ## The square on its way to take it (null: nobody).
 var claimed_by: Node2D = null
+## The watch tower it's up on (null: on the ground). Only the player up
+## there too can take it (not from the ground under the deck).
+var tower: Node2D = null
 
 
-## `rifle` is the dead square's (rifle.gd), down on the ground.
-func setup(rifle: Node2D) -> void:
+## `rifle` is the dead square's (rifle.gd), down on the ground, or up on `on_tower`'s deck or stairs.
+func setup(rifle: Node2D, on_tower: Node2D = null) -> void:
 	_rifle = rifle
+	tower = on_tower
 
 
 func _ready() -> void:
 	add_to_group("ammo_pickups")
 	z_as_relative = false
 	z_index = -5   # painted on the ground, under the gun (death_fall.gd GUN_DOWN_Z -4) and every square
+	if tower:
+		z_index = 5   # on the tower's deck (5: added after it, so drawn over it), under the gun and the squares up there (6)
 	global_position = _rifle.global_position
 
 
@@ -57,7 +63,8 @@ func _physics_process(delta: float) -> void:
 	var player = get_tree().get_first_node_in_group("player")
 	if player == null or player.dead:
 		return
-	if player.global_position.distance_to(global_position) <= REACH_M * World.PX_PER_M and useful_to(player):
+	if (player.get("tower") == tower and player.global_position.distance_to(global_position) <= REACH_M * World.PX_PER_M
+			and useful_to(player)):
 		give_to(player)
 
 

@@ -1,3 +1,4 @@
+@tool   # (in the editor too: it greys out the classes its profile doesn't count, _validate_property())
 extends Resource
 class_name ShotSection
 ## One section of a height profile's Shots Away (height_profile.gd): a ring
@@ -16,6 +17,23 @@ class_name ShotSection
 @export_range(0, 100, 1, "suffix:%") var class_2_pass_through := 0
 ## The same for height class 3 cover (a watch tower's steel, a helicopter).
 @export_range(0, 100, 1, "suffix:%") var class_3_pass_through := 0
+
+## Its profile's height class (height_profile.gd _share_height(); not saved):
+## cover higher than this is just cover, so those classes are greyed out.
+## Set with set("height_class", ...), not a method: in the editor a section
+## loaded before this was a @tool script is a placeholder, and calling a method
+## on one is an error, where set() is just ignored (Mike, 2026-11-03).
+var height_class := 3:
+	set(value):
+		if value != height_class:
+			height_class = value
+			notify_property_list_changed()
+
+
+func _validate_property(property: Dictionary) -> void:
+	for cls in range(height_class + 1, 4):
+		if property.name == "class_%d_pass_through" % cls:
+			property.usage |= PROPERTY_USAGE_READ_ONLY
 
 
 ## The share (0..1) of shots that get through cover of height class `cls` here.

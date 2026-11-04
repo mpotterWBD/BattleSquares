@@ -46,6 +46,10 @@ the folder map current.
 - **Run tests with `--headless`.** A windowed test pops up on Mike's screen
   and can take his keyboard focus while he's playtesting. Use a window only
   for screenshots.
+- **Existing tests are in `tests/`** (ignored by Godot; see `tests/README.md`):
+  copy one into the scratch copy's root and run it there. Save new tests
+  there too, so later sessions can rerun them; the DEVLOG entry names the
+  tests run for each change.
 - Test scripts are SceneTree scripts: `godot --path <copy> -s test.gd -- args`.
   - `_ready` and group membership happen after the first frame, so
     `await process_frame` before looking things up.
@@ -103,7 +107,7 @@ the folder map current.
 - Don't name methods after Node built-ins (`request_ready`, `ready`,
   `process` and so on). A clashing signature is a parse error that silently
   breaks whichever scene uses the script.
-- `main.tscn` places no squadmates or helicopters; tests must spawn their own. It places no enemies either: its `EnemySpawner` (enemy_spawner.gd) sends patrols in only when its Spawn button is pressed, so a test that wants enemies spawns `scenes/enemy.tscn` itself (they're in the "enemies" group). Enemies stay calm unless the player or a squadmate walks into, or someone shoots within, their 10 m detection circles. Its `Arrival` node flies the player in at the start: for a test that needs the player on the ground at once, instantiate `main.tscn` yourself and set `Arrival.enabled = false` before adding it to the tree (freeing it after `_ready` is too late; its helicopter is already on the way).
+- `main.tscn` (Mike's level; it changes) places 10 squadmates (`Squadmate`…`Squadmate10`), supply crates, sandbag walls and a watch tower with a radio station, but no helicopters. A test that wants its own squadmates can free those (or spawn `scenes/squadmate.tscn` beside them); check the file for what's there now. It places no enemies: its `EnemySpawner` (enemy_spawner.gd) sends patrols in only when its Spawn button is pressed, so a test that wants enemies spawns `scenes/enemy.tscn` itself (they're in the "enemies" group). Enemies stay calm unless the player or a squadmate walks into, or someone shoots within, their 10 m detection circles. Its `Arrival` node flies the player in at the start: for a test that needs the player on the ground at once, instantiate `main.tscn` yourself and set `Arrival.enabled = false` before adding it to the tree (freeing it after `_ready` is too late; its helicopter is already on the way).
 
 ## How Mike phrases things
 

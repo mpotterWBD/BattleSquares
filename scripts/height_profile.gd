@@ -1,4 +1,4 @@
-@tool   # (in the editor too: it names its sections as they're added, _name_sections())
+@tool   # (in the editor too: it tidies and names its sections as they're added, _tidy_sections())
 extends Resource
 class_name HeightProfile
 ## How high a place you can stand on is, for shooting (Mike, 2026-11-02): a
@@ -19,9 +19,19 @@ class_name HeightProfile
 ##     SHOOTER is: the Pass Through for shots from that far (easier to hit
 ##     from close up), and whether low cover hides them from there (Seen).
 ## The sections go nearest first; the last reaches as far as a bullet goes.
+## Adding one (_tidy_sections()) fills the Inspector's empty slot with a copy of
+## the section before it, and gives the old last one a radius past the one inside it.
 
-## How high it is (cover.gd height classes).
-@export_range(1, 3, 1) var height_class := 3
+## How far past the section inside it a section that had no radius of its
+## own (the old last one, once another's added) is put.
+const RADIUS_STEP_M := 5.0
+
+## How high it is (cover.gd height classes). Shots Away only counts cover this
+## high or lower, so its sections grey out the classes above it.
+@export_range(1, 3, 1) var height_class := 3:
+	set(value):
+		height_class = value
+		_share_height()
 ## Of the shots at someone here from anywhere else, this share gets through
 ## the place itself (the rest stop in it). Shots Into's sections, if any, say
 ## it by the shooter's distance instead.
@@ -32,23 +42,47 @@ class_name HeightProfile
 @export var shots_away: Array[ShotSection] = []:
 	set(value):
 		shots_away = value
-		_name_sections(shots_away, "Section")
+		_tidy_sections(shots_away, "Section", ShotSection)
+		_share_height()
 
 @export_group("Shots Into")
 ## Shot at here, by the shooter's distance, nearest first.
 @export var shots_into: Array[ShotIntoSection] = []:
 	set(value):
 		shots_into = value
-		_name_sections(shots_into, "Into Section")
+		_tidy_sections(shots_into, "Into Section", ShotIntoSection)
 
 
-## Names each section by its place, counting from 1 like the circles ("Section
-## 1" is the nearest): the Inspector shows the name on the element instead of
-## "ShotSection", where Godot's own list numbers start at 0 (Mike, 2026-11-02).
-static func _name_sections(sections: Array, word: String) -> void:
+## Tells each Shots Away section this place's height class, so the Inspector
+## greys out its pass-throughs for cover higher than that: cover.gd away_pass()
+## treats that as just cover, so they'd do nothing (Mike, 2026-11-03).
+func _share_height() -> void:
+	for section in shots_away:
+		if section != null:
+			section.set("height_class", height_class)   # (not a method call: see shot_section.gd)
+
+
+## Run whenever a list changes (added to, taken from, reordered, loaded):
+##   - An empty slot (the Inspector's Add Element) gets a section, a copy of
+##     the one before it (`kind` if it's the first), so adding one adds a
+##     ring out past the rest with the old last one's settings (Mike, 2026-11-03).
+##   - A section that isn't the last but reaches no further than the one
+##     inside it (the old last one's radius never counted, so it's often 0)
+##     covers nothing: it's put RADIUS_STEP_M past that one, to adjust from.
+##   - Each is named by its place, counting from 1 like the circles ("Section
+##     1" is the nearest): the Inspector shows the name on the element instead
+##     of "ShotSection", where Godot's own list numbers start at 0 (Mike, 2026-11-02).
+## Editing a section's radius by hand doesn't come through here, so it's never undone.
+static func _tidy_sections(sections: Array, word: String, kind: Script) -> void:
 	for i in sections.size():
-		if sections[i] != null:
-			sections[i].resource_name = "%s %d" % [word, i + 1]
+		if sections[i] == null:
+			sections[i] = sections[i - 1].duplicate() if i > 0 and sections[i - 1] != null else kind.new()
+	var inner := 0.0
+	for i in sections.size():
+		if i < sections.size() - 1 and sections[i].radius_m <= inner:
+			sections[i].radius_m = inner + RADIUS_STEP_M
+		inner = sections[i].radius_m
+		sections[i].resource_name = "%s %d" % [word, i + 1]
 
 
 ## The Shots Away section `distance_m` from the middle (null: none).

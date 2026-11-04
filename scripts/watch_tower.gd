@@ -92,6 +92,8 @@ const Cover = preload("res://scripts/cover.gd")
 ## sprites and shadows to show, and collision bodies to switch on.
 ## Its parts as cover (part_of(), the Inspector groups Base / Stairs / Top / Shelter).
 const PART_NAMES := ["base", "lower_stairs", "upper_stairs", "top", "shelter"]
+## Up on these a square fires, and looks, at the cabin's height (up_high()).
+const HIGH_PARTS := ["top", "shelter", "upper_stairs"]
 const PARTS := ["tower_base", "tower_platform", "tower_stairs", "tower_roof", "tower_details"]
 const PART_NODES := {
 	"tower_base": ["Base", "Shadow/Base", "LegsBody"],
@@ -134,8 +136,9 @@ const DOOR_Y := Vector2(-1.175, -0.325)
 ## The railings and cabin walls, as [from, to] in metres: everything round
 ## the deck and stair but the stair's foot (where the sides flare out, so a
 ## square coming up a little off the middle is guided in rather than caught
-## on a corner), and the cabin but its door.
-const WALLS := [
+## on a corner), and the cabin but its door. Split, since a body can go over
+## a railing but not through the cabin's wall (wall_near(), death_fall.gd).
+const RAILS := [
 	[Vector2(-1.4, -1.4), Vector2(-1.4, 1.4)], [Vector2(-1.4, 1.4), Vector2(1.4, 1.4)],
 	[Vector2(1.4, -0.6), Vector2(1.4, 1.4)], [Vector2(-1.4, -1.4), Vector2(1.4, -1.4)],
 	[Vector2(1.4, -1.8), Vector2(1.4, -1.4)], [Vector2(1.4, -1.8), Vector2(2.4, -1.8)],
@@ -146,10 +149,13 @@ const WALLS := [
 	# end there's no lip or corner to catch on without it.)
 	[Vector2(1.6, 4.1), Vector2(1.2, 4.8)], [Vector2(2.4, 4.1), Vector2(2.8, 4.8)],
 	[Vector2(1.4, -0.6), Vector2(1.6, -0.6)],
+]
+const CABIN_WALLS := [
 	[Vector2(-1.3, -1.3), Vector2(0.7, -1.3)], [Vector2(-1.3, -1.3), Vector2(-1.3, 0.7)],
 	[Vector2(-1.3, 0.7), Vector2(0.7, 0.7)],
 	[Vector2(0.7, -1.3), Vector2(0.7, -1.175)], [Vector2(0.7, -0.325), Vector2(0.7, 0.7)],
 ]
+const WALLS := RAILS + CABIN_WALLS
 ## Getting on: walking north (up the stair) with the middle in FOOT_ON, which
 ## reaches out past the bottom step (at 4.1) by more than half a square, so
 ## it's on (drawn over the stair) before any of it touches the stair. Off:
@@ -293,6 +299,7 @@ func _make_walls() -> void:
 	_walls.name = "Walls"
 	_walls.collision_layer = WALL_LAYER
 	_walls.collision_mask = 0
+	_walls.rail_count = RAILS.size()   # (its shapes are WALLS in order: the railings, then the cabin's walls)
 	add_child(_walls)
 	var px := World.PX_PER_M
 	for wall in WALLS:
@@ -484,11 +491,16 @@ func part_pass_from(part: String, shooter: Node) -> float:
 ## it was fired: bullet.gd), passes `unit` by (Mike, 2026-11-02): `unit` on a
 ## part here and the shot below it, or on the ground under a part here and the
 ## shot above it, by that part's Shots Into section for how far away `from`
-## is (its Above %: under it, the shot's above). False with no sections.
-func passes_by(unit: Node, from: Vector2, roll: float) -> bool:
+## is (its Above %: under it, the shot's above). False with no sections, and
+## for a shot by `shooter` up here too at `unit` up here: it's fired at their
+## level, so it's neither (Mike, 2026-11-03: shots at someone on the top
+## beside him went through them).
+func passes_by(unit: Node, from: Vector2, roll: float, shooter: Node = null) -> bool:
 	if not built or unit == null or not is_instance_valid(unit) or not unit is Node2D:
 		return false
 	var on: bool = unit.get("tower") == self
+	if on and shooter != null and is_instance_valid(shooter) and shooter.get("tower") == self:
+		return false
 	var part := part_of(unit) if on else (part_above(unit.global_position) if unit.get("tower") == null else "")
 	var share := above_share(part, from)
 	if share < 0.0:
@@ -543,9 +555,13 @@ func height_class_of_unit(unit: Node) -> int:
 ## from higher up (on this or another tower: the Shots Away of where it
 ## stands, with the part's height class: cover.gd away_pass()); all of them
 ## if the target isn't in or under it, or the shooter's in the same part
-## (both on the top).
+## (both on the top). None into the shelter, from anywhere, whatever its
+## profile or the shooter's Shots Away say (Mike, 2026-11-03); only shots
+## flying under it (Above, passes_by()) go on, to whoever's under the deck.
 func cover_pass(target: Node, shooter: Node) -> float:
 	var part := part_of(target)
+	if part == "shelter":
+		return 0.0
 	if part == "" or (shooter != null and part_of(shooter) == part):
 		return 1.0
 	return Cover.away_pass(shooter, part_height_class(part), target.global_position, part_pass_from(part, shooter))
@@ -689,6 +705,52 @@ func height_at(at: Vector2) -> float:
 	if m.y < MID_Y.y:
 		return MID_Z
 	return clampf(lerpf(MID_Z, 0.0, (m.y - FLIGHT2_Y.x) / (FLIGHT2_Y.y - FLIGHT2_Y.x)), 0.0, MID_Z)
+
+
+## Whether `unit` is up on this tower at the cabin's height (HIGH_PARTS):
+## its shots and sight stop in the cabin's walls (tower_walls.gd), and its
+## tracers are drawn over the deck (bullet.gd).
+func up_high(unit: Node) -> bool:
+	return (unit != null and is_instance_valid(unit) and unit.get("tower") == self
+			and part_of(unit) in HIGH_PARTS)
+
+
+## The railing or cabin wall nearest world `at`, if one's within `radius_m`
+## (death_fall.gd: a body meeting one as it falls): {point (world, on it),
+## distance_m, out (world: across it, away from `inside`'s side), rail (a
+## railing, which a body can go over; not the cabin's wall)}. Empty with none.
+func wall_near(at: Vector2, radius_m: float, inside: Vector2) -> Dictionary:
+	if not built:
+		return {}
+	var m := _metres(at)
+	var from := _metres(inside)
+	var best := {}
+	for i in WALLS.size():
+		var a: Vector2 = WALLS[i][0]
+		var b: Vector2 = WALLS[i][1]
+		var p := Geometry2D.get_closest_point_to_segment(m, a, b)
+		var d := p.distance_to(m)
+		if d > radius_m or (not best.is_empty() and d >= best.distance_m):
+			continue
+		var out := (b - a).orthogonal().normalized()
+		if out.dot(p - from) < 0.0:
+			out = -out
+		best = {"point": to_global(p * World.PX_PER_M), "distance_m": d,
+				"out": out.rotated(global_rotation), "rail": i < RAILS.size()}
+	return best
+
+
+## What's under world `at` on the tower (death_fall.gd: a body or rifle
+## coming down): [world point, height (m)] of the deck or stair there, the
+## point pulled `half_m` in from a stair's side rails so it lies between
+## them; empty if `at` isn't over the tower.
+func landing(at: Vector2, half_m := 0.0) -> Array:
+	if not built or not on_surface(at):
+		return []
+	var m := _metres(at)
+	if m.x >= STAIR_X.x - 0.1 and m.y >= FLIGHT1_Y.x:   # on the stair (as height_at())
+		m.x = clampf(m.x, STAIR_X.x + half_m, STAIR_X.y - half_m)
+	return [to_global(m * World.PX_PER_M), height_at(at)]
 
 
 ## Where a square at world `from` heads next (world) on its way to world

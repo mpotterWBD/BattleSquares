@@ -7,31 +7,37 @@
 [sub_resource type="Resource" id="Resource_wqyk7"]
 resource_name = "Section 1"
 script = ExtResource("2_l3oxq")
-class_1_pass_through = 60
+radius_m = 8.5
+class_1_pass_through = 100
+class_2_pass_through = 100
 
 [sub_resource type="Resource" id="Resource_dfne0"]
 resource_name = "Section 2"
 script = ExtResource("2_l3oxq")
-radius_m = 10.0
-class_1_pass_through = 45
+radius_m = 17.0
+class_1_pass_through = 100
+class_2_pass_through = 85
 
 [sub_resource type="Resource" id="Resource_jgnba"]
 resource_name = "Section 3"
 script = ExtResource("2_l3oxq")
-radius_m = 0.0
-class_1_pass_through = 30
+radius_m = 60.0
+class_1_pass_through = 80
+class_2_pass_through = 10
 
 [sub_resource type="Resource" id="Resource_6r0w7"]
 resource_name = "Into Section 1"
 script = ExtResource("3_wxedj")
-radius_m = 3.0
-pass_through = 97
-seen = false
+radius_m = 10.0
+pass_through = 80
+above = 75
 
 [sub_resource type="Resource" id="Resource_exnsh"]
 resource_name = "Into Section 2"
 script = ExtResource("3_wxedj")
-seen = false
+radius_m = 7.5
+pass_through = 40
+above = 80
 metadata/_custom_type_script = "uid://xf2l48yqkqtc"
 
 [resource]

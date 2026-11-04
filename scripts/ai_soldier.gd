@@ -566,7 +566,8 @@ func _clear_view(from: Vector2, to: Vector2, past_cover := false, seen_over := f
 		# sees past (partial_cover.gd sees_through(): the station's desk).
 		var over_cover: bool = ((hit.collider.has_method("in_zone") and (past_cover
 				or hit.collider.in_zone(from) or (seen_over and hit.collider.in_zone(to))))
-				or (hit.collider.has_method("sees_through") and hit.collider.sees_through()))
+				or (hit.collider.has_method("sees_through") and hit.collider.sees_through()
+					and not (hit.collider.has_method("blocks_sight") and hit.collider.blocks_sight(self, hit.shape))))
 		if seen != null and Cover.seen_past(hit.collider, seen, from):
 			over_cover = true
 		if not hit.collider.has_method("take_hit") and not over_cover:
