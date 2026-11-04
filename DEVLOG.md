@@ -30,7 +30,7 @@ Still forming. So far: move and aim, command the squad, deploy and set up equipm
 
 ## Start Here: Current State (updated 2026-11-03)
 
-**Read this first in a new session.** The dated Log at the bottom has every change in detail (what, why, how it was tested); this is the summary. Work is on the `watch_tower` branch (pushed); `main` is at the commit before it.
+**Read this first in a new session.** The dated Log at the bottom has every change in detail (what, why, how it was tested); this is the summary. The watch tower work is finished for now (Mike, 2026-11-03: taking a break from it) and merged into `main` (pushed); `watch_tower` is at the same commit.
 
 ### Controls
 
