@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="TruckSoundCuts" format=3 uid="uid://4djyc1xtub0s"]
+
+[ext_resource type="Script" uid="uid://cbw5ug4rri6rq" path="res://scripts/truck_sound_cuts.gd" id="1_cuts"]
+
+[resource]
+script = ExtResource("1_cuts")
+engine_recording = "res://assets/sfx/supply_truck/TransporetVehicle2.mp3"
+start_from_s = 0.0
+start_to_s = 2.4
+idle_1_from_s = 14.0
+idle_1_to_s = 18.8
+idle_2_from_s = 0.0
+idle_2_to_s = 0.0
+run_1_from_s = 42.0
+run_1_to_s = 54.2
+stop_from_s = 61.4
+stop_to_s = 64.0

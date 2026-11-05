@@ -7,7 +7,13 @@ extends RefCounted
 ##   "concrete"  a round into the road's asphalt (bullet.gd, road.gd covers())
 ##   "sand"      a round stopped by sandbags (sandbags.gd bullet_hit())
 ##   "metal"     a round striking steel: the ammo crate's cans, a lone ammo
-##               can (crate.gd `impact`)
+##               can (crate.gd `impact`), the watch tower's legs and cabin,
+##               anything with impact "metal" (partial_cover.gd). From
+##               BulletImpactMetal.mp3 (2026-11-03: eight rounds into steel,
+##               blender/scripts/cut_bullet_metal.py)
+##   "clang"     not a bullet: something heavy against steel, a body hitting
+##               a watch tower's railing or landing on its stair
+##               (death_fall.gd). The first metal set, from MetalImpact.mp3.
 ##   "flyby"     not an impact: the whizz of a round passing close by the
 ##               player (bullet.gd, player.gd `flyby_radius_m`)
 ## Load with:
@@ -47,6 +53,16 @@ const SOUNDS := {
 		preload("res://assets/sfx/sand_impact/sand_impact_7.wav"),
 	],
 	"metal": [
+		preload("res://assets/sfx/bullet_metal/bullet_metal_0.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_1.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_2.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_3.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_4.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_5.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_6.wav"),
+		preload("res://assets/sfx/bullet_metal/bullet_metal_7.wav"),
+	],
+	"clang": [
 		preload("res://assets/sfx/metal_impact/metal_impact_0.wav"),
 		preload("res://assets/sfx/metal_impact/metal_impact_1.wav"),
 		preload("res://assets/sfx/metal_impact/metal_impact_2.wav"),

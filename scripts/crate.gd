@@ -113,7 +113,23 @@ const PAD_KEY_ALPHA := 0.55    ## the green F, see-through like the station's
 ## The full load with the straps off; none means it has no straps.
 @export var open_texture: Texture2D
 
+## Carried by a truck's crane, or on its bed (supply_truck.gd; Mike, 2026-11-04):
+## mount() takes it off the ground (not solid, not something to work at or
+## click on), drawn over the truck's deck; `height_m` is how high it is held,
+## which makes it a touch bigger and pushes its shadow out along the sun;
+## unmount() sets it back down on the ground. (The truck moves it.)
+const CLIMB_SCALE_PER_M := 0.01   ## held up in the air, drawn this much bigger a metre (as the helicopter's)
+const MOUNT_Z := 3                ## drawn at the truck's body level (its deck is over it by tree order)
+var mounted := false
+var height_m := 0.0:
+	set(value):
+		height_m = value
+		scale = Vector2.ONE * (1.0 + height_m * CLIMB_SCALE_PER_M)
+
 signal unstrapped
+
+var _ground_z := {}                  ## its parts' layers on the ground, kept while mounted
+var _shadow_rot := INF               ## the turn its shadow was last drawn at (mounted on a turning truck)
 
 @onready var _shadow: CanvasGroup = $Shadow
 @onready var _shadow_shape: Node2D = $Shadow/Shape
@@ -166,6 +182,14 @@ func _ready() -> void:
 
 
 func _process(_delta: float) -> void:
+	if mounted:   # its shadow falls away from the sun from however high it's held, whichever way the truck faces
+		var sun := World.SUN_DIR.rotated(-global_rotation) * tan(deg_to_rad(World.SUN_TILT_DEG)) * World.PX_PER_M
+		_shadow.position = sun * height_m
+		if not is_equal_approx(global_rotation, _shadow_rot):
+			_shadow_rot = global_rotation
+			_shadow_shape.queue_redraw()
+			if _deck_shadow_shape:
+				_deck_shadow_shape.queue_redraw()
 	_ring.visible = _unstrapper != null
 	if _ring.visible:
 		_ring.rotation = -global_rotation
@@ -186,6 +210,43 @@ func _physics_process(_delta: float) -> void:
 			or not is_instance_valid(_unstrapper) or _unstrapper.dead):
 		_unstrapper = null
 		unstrap_progress = 0.0
+
+
+## Onto a truck (or into its crane's hook): off the ground's things (no longer
+## solid, in no group anyone looks it up by), drawn at the truck's level.
+func mount() -> void:
+	if mounted:
+		return
+	mounted = true
+	remove_from_group("crates")
+	_ground_z = {pallet = $Pallet.z_index, shadow = _shadow.z_index, body = $Body.z_index}
+	$Pallet.z_index = MOUNT_Z
+	$Body.z_index = MOUNT_Z
+	_shadow.z_index = -1   # over the ground, under the truck
+	if _deck_shadow:
+		_ground_z.deck = _deck_shadow.z_index
+		_deck_shadow.z_index = MOUNT_Z
+	$Collision.set_deferred("disabled", true)
+
+
+## Back on the ground where it is: solid again (if there's a load), and where
+## everyone looks for crates.
+func unmount() -> void:
+	if not mounted:
+		return
+	mounted = false
+	add_to_group("crates")
+	$Pallet.z_index = _ground_z.pallet
+	$Body.z_index = _ground_z.body
+	_shadow.z_index = _ground_z.shadow
+	_shadow.position = Vector2.ZERO
+	if _deck_shadow:
+		_deck_shadow.z_index = _ground_z.deck
+	height_m = 0.0
+	$Collision.set_deferred("disabled", not parts.is_empty() and taken >= parts.size())
+	_shadow_shape.queue_redraw()
+	if _deck_shadow_shape:
+		_deck_shadow_shape.queue_redraw()
 
 
 ## Whether `who` is close enough to work at it (take a part, undo the straps).
@@ -390,7 +451,7 @@ func _show_stage() -> void:
 	if body.visible and stage <= 0 and not strapped and open_texture:
 		body.texture = open_texture   # the full load, straps off
 	var empty := taken >= parts.size()
-	$Collision.set_deferred("disabled", empty)
+	$Collision.set_deferred("disabled", empty or mounted)
 	if empty:
 		load_m = Vector2.ZERO
 	_shadow_shape.queue_redraw()

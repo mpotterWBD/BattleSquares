@@ -29,6 +29,7 @@ const RELOAD_RING_M := 0.36   ## the reload progress arc's radius
 ## Carrying a station part (crate.gd, radio_station.gd): this much of walking
 ## speed, and no rifle (hands full).
 const CARRY_SPEED := 0.65
+const WALK_TO_EASE_M := 0.15   ## walking itself somewhere (`walk_to`), it slows over this last stretch
 ## Running on dirt: Mike's SprintOnDirt.mp3 (10.7 s of footfalls), looped
 ## while it runs, from a random point each time; quiet on the road's
 ## asphalt (road.gd covers()). It fades out over RUN_STEPS_FADE_S.
@@ -101,6 +102,14 @@ var formation_heading := -PI / 2
 ## Set while something else has the mouse (e.g. a station's tuning wheel):
 ## this square then keeps looking where it last aimed and won't fire.
 var busy := false
+## A world point it walks itself to, looking where it's going, instead of
+## taking the keys (null: none). Set by a truck it's getting in or out of
+## (supply_truck.gd), which also sets `busy` meanwhile.
+var walk_to = null
+## The vehicle it's driving (supply_truck.gd sets it once the door's shut
+## behind it), or null. Command mode's orders are the vehicle's meanwhile
+## (command.gd VEHICLE_ORDERS).
+var vehicle: Node2D = null
 
 
 ## Not taking Mike's controls: something else has the mouse (`busy`), or
@@ -297,6 +306,9 @@ func _on_fall_at_rest() -> void:
 func _move_intent() -> Vector2:
 	_speed_scale = CARRY_SPEED if carrying != "" else 1.0
 	_running = false
+	if walk_to != null:   # walking itself somewhere (into a truck), easing in over the last WALK_TO_EASE_M
+		var to: Vector2 = walk_to - global_position
+		return to.normalized() * minf(to.length() / (WALK_TO_EASE_M * World.PX_PER_M), 1.0)
 	if World.debug:
 		return Vector2.ZERO
 	if carrying == "" and Input.is_action_pressed("run") and not World.commanding():
@@ -361,6 +373,9 @@ func interact_target() -> Node:
 ## Where to aim: the mouse, except in command mode, when the mouse is busy
 ## giving orders. A gamepad stick or an AI could supply this instead.
 func _aim_point() -> Vector2:
+	if walk_to != null and global_position.distance_to(walk_to) > 0.05 * World.PX_PER_M:
+		_last_aim = global_position + (walk_to - global_position).normalized() * 10.0 * World.PX_PER_M
+		return _last_aim
 	if not World.commanding() and not _hands_off():
 		_last_aim = get_global_mouse_position()
 	return _last_aim

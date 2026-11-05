@@ -14,7 +14,7 @@ extends Node
 ##            the dish (radio_station.gd start_tuning(); it used to be F at
 ##            the dish). Click or F locks the heading in; stepping away
 ##            from the desk or Space closes it; X goes back to this menu.
-##   Deploy   hold for Troops / Equipment / Vehicles (vehicles to come).
+##   Deploy   hold for Troops / Equipment / Vehicles.
 ##            Let go on Troops:
 ##              1. MAX_TROOPS slots, in rows of PER_ROW. Press a slot for
 ##                 the unit-type pop-out (Infantry or Radio operator; a
@@ -43,6 +43,18 @@ extends Node
 ##                 something). A click sends a helicopter over to drop them
 ##                 (scripts/supply_drop.gd): each comes down by parachute
 ##                 right on its spot (scripts/air_drop.gd). Right click goes back.
+##            Let go on Vehicles (Mike, 2026-11-03: the supply truck,
+##            deployable by helicopter like troops): the same, one vehicle a
+##            helicopter:
+##              1. one slot: press it for the pop-out (Supply truck; a quick
+##                 click gives one).
+##              2. it's readied, `seconds_per_vehicle`.
+##              3. Send helicopter: a ghost of the helicopter with the truck
+##                 under it follows the mouse to mark the LZ, red where the
+##                 truck wouldn't fit (off the field, or on something); a
+##                 click sends a helicopter to bring it in slung under it on
+##                 cables and set it down there, nose east
+##                 (scripts/sling_drop.gd). Right click goes back.
 ##
 ## The request and its countdown live here, so they carry on while the
 ## player is away; reopening the menu shows where they're at, and while the
@@ -56,6 +68,7 @@ const UiStyle = preload("res://scripts/ui_style.gd")
 const HoldPopout = preload("res://scripts/hold_popout.gd")
 const Insertion = preload("res://scripts/insertion.gd")
 const SupplyDrop = preload("res://scripts/supply_drop.gd")
+const SlingDrop = preload("res://scripts/sling_drop.gd")
 const HELICOPTER := preload("res://scenes/helicopter.tscn")
 const PALLET_TEX := preload("res://assets/props/pallet.png")
 
@@ -106,13 +119,22 @@ const INFANTRY_RED := Color(0.85, 0.15, 0.12)
 const PACK_BROWN := Color(0.42, 0.29, 0.16)
 const LZ_OK := Color(0.7, 1.0, 0.7, 0.55)
 const LZ_BAD := Color(1.0, 0.45, 0.45, 0.5)
+## What a vehicle slot can hold: its scene, and for its slot and the LZ
+## ghost, its picture and the part of it that's the vehicle (in the picture's pixels).
+const VEHICLE_TYPES := [
+	{id = "supply_truck", text = "Supply truck", scene = preload("res://scenes/supply_truck.tscn"),
+			tex = preload("res://assets/vehicles/supply_truck_body.png"), region = Rect2(30, 286, 742, 230),
+			size_m = Vector2(4.3, 1.37)},   ## (supply_truck.gd LENGTH_M, WIDTH_M)
+]
+const VEHICLE_SPRITE_SCALE := 0.5   ## vehicle sprites are rendered at 2x
 
 @export var seconds_per_troop := 1.0   # 1 s for testing; was 30
 @export var seconds_per_crate := 1.0   # 1 s for testing
+@export var seconds_per_vehicle := 1.0   # 1 s for testing
 @export var zone_path: NodePath = ^"../OperatorZone"
 @export var pad_path: NodePath = ^"../StandBox"   ## the desk's middle: the green F shows there, the timer above it
 
-enum Screen { CLOSED, MENU, SLOTS, LZ, EQUIP, DZ }
+enum Screen { CLOSED, MENU, SLOTS, LZ, EQUIP, DZ, VEHICLES, VLZ }
 var screen := Screen.CLOSED
 
 ## The troop request: one entry per slot, "" while empty or a unit type id.
@@ -153,6 +175,16 @@ var _equip_buttons: Array[Button] = []
 var _equip_status: Label
 var _equip_send: Button
 
+## The vehicle request: "" or a VEHICLE_TYPES id, and how far it's readied.
+var vehicle_slot := ""
+var _vehicle_progress := 0.0
+var _vehicle_popout: HoldPopout
+var _vehicle_panel: PanelContainer
+var _vehicle_button: Button
+var _vehicle_status: Label
+var _vehicle_send: Button
+var _vehicle_ghost: Node2D
+
 @onready var _zone: Area2D = get_node(zone_path)
 
 
@@ -190,12 +222,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_lz(true)
 		elif screen == Screen.DZ:
 			_stop_dz(true)
+		elif screen == Screen.VLZ:
+			_stop_vlz(true)
 		else:
 			close()
 		get_viewport().set_input_as_handled()
 		return
 	if screen == Screen.DZ:
 		_dz_input(event)
+		return
+	if screen == Screen.VLZ:
+		_vlz_input(event)
 		return
 	if screen != Screen.LZ:
 		return
@@ -227,10 +264,14 @@ func _process(delta: float) -> void:
 		if screen == Screen.CLOSED and _player():
 			_player().busy = false
 	match screen:
-		Screen.MENU, Screen.SLOTS, Screen.EQUIP:
+		Screen.MENU, Screen.SLOTS, Screen.EQUIP, Screen.VEHICLES:
 			_place_ui()
 			_refresh_slots()
 			_refresh_equipment()
+			_refresh_vehicle()
+		Screen.VLZ:
+			_vehicle_ghost.global_position = _mouse_world
+			_vehicle_ghost.modulate = LZ_OK if _vlz_ok(_mouse_world) else LZ_BAD
 		Screen.LZ:
 			_ghost.global_position = _mouse_world
 			_ghost.modulate = LZ_OK if _lz_ok(_mouse_world) else LZ_BAD
@@ -266,6 +307,8 @@ func close() -> void:
 		_stop_lz(false)
 	if screen == Screen.DZ:
 		_stop_dz(false)
+	if screen == Screen.VLZ:
+		_stop_vlz(false)
 	_show(Screen.CLOSED)
 	_release_player()
 
@@ -290,13 +333,15 @@ func _release_player() -> void:
 
 func _show(which: Screen) -> void:
 	screen = which
-	_layer.visible = which in [Screen.MENU, Screen.SLOTS, Screen.EQUIP]
+	_layer.visible = which in [Screen.MENU, Screen.SLOTS, Screen.EQUIP, Screen.VEHICLES]
 	_slots_panel.visible = which == Screen.SLOTS
 	_equip_panel.visible = which == Screen.EQUIP
+	_vehicle_panel.visible = which == Screen.VEHICLES
 	_kinds_popout.close()
 	_types_popout.close()
 	_equip_popout.close()
-	if which in [Screen.MENU, Screen.SLOTS, Screen.EQUIP]:
+	_vehicle_popout.close()
+	if which in [Screen.MENU, Screen.SLOTS, Screen.EQUIP, Screen.VEHICLES]:
 		_place_ui()
 
 
@@ -315,11 +360,13 @@ func _on_dish() -> void:
 
 
 func _on_deploy_down() -> void:
-	_kinds_popout.set_option("vehicles", "Vehicles (soon)", true)
 	_kinds_popout.open(_deploy_button)
 
 
 func _on_kind_chosen(kind: String, _at: Vector2) -> void:
+	if kind == "vehicles":
+		_show(Screen.VEHICLES)
+		return
 	if kind == "equipment":
 		if equip_slots.is_empty():
 			_new_equip_request()
@@ -366,6 +413,8 @@ func _on_clear() -> void:
 ## Readies filled slots one at a time, in the order they were filled (the
 ## troop and equipment requests each at their own pace, side by side).
 func _tick_readying(delta: float) -> void:
+	if vehicle_slot != "":
+		_vehicle_progress = minf(_vehicle_progress + delta, seconds_per_vehicle)
 	for index in _equip_queue:
 		if _equip_progress[index] < seconds_per_crate:
 			_equip_progress[index] = minf(_equip_progress[index] + delta, seconds_per_crate)
@@ -604,6 +653,164 @@ func _send_helicopter(lz: Vector2) -> void:
 	close()
 
 
+# --------------------------------------------------- the vehicle request --
+
+func _vehicle_type(id: String) -> Dictionary:
+	for kind: Dictionary in VEHICLE_TYPES:
+		if kind.id == id:
+			return kind
+	return VEHICLE_TYPES[0]
+
+
+func _on_vehicle_slot_down() -> void:
+	if vehicle_slot != "":
+		return   # already chosen
+	_vehicle_popout.open(_vehicle_button, VEHICLE_TYPES[0].id, _vehicle_panel)   # left of the whole panel
+
+
+func _on_vehicle_chosen(kind: String, _at: Vector2) -> void:
+	if vehicle_slot != "":
+		return
+	vehicle_slot = kind
+	_vehicle_progress = 0.0
+
+
+func _on_vehicle_clear() -> void:
+	vehicle_slot = ""
+	_vehicle_progress = 0.0
+
+
+func vehicle_ready() -> bool:
+	return vehicle_slot != "" and _vehicle_progress >= seconds_per_vehicle
+
+
+func _refresh_vehicle() -> void:
+	if screen != Screen.VEHICLES:
+		return
+	_vehicle_button.queue_redraw()
+	_vehicle_send.disabled = not vehicle_ready()
+	if vehicle_slot == "":
+		_vehicle_status.text = "Press the slot to choose a vehicle"
+	elif vehicle_ready():
+		_vehicle_status.text = "%s ready - send the helicopter" % _vehicle_type(vehicle_slot).text
+	else:
+		_vehicle_status.text = "%s - ready in %s" % [_vehicle_type(vehicle_slot).text,
+				_clock(seconds_per_vehicle - _vehicle_progress)]
+
+
+## Send helicopter: a ghost of the helicopter with the vehicle under it, nose
+## east, follows the mouse to mark where it's set down.
+func _on_vehicle_send() -> void:
+	if not vehicle_ready():
+		return
+	_show(Screen.VLZ)
+	_vehicle_ghost = Node2D.new()
+	_vehicle_ghost.z_index = 45
+	var kind := _vehicle_type(vehicle_slot)
+	var truck := Sprite2D.new()
+	truck.texture = kind.tex
+	truck.scale = Vector2.ONE * VEHICLE_SPRITE_SCALE
+	truck.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_vehicle_ghost.add_child(truck)
+	var heli := HELICOPTER.instantiate()
+	# Just a picture: nothing running, no collisions, no shadows.
+	heli.process_mode = Node.PROCESS_MODE_DISABLED
+	heli.get_node("Hull/Outline").disabled = true
+	heli.get_node("Shadows").visible = false
+	heli.modulate.a = 0.6
+	_vehicle_ghost.add_child(heli)
+	get_parent().get_parent().add_child(_vehicle_ghost)
+	_vehicle_ghost.global_position = _mouse_world
+
+
+func _stop_vlz(back_to_request: bool) -> void:
+	if _vehicle_ghost:
+		_vehicle_ghost.queue_free()
+		_vehicle_ghost = null
+	if back_to_request:
+		_show(Screen.VEHICLES)
+
+
+## Marking where the vehicle goes: the ghost follows the mouse; left click
+## sends, right click goes back to the request.
+func _vlz_input(event: InputEvent) -> void:
+	var mouse := event as InputEventMouse
+	if mouse:
+		_mouse_world = _to_world(mouse.position)
+	var button := event as InputEventMouseButton
+	if button and button.pressed:
+		if button.button_index == MOUSE_BUTTON_LEFT and _vlz_ok(_mouse_world):
+			_send_vehicle(_mouse_world)
+		elif button.button_index == MOUSE_BUTTON_RIGHT:
+			_stop_vlz(true)
+		get_viewport().set_input_as_handled()
+
+
+## Whether the vehicle fits at `point` (nose east): wholly inside the play
+## area and on nothing solid (squares, crates, sandbags, anything else).
+func _vlz_ok(point: Vector2) -> bool:
+
+	var half: Vector2 = _vehicle_type(vehicle_slot).size_m / 2.0 * World.PX_PER_M
+	if not World.ARENA.has_point(point - half) or not World.ARENA.has_point(point + half):
+		return false
+	var box := RectangleShape2D.new()
+	box.size = half * 2.0
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = box
+	query.transform = Transform2D(0.0, point)
+	query.collision_mask = 1 | 4   # squares, crates and the like, sandbags
+	return get_parent().get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
+
+
+## A helicopter brings the vehicle in slung under it and sets it down at `lz`
+## (scripts/sling_drop.gd).
+func _send_vehicle(lz: Vector2) -> void:
+	var level := get_parent().get_parent()
+	var vehicle: Node2D = _vehicle_type(vehicle_slot).scene.instantiate()
+	level.add_child(vehicle)
+	var heli: Node2D = HELICOPTER.instantiate()
+	var run := SlingDrop.new()
+	heli.add_child(run)
+	level.add_child(heli)
+	run.start(heli, lz, vehicle)
+	vehicle_slot = ""
+	_vehicle_progress = 0.0
+	close()
+
+
+## The vehicle slot: "+" while empty; the vehicle's picture once chosen, with
+## a green fill rising as it's readied, and a bright border when ready.
+func _draw_vehicle_slot() -> void:
+	var button := _vehicle_button
+	var rect := Rect2(Vector2.ZERO, button.size)
+	var c := rect.get_center()
+	if vehicle_slot == "":
+		button.draw_line(c + Vector2(-9, 0), c + Vector2(9, 0), Color(COLOR, 0.6), 2.0)
+		button.draw_line(c + Vector2(0, -9), c + Vector2(0, 9), Color(COLOR, 0.6), 2.0)
+		return
+	var done := _vehicle_progress / seconds_per_vehicle
+	var inner := rect.grow(-4)
+	if done < 1.0:
+		var fill_h := inner.size.y * done
+		button.draw_rect(Rect2(inner.position + Vector2(0, inner.size.y - fill_h), Vector2(inner.size.x, fill_h)),
+				Color(COLOR, 0.3))
+	_draw_vehicle(button, vehicle_slot, c, inner.size.x - 12.0, 1.0 if done >= 1.0 else 0.6)
+	if done >= 1.0:
+		button.draw_rect(inner, COLOR, false, 2.0)
+
+
+## A vehicle's picture, `width` px long, centred on `center`, nose right.
+func _draw_vehicle(canvas: CanvasItem, id: String, center: Vector2, width: float, alpha: float) -> void:
+	var kind := _vehicle_type(id)
+	var region: Rect2 = kind.region
+	var size := Vector2(width, width * region.size.y / region.size.x)
+	canvas.draw_texture_rect_region(kind.tex, Rect2(center - size / 2.0, size), region, Color(1, 1, 1, alpha))
+
+
+func _draw_vehicle_icon(icon: Control, kind: Dictionary) -> void:
+	_draw_vehicle(icon, kind.id, icon.size / 2.0, icon.size.x - 6.0, 1.0)
+
+
 func _to_world(screen_pos: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * screen_pos
 
@@ -700,9 +907,40 @@ func _build_ui() -> void:
 	_equip_panel.visible = false
 	_layer.add_child(_equip_panel)
 
+	# The vehicle request: one slot, status and Send.
+	_vehicle_popout = HoldPopout.new()
+	_vehicle_popout.setup(VEHICLE_TYPES, _draw_vehicle_icon, -1.0)
+	_vehicle_popout.chosen.connect(_on_vehicle_chosen)
+	_vehicle_panel = UiStyle.panel()
+	var vehicle_box := VBoxContainer.new()
+	vehicle_box.add_theme_constant_override("separation", 10)
+	vehicle_box.add_child(UiStyle.title("VEHICLE REQUEST"))
+	_vehicle_button = UiStyle.menu_button("", Vector2(150, 72))
+	_vehicle_button.button_down.connect(_on_vehicle_slot_down)
+	_vehicle_button.draw.connect(_draw_vehicle_slot)
+	var slot_row := HBoxContainer.new()
+	slot_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	slot_row.add_child(_vehicle_button)
+	vehicle_box.add_child(slot_row)
+	_vehicle_status = UiStyle.caption("", 18)
+	vehicle_box.add_child(_vehicle_status)
+	var vehicle_row := HBoxContainer.new()
+	vehicle_row.add_theme_constant_override("separation", 6)
+	_vehicle_send = UiStyle.menu_button("Send helicopter", Vector2(200, 42))
+	_vehicle_send.pressed.connect(_on_vehicle_send)
+	var vehicle_clear := UiStyle.menu_button("Clear", Vector2(100, 42))
+	vehicle_clear.pressed.connect(_on_vehicle_clear)
+	vehicle_row.add_child(_vehicle_send)
+	vehicle_row.add_child(vehicle_clear)
+	vehicle_box.add_child(vehicle_row)
+	_vehicle_panel.add_child(vehicle_box)
+	_vehicle_panel.visible = false
+	_layer.add_child(_vehicle_panel)
+
 	_layer.add_child(_kinds_popout)
 	_layer.add_child(_types_popout)
 	_layer.add_child(_equip_popout)
+	_layer.add_child(_vehicle_popout)
 	_build_slot_buttons()
 
 
@@ -728,7 +966,7 @@ func _place_ui() -> void:
 	_menu.reset_size()
 	var menu_pos := Vector2(at.x - half_square - MENU_GAP_PX - _menu.size.x, at.y - _menu.size.y / 2.0)
 	_menu.position = menu_pos.clamp(view.position, view.end - _menu.size)
-	for panel: PanelContainer in [_slots_panel, _equip_panel]:
+	for panel: PanelContainer in [_slots_panel, _equip_panel, _vehicle_panel]:
 		if panel.visible:
 			panel.reset_size()
 			var pos := Vector2(_menu.position.x - 12.0 - panel.size.x, at.y - panel.size.y / 2.0)
@@ -799,7 +1037,7 @@ func _make_pad_timer() -> Label:
 
 
 func _update_pad_timer() -> void:
-	_pad_timer.visible = screen == Screen.CLOSED and not (_queue.is_empty() and _equip_queue.is_empty())
+	_pad_timer.visible = screen == Screen.CLOSED and not (_queue.is_empty() and _equip_queue.is_empty() and vehicle_slot == "")
 	if not _pad_timer.visible:
 		return
 	var lines: Array[String] = []
@@ -817,6 +1055,9 @@ func _update_pad_timer() -> void:
 			lines.append("%d %s READY" % [crates, noun])
 		else:
 			lines.append("%d %s  %s" % [crates, noun, _clock(_equip_seconds_left())])
+	if vehicle_slot != "":
+		var vehicle_name: String = _vehicle_type(vehicle_slot).text
+		lines.append("%s READY" % vehicle_name if vehicle_ready() else "%s  %s" % [vehicle_name, _clock(seconds_per_vehicle - _vehicle_progress)])
 	_pad_timer.text = "\n".join(lines)
 	_pad_timer.size.y = 36.0 * lines.size()
 	_pad_timer.position.y = -DESK_HALF_PX - 6.0 - _pad_timer.size.y

@@ -36,7 +36,7 @@ above = 75
 resource_name = "Into Section 2"
 script = ExtResource("3_wxedj")
 radius_m = 7.5
-pass_through = 40
+pass_through = 80
 above = 80
 metadata/_custom_type_script = "uid://xf2l48yqkqtc"
 

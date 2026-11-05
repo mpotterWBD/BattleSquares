@@ -126,6 +126,8 @@ const EXPOSED_S := 0.8
 var facing := -PI / 2
 var health := 0.0      ## set to max_health on entering the tree
 var dead := false
+## Its rifle's slung out of the way and it won't fire (running a truck's crane: supply_truck.gd).
+var weapon_away := false
 ## Whoever fired the last bullet that hit it (null if unknown).
 var last_hit_by: Node2D = null
 ## Seconds it stays exposed from its last shot (EXPOSED_S); 0 = not exposed.
@@ -208,7 +210,7 @@ func _physics_process(delta: float) -> void:
 	_update_visuals()
 	_rifle.update_steadiness(velocity.length(), delta)   # standing still steadies the aim
 	_rifle.update_aim(facing, _height_m + _climb_m, target, delta)
-	if _wants_to_fire() and not _sheltered():
+	if _wants_to_fire() and not _sheltered() and not weapon_away:
 		_rifle.fire(_shot_spread_deg(), _shot_distance_m())
 
 

@@ -106,6 +106,14 @@ const ORDERS := [
 	{id = "fire", text = "Fire", color = World.FIRE_COLOR},
 	{id = "stop", text = "Stop", color = World.FIRE_COLOR},
 ]
+## The orders while the player's driving a vehicle (player.gd `vehicle`; Mike,
+## 2026-11-03: in the truck his commands are Hatch and Crane), in place of
+## ORDERS, and no DEPLOY. Each goes to the vehicle (supply_truck.gd
+## vehicle_order()); what they do isn't worked out yet.
+const VEHICLE_ORDERS := [
+	{id = "hatch", text = "Hatch"},
+	{id = "crane", text = "Crane"},
+]
 ## Formation shapes in the pop-out, with their icon layouts as (column, row)
 ## cells. Squadmate slots for each shape are in squadmate.gd _slot_position().
 const SHAPES := [
@@ -113,6 +121,14 @@ const SHAPES := [
 	{id = "column", text = "Column", cells = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]},
 ]
 const DEFAULT_SHAPE := "column"
+## Holding Crane: how many crates to set down (Mike, 2026-11-04), then a ghost of where, on the side of
+## the truck the mouse is, and a click puts them there (supply_truck.gd crane_drop()).
+const CRANE_DROPS := [
+	{id = "drop1", text = "1 box", count = 1},
+	{id = "drop2", text = "2 boxes", count = 2},
+]
+const DROP_GHOST_M := 0.84
+const DROP_GHOST_COLOR := Color(0.3, 1.0, 0.35)
 ## Equipment that can be deployed, listed in the DEPLOY pop-out. How many
 ## the player has is in player.gd `deployables`, by the same id.
 const DEPLOYABLES := [
@@ -169,6 +185,20 @@ var _hud: CanvasLayer
 var _banner: Label
 var _menu: VBoxContainer
 var _order_buttons: Array[Button] = []
+var _vehicle_buttons: Array[Button] = []   ## VEHICLE_ORDERS', shown instead while driving
+var _truck_sel: Node2D = null   ## the truck that's selected (supply_truck.gd): sent places by a click on the ground
+var _crane_popout: HoldPopout
+var _crane_menu_truck: Node2D = null   ## the truck the Crane pop-out was opened for
+var _crane_drop_truck: Node2D = null   ## setting crates down: this truck, how many, ghost following the mouse
+var _crane_drop_count := 0
+var _crane_button: Button   ## Crane, among the normal orders: only while a truck has a passenger and the player's out of it
+var _crane_button_shown := false
+var _truck_hud: PanelContainer   ## a click on a truck: how many units are in it, a few seconds
+var _truck_hud_text: Label
+var _truck_hud_for: Node2D = null
+var _truck_hud_s := 0.0
+const TRUCK_HUD_S := 3.0
+var _was_driving := false
 var _deploy_menu: VBoxContainer
 var _deploy_button: Button
 var _back_button: Button   ## in radio command mode: back to the RADIO menu
@@ -218,6 +248,7 @@ var _attention_facing := NAN
 
 func _ready() -> void:
 	World.register_controls()
+	add_to_group("command")   # (the truck sends its refusals here: refuse_ping())
 	z_index = 50   # rings, box, pings and the placement ghost above everything
 	# The circles go on the ground, under the squares.
 	_ground_layer = Node2D.new()
@@ -272,6 +303,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif button and button.button_index == MOUSE_BUTTON_LEFT and _drag_from != Vector2.INF:
 			_place(_layout())
 			_drag_from = Vector2.INF
+			get_viewport().set_input_as_handled()
+		return
+	if _crane_drop_truck != null:
+		# Setting crates down: left click puts them where the ghost is (the side of the truck the mouse
+		# is on), right click or X cancels.
+		if event.is_action_pressed("back") and not event.is_echo():
+			_crane_drop_truck = null
+			get_viewport().set_input_as_handled()
+			return
+		if button and button.pressed:
+			if button.button_index == MOUSE_BUTTON_LEFT:
+				_confirm_crane_drop()
+			elif button.button_index == MOUSE_BUTTON_RIGHT:
+				_crane_drop_truck = null
 			get_viewport().set_input_as_handled()
 		return
 	if not _arming.is_empty():
@@ -342,17 +387,24 @@ func _process(delta: float) -> void:
 		for unit in _selected():
 			if not _hears(unit.global_position):
 				unit.selected = false   # walked out of earshot
+		if _truck_sel != null and (not is_instance_valid(_truck_sel) or not _selected().is_empty()):
+			_truck_sel = null   # (a unit's been selected instead)
 	_hud.visible = commanding
 	# DEPLOY works over the radio too (Mike, 2026-11-01); there, Back returns to
 	# the RADIO menu.
 	_back_button.visible = World.radio_commanding
 	if commanding:
 		_place_menus()
+		_update_truck_hud(delta)
 		if not _arming.is_empty():
 			_banner.text = "FIRE   click a target for %d to shoot   [right click] cancel" % _arming.size()
 			_banner.add_theme_color_override("font_color", FIRE_COLOR)
 		elif not _attention_units.is_empty():
 			_banner.text = "ATTENTION   click where %d fall in (%s)   [scroll] turn   [right click] cancel" % [_attention_units.size(), _attention_shape]
+			_banner.add_theme_color_override("font_color", COLOR)
+		elif _crane_drop_truck != null:
+			_banner.text = "CRANE   click to set %d box%s down on the %s   [right click] cancel" % [_crane_drop_count,
+					"" if _crane_drop_count == 1 else "es", "right" if _crane_drop_side() > 0 else "left"]
 			_banner.add_theme_color_override("font_color", COLOR)
 		elif _placing != "":
 			var how := "click, or drag out a row," if _item().has("line_px") else "click"
@@ -367,6 +419,8 @@ func _process(delta: float) -> void:
 	else:
 		_shape_popout.close()
 		_deploy_popout.close()
+		_crane_popout.close()
+		_crane_drop_truck = null
 		if _placing != "":
 			_stop_placing()
 	if _placing != "":
@@ -404,6 +458,17 @@ func _draw() -> void:
 			if unit.is_moving():
 				draw_line(unit.global_position, unit.destination, Color(COLOR, 0.5), 1.5, true)
 				draw_circle(unit.destination, 3.0, Color(COLOR, 0.8))
+		var truck := selected_truck()
+		if truck != null:   # the selected truck: a box round it and the way it's going
+			var half: Vector2 = Vector2(truck.LENGTH_M, truck.WIDTH_M) * px / 2.0 + Vector2.ONE * 4.0
+			var corners := PackedVector2Array()
+			for c in [Vector2(-half.x, -half.y), Vector2(half.x, -half.y), Vector2(half.x, half.y), Vector2(-half.x, half.y), Vector2(-half.x, -half.y)]:
+				corners.append(truck.to_global(c))
+			draw_polyline(corners, COLOR, 2.0, true)
+			var path: PackedVector2Array = truck.ai_path_px()
+			if path.size() > 1:
+				draw_polyline(path, Color(COLOR, 0.5), 1.5, true)
+				draw_circle(path[path.size() - 1], 3.0, Color(COLOR, 0.8))
 		if _dragging and _drag_now.distance_to(_drag_start) > DRAG_THRESHOLD_PX:
 			var box := Rect2(_to_world(_drag_start), Vector2.ZERO).expand(_to_world(_drag_now))
 			draw_rect(box, Color(COLOR, 0.12))
@@ -413,6 +478,7 @@ func _draw() -> void:
 		for unit in _squad():
 			if not unit.dead and unit.is_out_of_ammo():
 				_draw_no_ammo(unit.global_position + NO_AMMO_AT_M * px, px)
+	_draw_crane_ghost(px)
 	for ping in _pings:
 		var t: float = ping.age / PING_TIME_S
 		draw_arc(ping.pos, (0.1 + 0.3 * t) * px, 0.0, TAU, 32, Color(ping.get("color", COLOR), 1.0 - t), 2.0, true)
@@ -550,24 +616,90 @@ func _selected() -> Array[Node]:
 
 
 func _clear_selection() -> void:
+	_truck_sel = null
 	for unit in _squad():
 		unit.selected = false
+
+
+## The truck that's selected (clicked with nobody selected), or null.
+func selected_truck() -> Node2D:
+	return _truck_sel if _truck_sel != null and is_instance_valid(_truck_sel) else null
+
+
+func _select_truck(truck: Node2D) -> void:
+	for unit in _squad():
+		unit.selected = false
+	_truck_sel = truck
+	_pings.append({pos = truck.global_position, age = 0.0})
+
+
+## A click (or right click) on the ground while a truck's selected and no unit
+## is: the truck's sent there, as a unit would be (a squadmate drives it, by
+## road: vehicle_ai.gd). A red ping if it can't be (nobody but the player's
+## at the wheel, no way there). False if no truck's selected.
+func _drive_selected_truck(point: Vector2) -> bool:
+	var truck := selected_truck()
+	if truck == null or not _selected().is_empty():
+		return false
+	var done: bool = truck.order_drive_to(point)
+	_pings.append({pos = point, age = 0.0} if done else {pos = point, age = 0.0, color = REFUSE_COLOR})
+	return true
 
 
 func _click(point: Vector2, shift: bool) -> void:
 	var hit: Node = null
 	var best := PICK_RADIUS_M * World.PX_PER_M
 	for unit in _squad():
+		if unit.get("riding") != null and not unit.visible:
+			continue   # (riding in a truck, out of sight: the truck's the thing to click)
 		var d: float = unit.global_position.distance_to(point)
 		if d < best and _hears(unit.global_position):
 			best = d
 			hit = unit
 	if hit:
+		_truck_sel = null
 		if shift:
 			hit.selected = not hit.selected
 		else:
 			for unit in _squad():
 				unit.selected = unit == hit
+	elif _crane_click(point):
+		pass   # (the truck's crane took it, or turned it down: _crane_click())
+	elif _vehicle_at(point) != null:
+		# A truck (the whole truck's the click; a small HUD says how many units
+		# are in it; Mike, 2026-11-04). With nothing selected, the truck itself
+		# is selected, to be sent places when a squadmate's driving it. With
+		# units selected they get in: one unit goes to the seat on the side of
+		# the cab clicked (the left the driver's, the right the passenger's);
+		# two or more fill both seats, each seat the nearest unit to its door.
+		# The seat taken, or nobody to send: a red ping.
+		var truck := _vehicle_at(point)
+		_show_truck_hud(truck)
+		var units := _selected().filter(func(u): return u.riding == null and not u.dead)
+		if units.is_empty():
+			_select_truck(truck)
+			return
+		var side := -1 if truck.to_local(point).y < 0.0 else 1
+		var jobs: Array = []   # [unit, seat side]
+		if units.size() == 1:
+			if truck.seat_free(side):
+				jobs.append([units[0], side])
+		else:
+			var pool := units.duplicate()
+			for s: int in [side, -side]:
+				if pool.is_empty() or not truck.seat_free(s):
+					continue
+				var door: Vector2 = truck.to_global(Vector2(truck.DOOR_M.x, truck.DOOR_M.y * -s) * World.PX_PER_M)
+				pool.sort_custom(func(a, b): return a.global_position.distance_to(door) < b.global_position.distance_to(door))
+				jobs.append([pool.pop_front(), s])
+		if jobs.is_empty():
+			_pings.append({pos = truck.global_position, age = 0.0, color = REFUSE_COLOR})
+			return
+		for job in jobs:
+			job[0].order_ride(truck, job[1])
+			var door: Vector2 = truck.to_global(Vector2(truck.DOOR_M.x, truck.DOOR_M.y * -job[1]) * World.PX_PER_M)
+			_pings.append({pos = job[0].global_position, age = 0.0})
+			_pings.append({pos = door, age = 0.0})
 	elif _ammo_can_at(point) != null:
 		# An ammo can: the selection (nobody selected: everyone in the circle)
 		# with room in their spares go and load from it, one at a time
@@ -613,8 +745,160 @@ func _click(point: Vector2, shift: bool) -> void:
 			unit.order_build(crate)
 			_pings.append({pos = unit.global_position, age = 0.0})
 		_pings.append({pos = crate.global_position, age = 0.0})
+	elif _drive_selected_truck(point):
+		pass   # (the selected truck's sent there: _drive_selected_truck())
 	else:
 		_order_move(point, _order_targets())   # nobody selected: everyone in the circle
+
+
+## Which side of the crane truck the mouse is on: 1 the right (passenger's), -1 the left.
+func _crane_drop_side() -> int:
+	return 1 if _crane_drop_truck.to_local(_mouse_world).y >= 0.0 else -1
+
+
+## Holding Crane (a quick click still just selects or puts it away): the pop-out of how many boxes to
+## set down, if there are any on the bed (a second one's greyed out with only one).
+func _open_crane_popout(button: Button, driving: bool) -> void:
+	var speaker = _speaker()
+	var truck: Node2D = speaker.get("vehicle") if driving and speaker != null else _crane_truck()
+	if truck == null or not truck.has_method("loaded_count") or truck.loaded_count() <= 0:
+		return
+	_crane_menu_truck = truck
+	_crane_popout.set_option("drop1", "1 box", false)
+	_crane_popout.set_option("drop2", "2 boxes", truck.loaded_count() < 2)
+	_crane_popout.open(button)
+
+
+## The pop-out's choice: the ghost follows the mouse until a click.
+func _start_crane_drop(count: int) -> void:
+	if _crane_menu_truck == null or not is_instance_valid(_crane_menu_truck):
+		return
+	_crane_drop_truck = _crane_menu_truck
+	_crane_drop_count = count
+
+
+func _confirm_crane_drop() -> void:
+	var truck := _crane_drop_truck
+	if truck == null or not is_instance_valid(truck):
+		_crane_drop_truck = null
+		return
+	var side := _crane_drop_side()
+	var spots: PackedVector2Array = truck.crane_drop_spots(_crane_drop_count, side)
+	if truck.crane_drop(_crane_drop_count, side):
+		for spot in spots:
+			_pings.append({pos = spot, age = 0.0})
+		_crane_drop_truck = null
+	else:
+		_pings.append({pos = _mouse_world, age = 0.0, color = REFUSE_COLOR})   # (the ground's taken, or it can't deploy: try again)
+
+
+## Green squares where the crates would go (red if the ground's taken), on the side the mouse is on.
+func _draw_crane_ghost(px: float) -> void:
+	if _crane_drop_truck == null or not is_instance_valid(_crane_drop_truck) or not World.commanding():
+		return
+	var truck := _crane_drop_truck
+	var side := _crane_drop_side()
+	var spots: PackedVector2Array = truck.crane_drop_spots(_crane_drop_count, side)
+	var color := DROP_GHOST_COLOR if truck.crane_drop_clear(_crane_drop_count, side) else REFUSE_COLOR
+	var half := DROP_GHOST_M * px / 2.0
+	for spot in spots:
+		draw_set_transform(spot, truck.global_rotation)
+		draw_rect(Rect2(-half, -half, half * 2.0, half * 2.0), Color(color, 0.14))
+		draw_rect(Rect2(-half, -half, half * 2.0, half * 2.0), color, false, 3.0)
+	draw_set_transform(Vector2.ZERO, 0.0)
+
+
+## The Crane pop-out's icons: one square or two.
+func _draw_crane_icon(icon: Control, option: Dictionary) -> void:
+	const CELL := 9.0
+	const GAP := 4.0
+	var n: int = option.count
+	var size := Vector2(n * CELL + (n - 1) * GAP, CELL)
+	var origin := (icon.size - size) / 2.0
+	for i in n:
+		var square := Rect2(origin + Vector2(i * (CELL + GAP), 0.0), Vector2(CELL, CELL))
+		icon.draw_rect(square, DROP_GHOST_COLOR)
+		icon.draw_rect(square, Color(0, 0, 0, 0.6), false, 1.0)
+
+
+## A red ping at `at` (a truck's crane job was cancelled there: supply_truck.gd).
+func refuse_ping(at: Vector2) -> void:
+	_pings.append({pos = at, age = 0.0, color = REFUSE_COLOR})
+
+
+## The HUD over a truck that was clicked: how many units are in it.
+func _show_truck_hud(truck: Node2D) -> void:
+	_truck_hud_for = truck
+	_truck_hud_s = TRUCK_HUD_S
+	_update_truck_hud(0.0)
+
+
+func _update_truck_hud(delta: float) -> void:
+	_truck_hud_s -= delta
+	var truck := _truck_hud_for
+	if truck == null or not is_instance_valid(truck) or _truck_hud_s <= 0.0:
+		_truck_hud.visible = false
+		return
+	var n: int = truck.units_inside()
+	var text := "Units inside: %d" % n
+	if truck.operator_out():
+		text += "   (1 at the crane)"
+	_truck_hud_text.text = text
+	_truck_hud.visible = true
+	_truck_hud.reset_size()
+	var screen: Vector2 = get_viewport().get_canvas_transform() * (truck.global_position + Vector2(0.0, -1.5 * World.PX_PER_M))
+	_truck_hud.position = screen - Vector2(_truck_hud.size.x / 2.0, _truck_hud.size.y)
+
+
+## The Crane among the normal orders: to the nearest truck within earshot
+## that has a passenger to run it (Mike, 2026-11-04).
+func _crane_truck() -> Node2D:
+	var best: Node2D = null
+	for truck: Node2D in get_tree().get_nodes_in_group("vehicles"):
+		if truck.has_method("crane_available") and truck.crane_available() and _hears(truck.global_position):
+			if best == null or truck.global_position.distance_to(_speaker().global_position) \
+					< best.global_position.distance_to(_speaker().global_position):
+				best = truck
+	return best
+
+
+func _give_crane_order() -> void:
+	_crane_drop_truck = null
+	var truck := _crane_truck()
+	if truck == null:
+		return
+	var done: bool = truck.vehicle_order("crane")
+	_pings.append({pos = truck.global_position, age = 0.0} if done
+			else {pos = truck.global_position, age = 0.0, color = REFUSE_COLOR})
+
+
+## A click while a truck's crane is ready (supply_truck.gd crane_armed(); Mike,
+## 2026-11-04: Crane, then click a crate in its circle): the truck's to deal
+## with, not the squad's. A job taken pings green at the click; refused (out
+## of the circle, the bed full or empty, nowhere to put it down), red. False
+## if no crane's waiting for one.
+func _crane_click(point: Vector2) -> bool:
+	for truck: Node2D in get_tree().get_nodes_in_group("vehicles"):
+		if not truck.has_method("crane_armed") or not truck.crane_armed():
+			continue
+		var result: String = truck.crane_click(point)
+		if result == "":
+			continue
+		_pings.append({pos = point, age = 0.0} if result == "ok" else {pos = point, age = 0.0, color = REFUSE_COLOR})
+		return true
+	return false
+
+
+## The vehicle (supply_truck.gd, the "vehicles" group) under `point`, or null.
+func _vehicle_at(point: Vector2) -> Node2D:
+	for vehicle: Node2D in get_tree().get_nodes_in_group("vehicles"):
+		if vehicle.get("airborne"):   # (still slung under its helicopter)
+			continue
+		var local: Vector2 = vehicle.to_local(point)
+		var half: Vector2 = Vector2(vehicle.LENGTH_M, vehicle.WIDTH_M) * World.PX_PER_M / 2.0 + Vector2.ONE * CRATE_PICK_PX
+		if absf(local.x) <= half.x and absf(local.y) <= half.y:
+			return vehicle
+	return null
 
 
 ## The ammo can (ammo_supply.gd, up and not empty) under `point`, or null.
@@ -665,6 +949,7 @@ func _order_move(point: Vector2, units: Array = []) -> void:
 	if units.is_empty():
 		units = _selected()
 	if units.is_empty():
+		_drive_selected_truck(point)   # (a right click with a truck selected)
 		return
 	if _man_sandbags(point, units):
 		_pings.append({pos = point, age = 0.0})
@@ -795,14 +1080,34 @@ func _spot_held(spot: Vector2, movers: Array) -> bool:
 ## everyone who can hear (inside the command circle, or over the radio).
 func _order_targets() -> Array[Node]:
 	var units := _selected()
-	if units.is_empty():
-		units = _squad().filter(func(u): return _hears(u.global_position))
+	if units.is_empty():   # (not anyone riding in a truck: they're only got out by being selected)
+		units = _squad().filter(func(u): return _hears(u.global_position) and u.get("riding") == null)
 	return units
+
+
+## A VEHICLE_ORDERS button: to the vehicle the player's driving.
+func _give_vehicle_order(id: String) -> void:
+	_crane_drop_truck = null
+	var vehicle = _speaker().get("vehicle") if _speaker() else null
+	if vehicle != null and vehicle.has_method("vehicle_order"):
+		# (false: it can't, e.g. the crane with nobody in the passenger's seat to run it: a red ping)
+		var done: bool = vehicle.vehicle_order(id)
+		_pings.append({pos = vehicle.global_position, age = 0.0} if done
+				else {pos = vehicle.global_position, age = 0.0, color = REFUSE_COLOR})
 
 
 ## Gives a menu order to _order_targets(). `shape` is the formation chosen in
 ## the pop-out, for orders that have one.
 func _give_order(id: String, shape := DEFAULT_SHAPE) -> void:
+	# A truck selected (and no unit): Stop halts it, Disperse gets everyone in it out.
+	if selected_truck() != null and _selected().is_empty() and id in ["stop", "disperse"]:
+		var truck := selected_truck()
+		if id == "stop":
+			truck.ai_stop()
+		else:
+			truck.dismount_all()
+		_pings.append({pos = truck.global_position, age = 0.0})
+		return
 	var units := _order_targets()
 	if units.is_empty():
 		return
@@ -1250,6 +1555,26 @@ func _place_menus() -> void:
 	var speaker = _speaker()
 	if speaker == null:
 		return
+	# Driving: the vehicle's orders in place of the squad's, and no DEPLOY.
+	var driving: bool = speaker.get("vehicle") != null
+	if driving != _was_driving:
+		_was_driving = driving
+		for button in _order_buttons:
+			button.visible = not driving
+		for button in _vehicle_buttons:
+			button.visible = driving
+		_shape_popout.close()
+		_deploy_popout.close()
+		_crane_popout.close()
+		_menu.reset_size()
+	_deploy_menu.visible = _menus_open and not driving
+	# Crane: with the squad's orders (not while driving: its own buttons are up then), only
+	# while some truck within earshot has a passenger.
+	var show_crane := not driving and _crane_truck() != null
+	if show_crane != _crane_button_shown:
+		_crane_button_shown = show_crane
+		_crane_button.visible = show_crane
+		_menu.reset_size()
 	var screen: Vector2 = get_viewport().get_canvas_transform() * speaker.global_position
 	var half_square: float = 0.2 * World.PX_PER_M * get_viewport().get_canvas_transform().get_scale().x
 	var view := get_viewport().get_visible_rect()
@@ -1308,7 +1633,27 @@ func _build_hud() -> CanvasLayer:
 			button.pressed.connect(_give_order.bind(order.id))
 		_menu.add_child(button)
 		_order_buttons.append(button)
+	for order in VEHICLE_ORDERS:
+		var button := UiStyle.menu_button(order.text, Vector2(170, 42), order.get("color", COLOR))
+		button.pressed.connect(_give_vehicle_order.bind(order.id))
+		if order.id == "crane":
+			button.button_down.connect(_open_crane_popout.bind(button, true))
+		button.visible = false
+		_menu.add_child(button)
+		_vehicle_buttons.append(button)
+	# Crane among the normal orders, while a truck has a passenger and the player's outside it.
+	_crane_button = UiStyle.menu_button("Crane", Vector2(170, 42), COLOR)
+	_crane_button.pressed.connect(_give_crane_order)
+	_crane_button.button_down.connect(_open_crane_popout.bind(_crane_button, false))
+	_crane_button.visible = false
+	_menu.add_child(_crane_button)
 	layer.add_child(_menu)
+	_truck_hud = UiStyle.panel()
+	_truck_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_truck_hud.visible = false
+	_truck_hud_text = UiStyle.caption("", 20)
+	_truck_hud.add_child(_truck_hud_text)
+	layer.add_child(_truck_hud)
 
 	# Deploy, under the orders with a gap between (DEPLOY_GAP_PX).
 	_deploy_menu = UiStyle.menu_column("DEPLOY")
@@ -1350,8 +1695,12 @@ func _build_hud() -> CanvasLayer:
 		_start_placing(id)
 		if _placing == id:
 			_build_crew = crew)
+	_crane_popout = HoldPopout.new()
+	_crane_popout.setup(CRANE_DROPS, _draw_crane_icon, -1.0)
+	_crane_popout.chosen.connect(func(id, _at): _start_crane_drop(1 if id == "drop1" else 2))
 	layer.add_child(_shape_popout)
 	layer.add_child(_deploy_popout)
+	layer.add_child(_crane_popout)
 	add_child(layer)
 	_menu.reset_size()
 	_deploy_menu.reset_size()
@@ -1364,6 +1713,7 @@ func _toggle_menus() -> void:
 	_menus_open = not _menus_open
 	_shape_popout.close()
 	_deploy_popout.close()
+	_crane_popout.close()
 	_menu_toggle.queue_redraw()
 
 

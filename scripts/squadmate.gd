@@ -188,7 +188,14 @@ var _build_from: Node2D = null   ## building from just this crate (null: any)
 var _build_goal := Vector2.INF   ## where it's walking while building (_watch_build_progress())
 ## The ammo can it was sent to load from (order_load_ammo()), or null.
 var _sent_ammo: Node2D = null
+## The truck it's getting into or riding in as the passenger (order_ride(),
+## supply_truck.gd), or null.
+var riding: Node2D = null
+## A world point it walks itself to, getting in or out of a truck (the truck
+## sets it: round things to the door, then straight through the cab's side), or null.
+var walk_to = null
 const AMMO_WAIT_M := 0.9         ## waiting its turn at an ammo can this far from it
+const WALK_TO_EASE_M := 0.15     ## walking itself into a truck (`walk_to`), it slows over this last stretch
 var _carry_view: Node2D
 
 
@@ -228,13 +235,32 @@ func order_disperse(point: Vector2) -> void:
 
 
 ## Any order puts it under orders (and ends being on its own, and a trip to
-## an ammo can).
+## an ammo can). Riding in a truck, it gets out (once it's stopped) and then
+## carries the order out; on its way to the truck, it stops going.
 func _take_orders() -> void:
 	on_own = false
 	under_orders = true
 	if _sent_ammo != null:
 		_sent_ammo = null
 		_drop_ammo_claim()
+	if riding != null and is_instance_valid(riding):
+		riding.unload(self)
+
+
+## Get in a truck as its passenger (Mike, 2026-11-03: clicked in command mode,
+## only one of the selection goes): it walks round to the door on `side` (1 the
+## passenger's, -1 the driver's: the side of the cab clicked),
+## and the truck takes it from there (supply_truck.gd board()). It rides
+## until it's given another order. Nothing happens if the seat's taken.
+func order_ride(truck: Node2D, side := 1) -> void:
+	BattleLog.order(self, "ride", [truck, "driver" if side < 0 else "passenger"])
+	_take_orders()
+	_stop_building()
+	follow_mode = ""
+	_cover = null
+	state = State.IDLE
+	if truck.board(self, side):
+		riding = truck
 
 
 ## Go to ammo can `can` (ammo_supply.gd) and load the spares from it.
@@ -561,10 +587,18 @@ func is_following(mode: String) -> bool:
 
 func _move_intent() -> Vector2:
 	_speed_scale = 1.0
+	if weapon_away:   # running a truck's crane: no rifle in its hands
+		_rifle.visible = false
+		get_node("Shadows/RifleShadow").visible = false
+	if walk_to != null:   # getting in or out of a truck (supply_truck.gd sets it)
+		var to: Vector2 = walk_to - global_position
+		if collision_mask == 0:   # through the cab's side, off everything solid: straight in
+			return to.normalized() * minf(to.length() / (WALK_TO_EASE_M * World.PX_PER_M), 1.0)
+		return _head_for(walk_to, 0.0)
 	_update_orders()
 	_look_for_return_fire()
 	# Hands full: the part in front of it, its rifle away.
-	_rifle.visible = carrying == ""
+	_rifle.visible = carrying == "" and not weapon_away
 	get_node("Shadows/RifleShadow").visible = _rifle.visible
 	_carry_view.visible = carrying != ""
 	if _carry_view.visible:

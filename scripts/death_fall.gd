@@ -352,7 +352,7 @@ func _meet(touch: Dictionary, toward: float) -> bool:
 		return false
 	_met_wall = true
 	if toward > CLANG_MPS:
-		ImpactSound.play(_level(), touch.point, "metal")
+		ImpactSound.play(_level(), touch.point, "clang")
 	if not touch.rail or toward < OVER_RAIL_MPS:
 		return false
 	var beyond: Array = _tower.landing(touch.point + touch.out * OVER_CLEAR_M * World.PX_PER_M)
@@ -425,7 +425,7 @@ func _drop(delta: float) -> void:
 		_square.collision_mask = _square._ground_mask
 	_landed = true
 	_land()
-	ImpactSound.play(_level(), _lying_centre(), "metal" if _tower else "dirt")
+	ImpactSound.play(_level(), _lying_centre(), "clang" if _tower else "dirt")
 
 
 ## What something coming down at world `at` from `from_m` up lands on:

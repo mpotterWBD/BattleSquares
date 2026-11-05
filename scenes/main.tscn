@@ -11,13 +11,11 @@
 [ext_resource type="PackedScene" path="res://scenes/road.tscn" id="10_road"]
 [ext_resource type="Script" uid="uid://dxy4uq0gvepac" path="res://scripts/enemy_spawner.gd" id="11_spawner"]
 [ext_resource type="PackedScene" path="res://scenes/crate_comms.tscn" id="11_ya4ey"]
-[ext_resource type="PackedScene" path="res://scenes/crate_sandbags.tscn" id="14_jkv2x"]
 [ext_resource type="PackedScene" path="res://scenes/squadmate.tscn" id="15_jbj1t"]
 [ext_resource type="PackedScene" path="res://scenes/crate_ammo.tscn" id="15_jkv2x"]
-[ext_resource type="PackedScene" path="res://scenes/crate_tower.tscn" id="16_jbj1t"]
-[ext_resource type="PackedScene" uid="uid://c1wt4tl5u1csq" path="res://scenes/watch_tower.tscn" id="16_muem4"]
+[ext_resource type="PackedScene" path="res://scenes/supply_truck.tscn" id="17_muem4"]
 
-[sub_resource type="Curve2D" id="Curve2D_jbj1t"]
+[sub_resource type="Curve2D" id="Curve2D_dp3eg"]
 resource_local_to_scene = true
 bake_interval = 8.0
 _data = {
@@ -64,7 +62,7 @@ script = ExtResource("8_arrival")
 
 [node name="Road" parent="." unique_id=1296387015 instance=ExtResource("10_road")]
 position = Vector2(-39, 1053)
-curve = SubResource("Curve2D_jbj1t")
+curve = SubResource("Curve2D_dp3eg")
 centre_line = false
 
 [node name="EnemySpawner" type="Node2D" parent="." unique_id=676917563]
@@ -90,73 +88,20 @@ extra_sandbags = 7
 position = Vector2(3450, 912)
 
 [node name="CommsCrate" parent="." unique_id=1559053285 instance=ExtResource("11_ya4ey")]
-position = Vector2(857, 1461)
+position = Vector2(857, 1400)
 
-[node name="AmmoCrate" parent="." unique_id=394768539 instance=ExtResource("15_jkv2x")]
-position = Vector2(729, 1459)
+[node name="SupplyTruck" parent="." unique_id=460662492 instance=ExtResource("17_muem4")]
+position = Vector2(1309, 1118)
 
-[node name="SandbagCrate" parent="." unique_id=1018893238 instance=ExtResource("14_jkv2x")]
-position = Vector2(594, 1450)
-
-[node name="Squadmate" parent="." unique_id=104535210 instance=ExtResource("15_jbj1t")]
-position = Vector2(537, 1640)
+[node name="Squadmate" parent="." unique_id=498390232 instance=ExtResource("15_jbj1t")]
+position = Vector2(1157, 1315)
 idle_min_s = 1.5
 idle_max_s = 5.0
 
-[node name="Squadmate2" parent="." unique_id=1762577190 instance=ExtResource("15_jbj1t")]
-position = Vector2(597, 1640)
+[node name="AmmoCrate" parent="." unique_id=13828287 instance=ExtResource("15_jkv2x")]
+position = Vector2(978, 1400)
+
+[node name="Squadmate2" parent="." unique_id=255237889 instance=ExtResource("15_jbj1t")]
+position = Vector2(1237, 1459)
 idle_min_s = 1.5
 idle_max_s = 5.0
-
-[node name="Squadmate3" parent="." unique_id=1892101012 instance=ExtResource("15_jbj1t")]
-position = Vector2(678, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate4" parent="." unique_id=1048961685 instance=ExtResource("15_jbj1t")]
-position = Vector2(762, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate5" parent="." unique_id=2057038029 instance=ExtResource("15_jbj1t")]
-position = Vector2(819, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate6" parent="." unique_id=2009179764 instance=ExtResource("15_jbj1t")]
-position = Vector2(877, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate7" parent="." unique_id=1683740350 instance=ExtResource("15_jbj1t")]
-position = Vector2(937, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate8" parent="." unique_id=804841668 instance=ExtResource("15_jbj1t")]
-position = Vector2(1018, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate9" parent="." unique_id=1664873105 instance=ExtResource("15_jbj1t")]
-position = Vector2(1102, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="Squadmate10" parent="." unique_id=1959225617 instance=ExtResource("15_jbj1t")]
-position = Vector2(1159, 1640)
-idle_min_s = 1.5
-idle_max_s = 5.0
-
-[node name="TowerCrate" parent="." unique_id=1445963139 instance=ExtResource("16_jbj1t")]
-position = Vector2(487, 1446)
-
-[node name="WatchTower" parent="." unique_id=1092398650 instance=ExtResource("16_muem4")]
-position = Vector2(1438, 1334)
-radio_has_station = true
-
-[node name="AmmoCrate3" parent="." unique_id=493564160 instance=ExtResource("15_jkv2x")]
-position = Vector2(1899, 1418)
-
-[node name="AmmoCrate4" parent="." unique_id=589850017 instance=ExtResource("15_jkv2x")]
-position = Vector2(2218, 1430)
