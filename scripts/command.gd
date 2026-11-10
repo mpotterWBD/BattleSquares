@@ -51,6 +51,12 @@ extends Node2D
 ##   - click a supply crate: the selection (or everyone in the circle) build
 ##     from it, or if it's strapped with nothing to build, the nearest of
 ##     them alone goes and undoes its straps.
+##   - click a truck: the selection (nobody selected: whoever's in the circle,
+##     the two nearest its doors if there are more) get in, a seat each.
+##   - Park (among the orders while a truck with a squadmate driving it is in
+##     the circle): a ghost of the truck follows the mouse, the scroll wheel
+##     turns it, and a click sends the driver to park it there, that way round.
+##     Disperse with nobody selected also gets everyone out of trucks in the circle.
 ## The circle limits who hears and can be selected, not where they can go.
 ## Anyone who leaves the circle drops out of the selection (they can't hear
 ## further orders), and the selection is cleared whenever Space is pressed
@@ -186,7 +192,15 @@ var _banner: Label
 var _menu: VBoxContainer
 var _order_buttons: Array[Button] = []
 var _vehicle_buttons: Array[Button] = []   ## VEHICLE_ORDERS', shown instead while driving
-var _truck_sel: Node2D = null   ## the truck that's selected (supply_truck.gd): sent places by a click on the ground
+## Park (Mike, 2026-11-09: the truck isn't a unit to select; you order its
+## driver): among the normal orders while a truck with a squadmate at the
+## wheel is in the command circle. Pressed, a ghost of the truck follows the
+## mouse (the scroll wheel turns it); a click sends it there, to end up exactly
+## so (supply_truck.gd order_drive_to() with a heading; vehicle_ai.gd).
+var _park_button: Button
+var _park_button_shown := false
+var _park_truck: Node2D = null   ## the truck being parked: its ghost follows the mouse
+var _park_heading := NAN         ## the ghost's heading (radians): NAN, the truck's own, until the wheel turns it
 var _crane_popout: HoldPopout
 var _crane_menu_truck: Node2D = null   ## the truck the Crane pop-out was opened for
 var _crane_drop_truck: Node2D = null   ## setting crates down: this truck, how many, ghost following the mouse
@@ -203,7 +217,7 @@ var _deploy_menu: VBoxContainer
 var _deploy_button: Button
 var _back_button: Button   ## in radio command mode: back to the RADIO menu
 var _menu_toggle: Button   ## the triangle beside the player that shows or hides the menus
-var _menus_open := true    ## (kept from one go in command mode to the next)
+var _menus_open := false   ## folded away to start with (Mike, 2026-11-09); then kept from one go in command mode to the next
 var _ground_layer: Node2D
 
 ## Pop-outs (scripts/hold_popout.gd): formation shapes, opened for
@@ -319,6 +333,23 @@ func _unhandled_input(event: InputEvent) -> void:
 				_crane_drop_truck = null
 			get_viewport().set_input_as_handled()
 		return
+	if _park_truck != null:
+		# Parking the truck: left click sends it to the ghost, the scroll wheel turns the ghost,
+		# right click or X cancels.
+		if event.is_action_pressed("back") and not event.is_echo():
+			_park_truck = null
+			get_viewport().set_input_as_handled()
+			return
+		if button and button.pressed:
+			if button.button_index == MOUSE_BUTTON_LEFT:
+				_confirm_park()
+			elif button.button_index == MOUSE_BUTTON_RIGHT:
+				_park_truck = null
+			elif button.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+				_park_heading = _turned_attention(_park_heading_now(),
+						-1 if button.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
+			get_viewport().set_input_as_handled()
+		return
 	if not _arming.is_empty():
 		# Picking a Fire target: left click a square, right click cancels.
 		if button and button.pressed:
@@ -387,8 +418,8 @@ func _process(delta: float) -> void:
 		for unit in _selected():
 			if not _hears(unit.global_position):
 				unit.selected = false   # walked out of earshot
-		if _truck_sel != null and (not is_instance_valid(_truck_sel) or not _selected().is_empty()):
-			_truck_sel = null   # (a unit's been selected instead)
+		if _park_truck != null and (not is_instance_valid(_park_truck) or not _park_truck.has_ai_driver()):
+			_park_truck = null   # (its driver's got out)
 	_hud.visible = commanding
 	# DEPLOY works over the radio too (Mike, 2026-11-01); there, Back returns to
 	# the RADIO menu.
@@ -401,6 +432,9 @@ func _process(delta: float) -> void:
 			_banner.add_theme_color_override("font_color", FIRE_COLOR)
 		elif not _attention_units.is_empty():
 			_banner.text = "ATTENTION   click where %d fall in (%s)   [scroll] turn   [right click] cancel" % [_attention_units.size(), _attention_shape]
+			_banner.add_theme_color_override("font_color", COLOR)
+		elif _park_truck != null:
+			_banner.text = "PARK   click where the driver's to park the truck   [scroll] turn   [right click] cancel"
 			_banner.add_theme_color_override("font_color", COLOR)
 		elif _crane_drop_truck != null:
 			_banner.text = "CRANE   click to set %d box%s down on the %s   [right click] cancel" % [_crane_drop_count,
@@ -421,6 +455,7 @@ func _process(delta: float) -> void:
 		_deploy_popout.close()
 		_crane_popout.close()
 		_crane_drop_truck = null
+		_park_truck = null
 		if _placing != "":
 			_stop_placing()
 	if _placing != "":
@@ -458,17 +493,21 @@ func _draw() -> void:
 			if unit.is_moving():
 				draw_line(unit.global_position, unit.destination, Color(COLOR, 0.5), 1.5, true)
 				draw_circle(unit.destination, 3.0, Color(COLOR, 0.8))
-		var truck := selected_truck()
-		if truck != null:   # the selected truck: a box round it and the way it's going
-			var half: Vector2 = Vector2(truck.LENGTH_M, truck.WIDTH_M) * px / 2.0 + Vector2.ONE * 4.0
-			var corners := PackedVector2Array()
-			for c in [Vector2(-half.x, -half.y), Vector2(half.x, -half.y), Vector2(half.x, half.y), Vector2(-half.x, half.y), Vector2(-half.x, -half.y)]:
-				corners.append(truck.to_global(c))
-			draw_polyline(corners, COLOR, 2.0, true)
+		for truck: Node2D in get_tree().get_nodes_in_group("vehicles"):
+			# A squadmate driving one somewhere: the way it's going, and a faint ghost where it'll park.
+			if not truck.has_method("ai_goal"):
+				continue
+			var goal: Dictionary = truck.ai_goal()
+			if goal.is_empty():
+				continue
 			var path: PackedVector2Array = truck.ai_path_px()
 			if path.size() > 1:
 				draw_polyline(path, Color(COLOR, 0.5), 1.5, true)
+			if not is_nan(goal.heading):
+				_draw_truck_ghost(truck, goal.at, goal.heading, COLOR, 0.35)
+			elif path.size() > 1:
 				draw_circle(path[path.size() - 1], 3.0, Color(COLOR, 0.8))
+		_draw_park(px)
 		if _dragging and _drag_now.distance_to(_drag_start) > DRAG_THRESHOLD_PX:
 			var box := Rect2(_to_world(_drag_start), Vector2.ZERO).expand(_to_world(_drag_now))
 			draw_rect(box, Color(COLOR, 0.12))
@@ -616,34 +655,102 @@ func _selected() -> Array[Node]:
 
 
 func _clear_selection() -> void:
-	_truck_sel = null
 	for unit in _squad():
 		unit.selected = false
 
 
-## The truck that's selected (clicked with nobody selected), or null.
-func selected_truck() -> Node2D:
-	return _truck_sel if _truck_sel != null and is_instance_valid(_truck_sel) else null
+# -------------------------------------------------------------------- park --
+
+## The truck the Park order's for: the nearest in the command circle with a
+## squadmate at the wheel (not one the player's driving, not one slung under a helicopter), or null.
+func _park_candidate() -> Node2D:
+	var speaker = _speaker()
+	var best: Node2D = null
+	for truck: Node2D in get_tree().get_nodes_in_group("vehicles"):
+		if not truck.has_method("has_ai_driver") or not truck.has_ai_driver() or truck.get("airborne") \
+				or not _hears(truck.global_position):
+			continue
+		if best == null or truck.global_position.distance_to(speaker.global_position) \
+				< best.global_position.distance_to(speaker.global_position):
+			best = truck
+	return best
 
 
-func _select_truck(truck: Node2D) -> void:
-	for unit in _squad():
-		unit.selected = false
-	_truck_sel = truck
-	_pings.append({pos = truck.global_position, age = 0.0})
+## The Park button: the ghost follows the mouse from now until a click.
+func _give_park_order() -> void:
+	_crane_drop_truck = null
+	_arming.clear()
+	_attention_units.clear()
+	_park_truck = _park_candidate()
+	_park_heading = NAN
 
 
-## A click (or right click) on the ground while a truck's selected and no unit
-## is: the truck's sent there, as a unit would be (a squadmate drives it, by
-## road: vehicle_ai.gd). A red ping if it can't be (nobody but the player's
-## at the wheel, no way there). False if no truck's selected.
-func _drive_selected_truck(point: Vector2) -> bool:
-	var truck := selected_truck()
-	if truck == null or not _selected().is_empty():
-		return false
-	var done: bool = truck.order_drive_to(point)
-	_pings.append({pos = point, age = 0.0} if done else {pos = point, age = 0.0, color = REFUSE_COLOR})
-	return true
+## The ghost's heading: the truck's own until the scroll wheel turns it.
+func _park_heading_now() -> float:
+	return _park_heading if not is_nan(_park_heading) else wrapf(_park_truck.global_rotation, -PI, PI)
+
+
+## The click: the driver's sent to park there, that way round. A red ping if it can't (the spot's
+## taken, or there's no way the truck can get there facing so): the ghost stays for another go.
+func _confirm_park() -> void:
+	var truck := _park_truck
+	if truck == null or not is_instance_valid(truck):
+		_park_truck = null
+		return
+	var at := _mouse_world
+	if _park_clear(truck, at, _park_heading_now()) and truck.order_drive_to(at, _park_heading_now()):
+		_pings.append({pos = at, age = 0.0})
+		_park_truck = null
+		World.menu_held = false
+	else:
+		_pings.append({pos = at, age = 0.0, color = REFUSE_COLOR})
+
+
+## Whether `truck` would fit at world `at`, nose along `heading`: inside the
+## play area and clear of anything solid it runs into (squares, crates, sandbags).
+func _park_clear(truck: Node2D, at: Vector2, heading: float) -> bool:
+	var half: Vector2 = Vector2(truck.LENGTH_M, truck.WIDTH_M) * World.PX_PER_M / 2.0
+	var xform := Transform2D(heading, at)
+	for corner in [half, Vector2(half.x, -half.y), -half, Vector2(-half.x, half.y)]:
+		if not World.ARENA.has_point(xform * corner):
+			return false
+	var shape := RectangleShape2D.new()
+	shape.size = half * 2.0
+	var query := PhysicsShapeQueryParameters2D.new()
+	query.shape = shape
+	query.transform = xform
+	query.collision_mask = truck.collision_mask
+	query.exclude = [truck.get_rid()]
+	return get_world_2d().direct_space_state.intersect_shape(query, 1).is_empty()
+
+
+## Parking: a ghost of the truck at the mouse (green, or red where it won't
+## fit), with a faint line to it from the truck.
+func _draw_park(_px: float) -> void:
+	if _park_truck == null or not is_instance_valid(_park_truck):
+		return
+	var heading := _park_heading_now()
+	var color := COLOR if _park_clear(_park_truck, _mouse_world, heading) else REFUSE_COLOR
+	draw_line(_park_truck.global_position, _mouse_world, Color(color, 0.3), 1.5, true)
+	_draw_truck_ghost(_park_truck, _mouse_world, heading, color, 1.0)
+
+
+## The truck's outline at `at`, nose along `heading`: its body, the cab
+## across the front, and an arrow the way it faces.
+func _draw_truck_ghost(truck: Node2D, at: Vector2, heading: float, color: Color, alpha: float) -> void:
+	var px := World.PX_PER_M
+	var half: Vector2 = Vector2(truck.LENGTH_M, truck.WIDTH_M) * px / 2.0
+	var body := Rect2(-half, half * 2.0)
+	draw_set_transform(at, heading)
+	draw_rect(body, Color(color, 0.14 * alpha))
+	draw_rect(body, Color(color, 0.85 * alpha), false, 2.5)
+	# The divider: where the pickup bed starts (Mike, 2026-11-09), from the truck's own measurements.
+	var bed_x: float = truck.BED_FRONT_X_M * px
+	draw_line(Vector2(bed_x, -half.y), Vector2(bed_x, half.y), Color(color, 0.6 * alpha), 1.5, true)
+	var tip := Vector2(half.x - 0.2 * px, 0.0)
+	var arrow := PackedVector2Array([tip, tip + Vector2(-0.6, -0.35) * px, tip + Vector2(-0.6, 0.35) * px])
+	draw_colored_polygon(arrow, Color(color, 0.8 * alpha))
+	draw_set_transform(Vector2.ZERO, 0.0)
 
 
 func _click(point: Vector2, shift: bool) -> void:
@@ -657,7 +764,6 @@ func _click(point: Vector2, shift: bool) -> void:
 			best = d
 			hit = unit
 	if hit:
-		_truck_sel = null
 		if shift:
 			hit.selected = not hit.selected
 		else:
@@ -667,24 +773,25 @@ func _click(point: Vector2, shift: bool) -> void:
 		pass   # (the truck's crane took it, or turned it down: _crane_click())
 	elif _vehicle_at(point) != null:
 		# A truck (the whole truck's the click; a small HUD says how many units
-		# are in it; Mike, 2026-11-04). With nothing selected, the truck itself
-		# is selected, to be sent places when a squadmate's driving it. With
-		# units selected they get in: one unit goes to the seat on the side of
-		# the cab clicked (the left the driver's, the right the passenger's);
-		# two or more fill both seats, each seat the nearest unit to its door.
-		# The seat taken, or nobody to send: a red ping.
+		# are in it; Mike, 2026-11-04). The selection gets in; with nobody
+		# selected, whoever's in the command circle (Mike, 2026-11-09: one or
+		# two in it, they get in; with more, the two nearest its doors). One
+		# unit goes to the seat on the side of the cab clicked (the left the
+		# driver's, the right the passenger's), or the other if that's taken;
+		# two or more fill the free seats, each the nearest unit to its door.
+		# Both taken, or nobody to send: a red ping. (The truck itself isn't
+		# selected: its driver's ordered with Park.)
 		var truck := _vehicle_at(point)
 		_show_truck_hud(truck)
-		var units := _selected().filter(func(u): return u.riding == null and not u.dead)
-		if units.is_empty():
-			_select_truck(truck)
-			return
+		var units := _order_targets().filter(func(u): return u.get("riding") == null and not u.dead)
 		var side := -1 if truck.to_local(point).y < 0.0 else 1
 		var jobs: Array = []   # [unit, seat side]
 		if units.size() == 1:
-			if truck.seat_free(side):
-				jobs.append([units[0], side])
-		else:
+			for s: int in [side, -side]:
+				if truck.seat_free(s):
+					jobs.append([units[0], s])
+					break
+		elif units.size() > 1:
 			var pool := units.duplicate()
 			for s: int in [side, -side]:
 				if pool.is_empty() or not truck.seat_free(s):
@@ -745,8 +852,6 @@ func _click(point: Vector2, shift: bool) -> void:
 			unit.order_build(crate)
 			_pings.append({pos = unit.global_position, age = 0.0})
 		_pings.append({pos = crate.global_position, age = 0.0})
-	elif _drive_selected_truck(point):
-		pass   # (the selected truck's sent there: _drive_selected_truck())
 	else:
 		_order_move(point, _order_targets())   # nobody selected: everyone in the circle
 
@@ -949,7 +1054,6 @@ func _order_move(point: Vector2, units: Array = []) -> void:
 	if units.is_empty():
 		units = _selected()
 	if units.is_empty():
-		_drive_selected_truck(point)   # (a right click with a truck selected)
 		return
 	if _man_sandbags(point, units):
 		_pings.append({pos = point, age = 0.0})
@@ -1085,6 +1189,19 @@ func _order_targets() -> Array[Node]:
 	return units
 
 
+## Who Disperse goes to: as _order_targets(), and with nobody selected, anyone
+## in a truck in the circle too: they get out (the driver stops it first), now
+## the truck's no longer selected to be emptied (Mike, 2026-11-09).
+func _disperse_targets() -> Array[Node]:
+	var units := _order_targets()
+	if _selected().is_empty():
+		for unit in _squad():
+			var truck = unit.get("riding")
+			if truck != null and is_instance_valid(truck) and _hears(truck.global_position) and not unit in units:
+				units.append(unit)
+	return units
+
+
 ## A VEHICLE_ORDERS button: to the vehicle the player's driving.
 func _give_vehicle_order(id: String) -> void:
 	_crane_drop_truck = null
@@ -1099,16 +1216,7 @@ func _give_vehicle_order(id: String) -> void:
 ## Gives a menu order to _order_targets(). `shape` is the formation chosen in
 ## the pop-out, for orders that have one.
 func _give_order(id: String, shape := DEFAULT_SHAPE) -> void:
-	# A truck selected (and no unit): Stop halts it, Disperse gets everyone in it out.
-	if selected_truck() != null and _selected().is_empty() and id in ["stop", "disperse"]:
-		var truck := selected_truck()
-		if id == "stop":
-			truck.ai_stop()
-		else:
-			truck.dismount_all()
-		_pings.append({pos = truck.global_position, age = 0.0})
-		return
-	var units := _order_targets()
+	var units := _disperse_targets() if id == "disperse" else _order_targets()
 	if units.is_empty():
 		return
 	_arming.clear()             # a new order drops one still waiting for its click
@@ -1542,7 +1650,7 @@ func _place(spots: Array) -> void:
 ## menus fade and let the mouse through, so a click over them lands on the
 ## field instead of pressing a button.
 func _place_menus() -> void:
-	var picking := not _attention_units.is_empty() or not _arming.is_empty() or _placing != ""
+	var picking := not _attention_units.is_empty() or not _arming.is_empty() or _placing != "" or _park_truck != null
 	for menu: Control in [_menu, _deploy_menu]:
 		menu.modulate.a = MENU_PICKING_ALPHA if picking else 1.0
 		var controls: Array = [menu] + menu.find_children("*", "Control", true, false)
@@ -1575,6 +1683,12 @@ func _place_menus() -> void:
 		_crane_button_shown = show_crane
 		_crane_button.visible = show_crane
 		_menu.reset_size()
+	# Park: while a truck with a squadmate at the wheel is in the circle.
+	var show_park := not driving and _park_candidate() != null
+	if show_park != _park_button_shown:
+		_park_button_shown = show_park
+		_park_button.visible = show_park
+		_menu.reset_size()
 	var screen: Vector2 = get_viewport().get_canvas_transform() * speaker.global_position
 	var half_square: float = 0.2 * World.PX_PER_M * get_viewport().get_canvas_transform().get_scale().x
 	var view := get_viewport().get_visible_rect()
@@ -1597,8 +1711,8 @@ func _place_menus() -> void:
 	_menu.position = left + Vector2(stack.x - _menu.size.x, 0.0)
 	_deploy_menu.position = left + Vector2(stack.x - _deploy_menu.size.x, _menu.size.y + DEPLOY_GAP_PX)
 	var nobody := _order_targets().is_empty()
-	for button in _order_buttons:
-		button.disabled = nobody
+	for i in _order_buttons.size():
+		_order_buttons[i].disabled = (_disperse_targets().is_empty() if ORDERS[i].id == "disperse" else nobody)
 	_deploy_button.disabled = DEPLOYABLES.all(func(d): return _carried(d.id) <= 0)
 
 
@@ -1647,6 +1761,11 @@ func _build_hud() -> CanvasLayer:
 	_crane_button.button_down.connect(_open_crane_popout.bind(_crane_button, false))
 	_crane_button.visible = false
 	_menu.add_child(_crane_button)
+	# Park, while a truck with a squadmate driving is in the circle.
+	_park_button = UiStyle.menu_button("Park", Vector2(170, 42), COLOR)
+	_park_button.pressed.connect(_give_park_order)
+	_park_button.visible = false
+	_menu.add_child(_park_button)
 	layer.add_child(_menu)
 	_truck_hud = UiStyle.panel()
 	_truck_hud.mouse_filter = Control.MOUSE_FILTER_IGNORE

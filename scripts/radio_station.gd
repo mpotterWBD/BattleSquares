@@ -17,7 +17,8 @@ extends Node2D
 ## command mode (holding Space), not while the dish turns on its own. Stepping away
 ## from the desk (out of the operator's spot) or pressing Space closes the wheel
 ## without changing the pick, and X (the "back" control) does too, going back
-## to the RADIO menu (Mike, 2026-11-01). Where the dish points is kept in
+## to the RADIO menu (Mike, 2026-11-01); locking it in goes back there too
+## (2026-11-09). Where the dish points is kept in
 ## `dish_heading`, and `dish_tuned` is announced once it gets there, for the
 ## long-range comms to come. While tuning, the player doesn't aim or fire
 ## (player.gd `busy`).
@@ -235,8 +236,9 @@ func _place_upright() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact") and not event.is_echo():
-		if tuning:   # F again locks the pick in
+		if tuning:   # F again locks the pick in, and it's back to the RADIO menu
 			_stop_tuning(true)
+			$Terminal.back_to_menu()
 			get_viewport().set_input_as_handled()
 		return
 	if tuning and event.is_action_pressed("back") and not event.is_echo():
@@ -253,7 +255,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	_pick_at(get_canvas_transform().affine_inverse() * mouse.position)
 	var button := event as InputEventMouseButton
 	if button and button.pressed and button.button_index == MOUSE_BUTTON_LEFT:
-		_stop_tuning(true, true)
+		# Locked in: back to the RADIO menu (Mike, 2026-11-09: it used to close, and
+		# the radio had to be opened again for the next thing).
+		_stop_tuning(true)
+		$Terminal.back_to_menu()
 	get_viewport().set_input_as_handled()
 
 

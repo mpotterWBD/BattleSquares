@@ -122,7 +122,7 @@ func _init() -> void:
 	# A truck click (command mode): the HUD says how many units are in it; the seat's taken, so the rider's selected.
 	command._click(truck.to_global(Vector2(-1.5, 0.3) * PX), false)   # the far end of the bed: not the door
 	check("a click on the bed: a HUD, 'Units inside: 1'", command._truck_hud.visible and command._truck_hud_text.text.begins_with("Units inside: 1"))
-	check("...and the truck's what's selected (nobody selected: the whole truck's the click)", command.selected_truck() == truck and not mate.selected)
+	check("...and the truck isn't selected (it can't be: its driver's ordered with Park)", not command.has_method("selected_truck") and not mate.selected)
 	command._clear_selection()
 	# A square in the passenger's exit box: Crane's refused, nothing deploys.
 	var blocker: Node2D = load("res://scenes/squadmate.tscn").instantiate()

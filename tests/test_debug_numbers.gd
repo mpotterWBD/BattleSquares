@@ -42,8 +42,11 @@ func _init() -> void:
 			overlay = c
 	print("after Q: debug=%s, overlay layer visible=%s" % [World.debug, overlay._layer.visible])
 	print("numbers: ", numbers())
-	var spawner: Node = main.get_node("EnemySpawner")
-	spawner.spawn(3, spawner.FORMATIONS[0])
+	# (the spawner drops enemies by helicopter now: placed straight in instead)
+	for i in 3:
+		var foe: Node2D = load("res://scenes/enemy.tscn").instantiate()
+		foe.position = Vector2(40.0, 6.0 + 2.0 * i) * 1024.0 / 12.0
+		main.add_child(foe)
 	for i in 3:
 		await physics_frame
 	print("after 3 enemies arrive: ", numbers())

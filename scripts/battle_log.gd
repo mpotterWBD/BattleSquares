@@ -13,8 +13,13 @@ extends Node
 ## change in what it's doing (its state, target, cover, alert, holding
 ## fire...), checked every tick; every shot and where it ended up; every hit
 ## it takes; every order a squadmate gets; and the solid things on the
-## field (cover, with its class) as they appear, change or go. The file
-## starts with a legend of the line codes, so it explains itself.
+## field (cover, with its class) as they appear, change or go. Vehicles
+## (the "vehicles" group: supply_truck.gd) are objects too, with V lines
+## for where they are and how fast, ~ lines for who's in which seat, the
+## doors, the engine, the AI driver and the crane (their log_status()), and
+## O lines for the orders they're given; a square in or by one has a
+## vehicle= key (their seat_of()). The file starts with a legend of the
+## line codes, so it explains itself.
 ##
 ## Plain text, one line per thing, tab-separated, in metres and seconds:
 ## a few hundred KB for a few minutes of fighting, and readable as it is
@@ -27,10 +32,11 @@ const World = preload("res://scripts/world.gd")
 const UiStyle = preload("res://scripts/ui_style.gd")
 const Cover = preload("res://scripts/cover.gd")
 
-const FORMAT := 1
+const FORMAT := 2                 ## 2: vehicles (V lines, ~ and O lines for o#, vehicle= keys)
 const SAMPLE_S := 0.2             ## positions this often (5 a second)...
 const MOVED_M := 0.05             ## ...once it's moved this far
 const TURNED_DEG := 5.0           ## or turned this far
+const SPEED_MPS := 0.2            ## or (a vehicle) its speed's changed this much
 const SPOT_GRID_M := 0.5          ## an enemy's chosen spot, rounded to this
 const MAP_SCAN_S := 1.0           ## looks for new, changed or gone objects this often
 const FLUSH_S := 1.0              ## onto the disk this often, so a crash loses at most this much
@@ -52,9 +58,17 @@ const LEGEND := [
 	"# H  <unit> <by> <damage> <hp left>              took a hit",
 	"# O  <unit> <order> [args]                       a squadmate was told to (command mode, a helicopter",
 	"#                                                drop-off, or its own move to a new wall spot)",
+	"# O  <vehicle o#> <order> [args] <ok|refused>    a vehicle was told to: drive <x,y> <heading|-> <driver>",
+	"#                                                (the Park order; heading - : it chooses), dismount,",
+	"#                                                crane <on|off>, lift <x,y> (a crate onto the bed),",
+	"#                                                drop <count> <side>, hatch (unbuilt)",
 	"# M  <object> <kind> <x> <y> <w> <h> <class> [extra]   a solid thing: new, or changed (centre, size,",
-	"#                                                cover class 0-3, scripts/cover.gd: 3 stops over 60%)",
+	"#                                                cover class 0-3, scripts/cover.gd: 3 stops over 60%).",
+	"#                                                A vehicle's M isn't rewritten as it moves: see its V lines",
 	"# G  <object>                                    gone",
+	"# V  <vehicle o#> <x> <y> <heading> <speed m/s>  where a vehicle is (every 0.2 s, once it's moved,",
+	"#                                                turned or changed speed; negative speed is reversing)",
+	"# ~  <vehicle o#> key=value ...                  what changed in a vehicle (keys below)",
 	"# Keys in ~ lines:",
 	"#   state    squadmate: IDLE SHUFFLE MOVE FOLLOW ATTENTION DEFEND BUILD SURPRISED PINNED;",
 	"#            enemy: CALM ENGAGE SEARCH RETURN SURPRISED",
@@ -67,6 +81,22 @@ const LEGEND := [
 	"#   follow   follow / lead              cmd     player in command mode 1/0   busy  player at a menu 1/0",
 	"#   orders   squadmate under orders 1/0 (nothing on its own from idle)   own   dispersed: on its own 1/0",
 	"#   dead     1 once killed",
+	"#   vehicle  in or by a vehicle: o#:driver, o#:passenger (in that seat), o#:boarding_<seat> or",
+	"#            o#:leaving_<seat> (walking in or out by a door), o#:crane (out running its crane), - none.",
+	"#            Inside, a square is hidden and switched off: its state is frozen, its P lines follow the vehicle",
+	"# Keys in a vehicle's ~ lines (supply_truck.gd log_status()):",
+	"#   engine   OFF STARTING RUNNING          slung   1 while it hangs under a helicopter",
+	"#   driver, passenger                      who's sitting in that seat (unit, - empty)",
+	"#   driver_door, passenger_door            someone getting in or out of that seat: <step>,<unit>; steps",
+	"#            TO_DOOR OPENING STEP_IN CLOSING (in), OPENING_OUT STEP_OUT CLOSING_OUT (out)",
+	"#   driver_wants_out, passenger_wants_out  1: told to get out, waiting for it to stop",
+	"#   ai       its squadmate driver: idle planning driving arrived failed     ai_to  where it's driving to (x,y)",
+	"#   ai_stuck  times it's got stuck against something (and backed off) on this order",
+	"#   ai_heading  the way it's to end up facing (degrees; - : its own choice)",
+	"#   crane    IDLE WAIT_STOP WALKING SETTLING DEPLOYING WORKING STOWING RETURNING    armed  Crane order on 1/0",
+	"#   operator who's running the crane       job  <load|unload>,<crate o#>,<REACH|LIFT|SWING|LOWER>",
+	"#   jobs     crane jobs waiting            bed  the crates on its bed, back spot first (o# or -)",
+	"# A key that's gone is written once as key=-.",
 ]
 
 ## The log being written, for the hooks below (null when not logging).
@@ -91,6 +121,7 @@ var _objects := {}       ## instance id -> number
 var _object_nodes := {}  ## number -> WeakRef
 var _object_last := {}   ## number -> its M line's fields as last written
 var _shots := {}         ## bullet instance id -> shot number
+var _vpose := {}         ## vehicle "o#" -> [Vector2 m, heading deg, speed m/s] as last written
 var _enum_names := {}    ## "script path:enum" -> {value: name}
 var _button: Button
 var _note: Label
@@ -181,7 +212,7 @@ func start() -> void:
 	_live = self
 	_t = 0.0
 	_lines = 0
-	for d in [_introduced, _unit_nodes, _status, _pose, _objects, _object_nodes, _object_last, _shots]:
+	for d in [_introduced, _unit_nodes, _status, _pose, _objects, _object_nodes, _object_last, _shots, _vpose]:
 		d.clear()
 	_sample_s = 0.0
 	_map_s = 0.0
@@ -252,6 +283,17 @@ func _poll_units(sample: bool) -> void:
 			_unit_nodes.erase(n)   # it's down: nothing more to say about it
 		elif sample:
 			_write_pose(n, unit)
+	for vehicle: Node in get_tree().get_nodes_in_group("vehicles"):
+		if not vehicle is Node2D or not vehicle.has_method("log_status"):
+			continue
+		var id := _ref(vehicle)   # (its M line when it's new to this log)
+		var now := {}
+		var status: Dictionary = vehicle.log_status()
+		for key: String in status:
+			now[key] = _text(status[key])
+		_write_status(id, now)
+		if sample:
+			_write_vehicle_pose(id, vehicle)
 
 
 ## Its number, giving it one if it's new: the player 0, the rest in turn.
@@ -323,18 +365,27 @@ func _read_status(unit: Node2D) -> Dictionary:
 		s.reload = _flag(rifle.reloading)
 	if unit.is_in_group("player"):
 		s.cmd = _flag(World.commanding())
+	for vehicle: Node in get_tree().get_nodes_in_group("vehicles"):
+		var seat: String = vehicle.seat_of(unit) if vehicle.has_method("seat_of") else ""
+		if seat != "":
+			s.vehicle = "%s:%s" % [_ref(vehicle), seat]   # (only while it's in or by one: then vehicle=-)
+			break
 	if unit.dead:
 		s.dead = "1"
 	return s
 
 
-## A ~ line with whatever changed since it was last written.
-func _write_status(n: int, now: Dictionary) -> void:
+## A ~ line with whatever changed since it was last written. `n` is a
+## square's number, or a vehicle's "o#". A key that's gone is written as -.
+func _write_status(n, now: Dictionary) -> void:
 	var was: Dictionary = _status.get(n, {})
 	var parts := []
 	for key: String in now:
 		if was.get(key) != now[key]:
 			parts.append("%s=%s" % [key, now[key]])
+	for key: String in was:
+		if not now.has(key) and was[key] != "-":
+			parts.append("%s=-" % key)
 	if was.get("reload") == "0" and now.get("reload") == "1":
 		var rifle = _unit_nodes[n].get_ref().get("_rifle") if _unit_nodes.has(n) else null
 		if rifle:
@@ -354,6 +405,19 @@ func _write_pose(n: int, unit: Node2D) -> void:
 			return
 	_pose[n] = now
 	_line("P", [n, "%.2f" % now.x, "%.2f" % now.y, "%d" % roundi(now.z)])
+
+
+## A V line: where a vehicle is, its heading and speed, once any has changed enough.
+func _write_vehicle_pose(id: String, vehicle: Node2D) -> void:
+	var speed: float = vehicle.get("speed") if "speed" in vehicle else 0.0
+	var now := [vehicle.global_position / World.PX_PER_M, rad_to_deg(vehicle.global_rotation), speed]
+	if _vpose.has(id):
+		var was: Array = _vpose[id]
+		if (now[0].distance_to(was[0]) < MOVED_M and absf(now[2] - was[2]) < SPEED_MPS
+				and absf(angle_difference(deg_to_rad(now[1]), deg_to_rad(was[1]))) < deg_to_rad(TURNED_DEG)):
+			return
+	_vpose[id] = now
+	_line("V", [id, "%.2f" % now[0].x, "%.2f" % now[0].y, "%d" % roundi(now[1]), "%.1f" % now[2]])
 
 
 func _shot(bullet: Node2D) -> void:
@@ -389,7 +453,9 @@ func _hit(unit: Node2D, by: Node2D, damage: float) -> void:
 func _order(unit: Node2D, what: String, args: Array) -> void:
 	var fields: Array = [_unit_id(unit), what]
 	for arg in args:
-		if arg is Vector2:
+		if arg == null:
+			fields.append("-")
+		elif arg is Vector2:
 			fields.append("%s,%s" % [_m(arg.x), _m(arg.y)])
 		elif arg is Object:
 			fields.append(_unit_id(arg))
@@ -415,7 +481,9 @@ func _scan_map() -> void:
 
 
 func _scan_node(node: Node, seen: Dictionary) -> void:
-	if (node is PhysicsBody2D and node.collision_layer & MAP_MASK and not node.has_method("take_hit")
+	# (a vehicle slung under a helicopter is off every layer, but it's still there)
+	if (node is PhysicsBody2D and (node.collision_layer & MAP_MASK or node.is_in_group("vehicles"))
+			and not node.has_method("take_hit")
 			and not node.is_in_group("bullets")
 			and node.get_children().any(func(c): return c is CollisionShape2D or c is CollisionPolygon2D)):
 		var id := _object_id(node)
@@ -436,10 +504,40 @@ func _object_id(node: Object) -> String:
 		_objects[key] = n
 		_object_nodes[n] = weakref(node)
 	var fields := _describe(node)
-	if _object_last.get(n) != fields:
-		_object_last[n] = fields
+	# A vehicle's moves are in its V lines: its M is only rewritten for a new kind, class or extra.
+	var compare: Array = [fields[0]] + fields.slice(5) if node.is_in_group("vehicles") else fields
+	if _object_last.get(n) != compare:
+		_object_last[n] = compare
 		_line("M", ["o%d" % n] + fields)
 	return "o%d" % n
+
+
+## A square's or object's id for the log ("5", "o3", "-"), without rewriting
+## an object's M line if it's already known (a crate swinging on a crane's
+## hook would otherwise get one every tick).
+func _ref(thing) -> String:
+	if typeof(thing) != TYPE_OBJECT or not is_instance_valid(thing):
+		return "-"
+	if thing.has_method("take_hit") and "dead" in thing:
+		return _unit_id(thing)
+	var n: int = _objects.get(thing.get_instance_id(), 0)
+	return "o%d" % n if n != 0 else _object_id(thing)
+
+
+## A vehicle's status value as log text: squares and objects by id, points
+## in metres, flags 1/0, lists joined by commas, null as -.
+func _text(value) -> String:
+	if value == null:
+		return "-"
+	if typeof(value) == TYPE_OBJECT:
+		return _ref(value)
+	if value is bool:
+		return _flag(value)
+	if value is Vector2:
+		return "%s,%s" % [_m(value.x), _m(value.y)]
+	if value is Array:
+		return ",".join(PackedStringArray(value.map(_text)))
+	return str(value)
 
 
 ## kind, centre x, y, width, height (its collision shapes' bounding box,

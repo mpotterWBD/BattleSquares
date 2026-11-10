@@ -18,6 +18,10 @@ Never on the real project (see CLAUDE.md "Testing"). On the scratch copy:
 
 Godot prints a few leak warnings at exit; they don't matter.
 
+Long driving tests (the truck ones) run much quicker with `--fixed-fps 60`
+(no waiting on the clock): `godot --headless --fixed-fps 60 --path <scratch> -s test.gd`.
+Sound checks (test_truck_drive.gd) need real time: run those without it.
+
 ## Folders
 
 - `tests/` — the current tests (stairs, tower routes and places to stand,

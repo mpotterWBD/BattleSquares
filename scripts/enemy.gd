@@ -309,6 +309,18 @@ func _move_intent() -> Vector2:
 	_carry_view.visible = carrying != ""
 	if _carry_view.visible:
 		_carry_view.queue_redraw()
+	var intent := _intent(delta)
+	if tower != null:
+		# Up a watch tower (placed there: soldier.gd `start_on_top`). It can't use
+		# the stairs yet, so it holds its spot up there and fights from it: its
+		# modes still run (spotting, searching, going calm), and it still turns,
+		# aims and fires; it just doesn't walk (it'd only press into the railings).
+		return Vector2.ZERO
+	return intent
+
+
+## Where it wants to go this tick: an ammo run, crate work, or by its mode.
+func _intent(delta: float) -> Vector2:
 	if carrying == "":
 		var run := _ammo_run()   # out of ammo: off to get some first
 		if run != Vector2.INF:

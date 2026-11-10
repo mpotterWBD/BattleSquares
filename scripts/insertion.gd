@@ -16,6 +16,7 @@ extends Node
 const World = preload("res://scripts/world.gd")
 const Helicopter = preload("res://scripts/helicopter.gd")
 const SQUADMATE := preload("res://scenes/squadmate.tscn")
+const ENEMY := preload("res://scenes/enemy.tscn")
 
 const CRUISE_ALT_M := 25.0
 const CRUISE_MPS := 30.0
@@ -47,6 +48,11 @@ var lz := Vector2.ZERO
 var troops := 0
 var units: Array = []   ## unit type per trooper, in unloading order ("infantry", "radio")
 var passengers: Array = []   ## squares already in the scene, unloaded before `units`
+## An enemy drop (enemy_spawner.gd, Mike 2026-11-09): enemies get out, each
+## walking a step clear of the door to a post there (enemy.gd RETURN, then CALM),
+## with `enemy_health`.
+var enemy := false
+var enemy_health := 2.0
 
 var _heli: Node2D
 var _timer := 0.0
@@ -148,16 +154,30 @@ func _unload_one() -> void:
 		_out += 1
 		passenger_out.emit(rider)
 		return
+	# Spots are spaced evenly around the middle of the two doors, not each
+	# trooper's own door, so neighbours never get sent to the same spot.
+	var middle: float = (DOOR_X_M[0] + DOOR_X_M[1]) / 2.0
+	var spot := _heli.to_global(Vector2(middle + spread, side * DISPERSE_OUT_M) * px)
+	if enemy:
+		var foe: Node2D = ENEMY.instantiate()
+		foe.max_health = enemy_health
+		foe.position = door
+		foe.facing = facing
+		_heli.get_parent().add_child(foe)
+		# Its post is the spot (it sets one where it stands, in _ready()): it walks
+		# there, then stands calm, facing out, as one placed there would.
+		foe._post = spot
+		foe._post_facing = facing
+		foe.mode = foe.Mode.RETURN
+		_out += 1
+		return
 	var trooper: Node2D = SQUADMATE.instantiate()
 	if units[_out - passengers.size()] == "radio":
 		trooper.kit = "radio"
 	trooper.position = door
 	trooper.facing = facing
 	_heli.get_parent().add_child(trooper)
-	# Spots are spaced evenly around the middle of the two doors, not each
-	# trooper's own door, so neighbours never get sent to the same spot.
-	var middle: float = (DOOR_X_M[0] + DOOR_X_M[1]) / 2.0
-	trooper.order_move(_heli.to_global(Vector2(middle + spread, side * DISPERSE_OUT_M) * px))
+	trooper.order_move(spot)
 	_out += 1
 
 

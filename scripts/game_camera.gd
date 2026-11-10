@@ -3,8 +3,8 @@ extends Camera2D
 ##
 ## The camera follows the target (the player) but keeps the view inside the
 ## arena, plus EDGE_VIEW_M beyond it so the edge barrier (arena_edge.gd)
-## stays in sight, whenever that fits. Zoomed all the way out the whole
-## arena and its barrier fit on screen; otherwise it follows the player up
+## stays in sight. (The arena's 2.28 km across now: zoomed all the way out
+## you see about 105 m of it.) It follows the player up
 ## to the edges.
 ##
 ## In radio command mode (World.radio_commanding, from a station's terminal)
@@ -30,7 +30,7 @@ const DEATH_VIEW_M := 3.5        ## ground shown top to bottom, closed in on the
 const DEATH_EASE := 2.5          ## how quickly it closes in (real time)
 
 @export var target_path: NodePath = ^"../Player"
-@export var min_zoom := 0.43    ## below 1 = see more of the field (0.43: the whole arena)
+@export var min_zoom := 0.43    ## below 1 = see more of the field (0.43: about 105 m across)
 @export var max_zoom := 3.0     ## above 1 = close-up
 @export var zoom_step := 1.15   ## change per wheel notch
 @export var zoom_ease := 12.0   ## how quickly the zoom catches up

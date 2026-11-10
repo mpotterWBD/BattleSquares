@@ -10,6 +10,9 @@ extends Node
 ##            anyone in earshot of your voice (player.gd can_hear()). F
 ##            again, or stepping off the box, hangs up.
 ##   Exit     closes the menu (as F does).
+##   (Mike, 2026-11-09: you stay in this menu. Sending a helicopter, or locking
+##   the dish's heading in, comes back to it; Esc or X on a request steps back
+##   to it, and at the menu closes it: back_to_menu().)
 ##   Dish     aim the station's dish: the menu goes and the wheel opens round
 ##            the dish (radio_station.gd start_tuning(); it used to be F at
 ##            the dish). Click or F locks the heading in; stepping away
@@ -205,6 +208,8 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact") and not event.is_echo():
+		if get_parent().get("tuning"):
+			return   # (aiming the dish: F locks the heading in, radio_station.gd, then it's back here)
 		if _owns_radio:
 			hang_up()
 			get_viewport().set_input_as_handled()
@@ -217,15 +222,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if screen == Screen.CLOSED:
 		return
-	if event.is_action_pressed("ui_cancel"):
+	if (event.is_action_pressed("ui_cancel") or event.is_action_pressed("back")) and not event.is_echo():
+		# Esc or X: one step back (marking an LZ: to its request; a request: to the menu); at the menu, it closes.
 		if screen == Screen.LZ:
 			_stop_lz(true)
 		elif screen == Screen.DZ:
 			_stop_dz(true)
 		elif screen == Screen.VLZ:
 			_stop_vlz(true)
-		else:
+		elif screen == Screen.MENU:
 			close()
+		else:
+			back_to_menu()
 		get_viewport().set_input_as_handled()
 		return
 	if screen == Screen.DZ:
@@ -311,6 +319,24 @@ func close() -> void:
 		_stop_vlz(false)
 	_show(Screen.CLOSED)
 	_release_player()
+
+
+## Back to the RADIO menu from anywhere in it: after a helicopter's sent, the
+## dish is aimed, or Esc / X on a request (Mike, 2026-11-09: it stays in the
+## menu, rather than closing and having to be opened again). Exit, F, walking
+## off the box or Space still close it.
+func back_to_menu() -> void:
+	if screen == Screen.LZ:
+		_stop_lz(false)
+	if screen == Screen.DZ:
+		_stop_dz(false)
+	if screen == Screen.VLZ:
+		_stop_vlz(false)
+	_show(Screen.MENU)
+	var player = _player()
+	if player:
+		player.busy = true
+	_free_player_on_release = false
 
 
 func hang_up() -> void:
@@ -583,6 +609,8 @@ func _drop_spot_ok(point: Vector2) -> bool:
 ## The ghost: each crate as it'll land (pallet and load, see-through), green
 ## where it can come down, red where it can't, with the grid's outline.
 func _draw_dz_ghost() -> void:
+	if _dz_ghost == null:
+		return   # (sent or cancelled this frame: a redraw still queued from before)
 	for drop in _dz_layout(_mouse_world):
 		var kind := _equipment_type(drop.kind)
 		var tint := LZ_OK if drop.ok else LZ_BAD
@@ -608,7 +636,7 @@ func _send_drop(center: Vector2) -> void:
 	equip_slots.clear()
 	_equip_progress.clear()
 	_equip_queue.clear()
-	close()
+	back_to_menu()   # (sent: back to the RADIO menu, Mike 2026-11-09)
 
 
 # -------------------------------------------------------------- the LZ --
@@ -650,7 +678,7 @@ func _send_helicopter(lz: Vector2) -> void:
 	slots.clear()
 	_progress.clear()
 	_queue.clear()
-	close()
+	back_to_menu()   # (sent: back to the RADIO menu, Mike 2026-11-09)
 
 
 # --------------------------------------------------- the vehicle request --
@@ -775,7 +803,7 @@ func _send_vehicle(lz: Vector2) -> void:
 	run.start(heli, lz, vehicle)
 	vehicle_slot = ""
 	_vehicle_progress = 0.0
-	close()
+	back_to_menu()   # (sent: back to the RADIO menu, Mike 2026-11-09)
 
 
 ## The vehicle slot: "+" while empty; the vehicle's picture once chosen, with

@@ -6,12 +6,15 @@ extends RefCounted
 ## blender/scripts/bs_common.py, which every asset is rendered at.
 const PX_PER_M := 1024.0 / 12.0
 
-## The play area in pixels: twice the 1920x1080 design view each way (about
-## 45 x 25.3 m), so at 1x zoom you see a quarter of it and at the furthest
-## zoom out (0.5) all of it. Nobody can leave it (the edge barrier is drawn
-## by scripts/arena_edge.gd), and the camera keeps inside it whenever the
-## zoomed view is small enough.
-const ARENA := Rect2(0, 0, 3840, 2160)
+## The play area in pixels: 2 square miles (Mike, 2026-11-09), a square
+## ARENA_SIDE_M (the square root of 2 miles) on a side, centred on the middle
+## of the first level's field (it was 3840 x 2160 px, 45 x 25.3 m, with its
+## top-left at the origin), so everything placed in main.tscn stays where it
+## was, with new ground all round. Nobody can leave it (the edge barrier is
+## drawn by scripts/arena_edge.gd), and the camera keeps inside it.
+const ARENA_SIDE_M := 2276.0
+const ARENA := Rect2(Vector2(1920.0, 1080.0) - Vector2.ONE * (ARENA_SIDE_M * PX_PER_M / 2.0),
+		Vector2.ONE * (ARENA_SIDE_M * PX_PER_M))
 
 ## The sun, matching the Blender renders: light from the top-left, tilted 40
 ## degrees from straight overhead, so shadows fall toward the bottom-right.

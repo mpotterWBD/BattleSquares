@@ -4,7 +4,7 @@ extends Sprite2D
 ## The visible area changes with the window shape and the camera's zoom and
 ## position, so the grass is re-fitted every frame (cheap: it just changes
 ## the sprite's region). The script doesn't run in the editor, so main.tscn
-## saves the Field covering the whole arena (World.ARENA, 3840 x 2160): the
+## saves the Field covering the first level's field (3840 x 2160 px; the arena is far bigger now, World.ARENA): the
 ## editor then shows the real field.
 
 ## Extra grass beyond the visible edges, so a fast zoom or pan never shows

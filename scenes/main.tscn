@@ -13,15 +13,51 @@
 [ext_resource type="PackedScene" path="res://scenes/crate_comms.tscn" id="11_ya4ey"]
 [ext_resource type="PackedScene" path="res://scenes/squadmate.tscn" id="15_jbj1t"]
 [ext_resource type="PackedScene" path="res://scenes/crate_ammo.tscn" id="15_jkv2x"]
+[ext_resource type="PackedScene" path="res://scenes/road_junction.tscn" id="15_muem4"]
+[ext_resource type="PackedScene" uid="uid://c1wt4tl5u1csq" path="res://scenes/watch_tower.tscn" id="16_muem4"]
+[ext_resource type="PackedScene" path="res://scenes/enemy.tscn" id="17_dp3eg"]
 [ext_resource type="PackedScene" path="res://scenes/supply_truck.tscn" id="17_muem4"]
+[ext_resource type="PackedScene" path="res://scenes/tree.tscn" id="18_dp3eg"]
+
+[sub_resource type="Curve2D" id="Curve2D_eb6dy"]
+resource_local_to_scene = true
+bake_interval = 8.0
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, -12439, -15, 0, 0, 0, 0, 833.2429, -46.83545, -1101.0887, 0, 0, 0, 4241, -23.000122)
+}
+point_count = 3
 
 [sub_resource type="Curve2D" id="Curve2D_dp3eg"]
 resource_local_to_scene = true
 bake_interval = 8.0
 _data = {
-"points": PackedVector2Array(0, 0, 0, 0, -311, -54, 0, 0, 0, 0, 833.2429, -46.83545, 0, 0, 0, 0, 4167, -26)
+"points": PackedVector2Array(0, 0, 357.8245, 6.3135885e-05, -17.09375, -17, -1747.0244, -8.351212e-12, 0, 0, 5201.7046, -58.00049)
 }
-point_count = 3
+point_count = 2
+
+[sub_resource type="Curve2D" id="Curve2D_0ld40"]
+resource_local_to_scene = true
+bake_interval = 8.0
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, -9081, 29, -364.6819, -1.5940752e-05, 0, 0, 1094, 10)
+}
+point_count = 2
+
+[sub_resource type="Curve2D" id="Curve2D_gqmmt"]
+resource_local_to_scene = true
+bake_interval = 8.0
+_data = {
+"points": PackedVector2Array(0, 0, 318.36752, 0, 69, 14, 0, 0, 0, 0, 13304, 161.99951)
+}
+point_count = 2
+
+[sub_resource type="Curve2D" id="Curve2D_yc10j"]
+resource_local_to_scene = true
+bake_interval = 8.0
+_data = {
+"points": PackedVector2Array(0, 0, 361.33887, 6.317849e-05, -60, -5.999878, 0, 0, 0, 0, 47713, -485)
+}
+point_count = 2
 
 [node name="Main" type="Node2D" unique_id=79091743]
 
@@ -62,17 +98,12 @@ script = ExtResource("8_arrival")
 
 [node name="Road" parent="." unique_id=1296387015 instance=ExtResource("10_road")]
 position = Vector2(-39, 1053)
-curve = SubResource("Curve2D_dp3eg")
+curve = SubResource("Curve2D_eb6dy")
 centre_line = false
 
 [node name="EnemySpawner" type="Node2D" parent="." unique_id=676917563]
 script = ExtResource("11_spawner")
 enemy_health = 4.0
-
-[node name="Sandbags" parent="." unique_id=1928113992 instance=ExtResource("10_choun")]
-position = Vector2(3090, 760)
-rotation = 1.5707964
-extra_sandbags = 8
 
 [node name="Sandbags2" parent="." unique_id=1510334185 instance=ExtResource("10_choun")]
 position = Vector2(3179, 92)
@@ -90,18 +121,372 @@ position = Vector2(3450, 912)
 [node name="CommsCrate" parent="." unique_id=1559053285 instance=ExtResource("11_ya4ey")]
 position = Vector2(857, 1400)
 
-[node name="SupplyTruck" parent="." unique_id=460662492 instance=ExtResource("17_muem4")]
-position = Vector2(1309, 1118)
-
-[node name="Squadmate" parent="." unique_id=498390232 instance=ExtResource("15_jbj1t")]
-position = Vector2(1157, 1315)
+[node name="Squadmate" parent="." unique_id=2037983324 instance=ExtResource("15_jbj1t")]
+position = Vector2(1104, 1525)
 idle_min_s = 1.5
 idle_max_s = 5.0
 
-[node name="AmmoCrate" parent="." unique_id=13828287 instance=ExtResource("15_jkv2x")]
-position = Vector2(978, 1400)
-
-[node name="Squadmate2" parent="." unique_id=255237889 instance=ExtResource("15_jbj1t")]
-position = Vector2(1237, 1459)
+[node name="Squadmate2" parent="." unique_id=245245878 instance=ExtResource("15_jbj1t")]
+position = Vector2(1262, 1578)
 idle_min_s = 1.5
 idle_max_s = 5.0
+
+[node name="SupplyTruck" parent="." unique_id=1793270378 instance=ExtResource("17_muem4")]
+position = Vector2(1410, 1091)
+
+[node name="RoadJunction" parent="." unique_id=717086510 instance=ExtResource("15_muem4")]
+position = Vector2(4714, 1030)
+rotation = 6.2831855
+
+[node name="Road2" parent="." unique_id=536217469 instance=ExtResource("10_road")]
+position = Vector2(4697, 1565)
+rotation = 1.5707964
+scale = Vector2(1.3455205, 1)
+curve = SubResource("Curve2D_dp3eg")
+centre_line = false
+
+[node name="RoadJunction2" parent="." unique_id=1348917381 instance=ExtResource("15_muem4")]
+position = Vector2(4755, 9076)
+rotation = 1.5707964
+
+[node name="Road3" parent="." unique_id=423087993 instance=ExtResource("10_road")]
+position = Vector2(3149, 9066)
+curve = SubResource("Curve2D_0ld40")
+
+[node name="Road4" parent="." unique_id=1058464252 instance=ExtResource("10_road")]
+position = Vector2(4769, 9519)
+rotation = 1.5707964
+curve = SubResource("Curve2D_gqmmt")
+
+[node name="Sandbags4" parent="." unique_id=1073850105 instance=ExtResource("10_choun")]
+position = Vector2(4078, 12158)
+extra_sandbags = 9
+
+[node name="Road5" parent="." unique_id=592244107 instance=ExtResource("10_road")]
+position = Vector2(5286, 1036)
+curve = SubResource("Curve2D_yc10j")
+centre_line = false
+
+[node name="WatchTower" parent="." unique_id=1092398650 instance=ExtResource("16_muem4")]
+position = Vector2(4322, 7007)
+
+[node name="WatchTower2" parent="." unique_id=1248759759 instance=ExtResource("16_muem4")]
+position = Vector2(5135, 7068)
+rotation = 4.712389
+
+[node name="Sandbags" parent="." unique_id=187515365 instance=ExtResource("10_choun")]
+position = Vector2(4567, 6867)
+extra_sandbags = 6
+
+[node name="Sandbags5" parent="." unique_id=25582019 instance=ExtResource("10_choun")]
+position = Vector2(5514, 6845)
+extra_sandbags = 6
+
+[node name="Sandbags6" parent="." unique_id=2014259160 instance=ExtResource("10_choun")]
+position = Vector2(4272, 6667)
+extra_sandbags = 3
+
+[node name="Enemy" parent="." unique_id=1610375245 instance=ExtResource("17_dp3eg")]
+position = Vector2(4269, 6706)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy2" parent="." unique_id=349850670 instance=ExtResource("17_dp3eg")]
+position = Vector2(4478, 6705)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy3" parent="." unique_id=109496810 instance=ExtResource("17_dp3eg")]
+position = Vector2(4486, 6902)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy4" parent="." unique_id=570691070 instance=ExtResource("17_dp3eg")]
+position = Vector2(5546, 6883)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy5" parent="." unique_id=346057790 instance=ExtResource("17_dp3eg")]
+position = Vector2(5790, 6883)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy6" parent="." unique_id=1553957853 instance=ExtResource("17_dp3eg")]
+position = Vector2(5260, 6895)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+start_on_top = true
+
+[node name="Enemy7" parent="." unique_id=1049352557 instance=ExtResource("17_dp3eg")]
+position = Vector2(5026, 7286)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy8" parent="." unique_id=601617142 instance=ExtResource("17_dp3eg")]
+position = Vector2(4492, 7419)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy9" parent="." unique_id=466704352 instance=ExtResource("17_dp3eg")]
+position = Vector2(4596, 7197)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy10" parent="." unique_id=1686403522 instance=ExtResource("17_dp3eg")]
+position = Vector2(4404, 7201)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+
+[node name="Enemy11" parent="." unique_id=1645910873 instance=ExtResource("17_dp3eg")]
+position = Vector2(5022, 6914)
+detection_radius_m = 10.0
+show_detection = true
+sight_m = 35.0
+hearing_m = 40.0
+min_range_m = 5.0
+max_range_m = 9.0
+rethink_s = 0.8
+lose_contact_s = 3.0
+search_s = 10.0
+reaction_s = Vector2(0.3, 0.6)
+moving_spread_deg = 3.0
+burst_shots = 3
+burst_pause_s = 0.9
+spacing_m = 2.5
+flank_weight = 3.0
+dodge_m = 1.2
+cover_seek_m = 6.0
+start_facing_deg = 180.0
+start_on_top = true
+
+[node name="Tree" parent="." unique_id=809564547 instance=ExtResource("18_dp3eg")]
+position = Vector2(5061, 6757)
+type = 0
+growth = 1
+
+[node name="Tree3" parent="." unique_id=1550835586 instance=ExtResource("18_dp3eg")]
+position = Vector2(5940, 6763)
+type = 0
+growth = 1
+
+[node name="Tree4" parent="." unique_id=436760310 instance=ExtResource("18_dp3eg")]
+position = Vector2(4220, 6569)
+type = 0
+
+[node name="Tree5" parent="." unique_id=2066922297 instance=ExtResource("18_dp3eg")]
+position = Vector2(5201, 6654)
+type = 0
+growth = 1
+size = 1.3
+
+[node name="Tree7" parent="." unique_id=517896321 instance=ExtResource("18_dp3eg")]
+position = Vector2(5045, 6757)
+type = 0
+growth = 1
+
+[node name="Tree8" parent="." unique_id=794208379 instance=ExtResource("18_dp3eg")]
+position = Vector2(5045, 6757)
+type = 0
+growth = 1
+
+[node name="Tree2" parent="." unique_id=1816185311 instance=ExtResource("18_dp3eg")]
+position = Vector2(2996, 173)
+type = 0
+
+[node name="Tree6" parent="." unique_id=1843027697 instance=ExtResource("18_dp3eg")]
+position = Vector2(2657, 295)
+type = 0
+size = 1.2
+
+[node name="Tree9" parent="." unique_id=1165148310 instance=ExtResource("18_dp3eg")]
+position = Vector2(3087, 1371)
+type = 0
+size = 1.35
+
+[node name="Tree10" parent="." unique_id=752966909 instance=ExtResource("18_dp3eg")]
+position = Vector2(4143, 507)
+type = 0
+growth = 1
+
+[node name="Tree11" parent="." unique_id=1288379073 instance=ExtResource("18_dp3eg")]
+position = Vector2(4343, 703)
+type = 0
+
+[node name="Tree12" parent="." unique_id=67035154 instance=ExtResource("18_dp3eg")]
+position = Vector2(1501, 586)
+type = 0
+
+[node name="Tree13" parent="." unique_id=249404624 instance=ExtResource("18_dp3eg")]
+position = Vector2(4400, 361)
+type = 0
+growth = 0
+
+[node name="Tree15" parent="." unique_id=1345050095 instance=ExtResource("18_dp3eg")]
+position = Vector2(3675, 156)
+type = 0
+growth = 0
+
+[node name="Tree14" parent="." unique_id=1422665429 instance=ExtResource("18_dp3eg")]
+position = Vector2(2979, 1571)
+type = 0
+size = 0.5

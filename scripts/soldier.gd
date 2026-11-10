@@ -107,6 +107,11 @@ const EXPOSED_S := 0.8
 @export var hit_knockback_s := 0.12
 ## Most it twists when hit right at a corner (none for a dead-centre hit).
 @export var hit_twist_deg := 20.0
+## Placed over a watch tower's deck or stairs (in main.tscn), it starts up
+## there rather than on the ground under it (Mike, 2026-11-09): squadmates and
+## the player as if they'd climbed up; an enemy holds its spot up there and
+## fights from it (enemy.gd: it can't use the stairs yet). See _place_on_top().
+@export var start_on_top := false
 ## Stays where it stands when hit: it only rocks (see `jostle_m`) and turns
 ## back to its own facing. For fixed things like the crash test dummy.
 @export var anchored := false
@@ -174,6 +179,26 @@ func _ready() -> void:
 		_radio_pack = RadioPack.new()
 		add_child(_radio_pack)   # after Body, so it's drawn over it
 		_radio_pack.setup(_shadows)
+	if start_on_top:
+		_place_on_top.call_deferred()   # (once every tower's in: they join their group in _ready())
+
+
+## `start_on_top`: it starts up on the watch tower it's placed over, on the
+## spot it was placed if that's somewhere to stand (a walkway, a landing, the
+## shelter), else the nearest that is. Not over one (built): it stays on the
+## ground, and says so in the Output.
+func _place_on_top() -> void:
+	for t: Node2D in get_tree().get_nodes_in_group("watch_towers"):
+		if not t.built or not t.on_surface(global_position, 0.3):
+			continue
+		if not t.can_stay(global_position):
+			global_position = t.stay_spots(global_position, 1)[0]
+		_set_tower(t)
+		elevation_m = t.height_at(global_position)
+		if "_post" in self:
+			set("_post", global_position)   # (an enemy: its post's up here)
+		return
+	push_warning("%s has Start On Top on, but isn't over a watch tower's deck or stairs: it starts on the ground." % name)
 
 
 func _physics_process(delta: float) -> void:

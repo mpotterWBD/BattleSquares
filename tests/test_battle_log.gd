@@ -33,8 +33,11 @@ func _init() -> void:
 	for i in 5:
 		await process_frame
 	print("logging after F9: ", log_node._file != null, "  path ", log_node._path)
-	var spawner: Node = main.get_node("EnemySpawner")
-	spawner.spawn(4, spawner.FORMATIONS[0])
+	# (the spawner drops enemies by helicopter now: placed straight in instead)
+	for i in 4:
+		var foe: Node2D = load("res://scenes/enemy.tscn").instantiate()
+		foe.position = Vector2(40.0, 6.0 + 2.0 * i) * 1024.0 / 12.0
+		main.add_child(foe)
 	for i in 3:
 		await physics_frame
 	var enemies := get_nodes_in_group("enemies")

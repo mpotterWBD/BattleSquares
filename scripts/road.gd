@@ -24,8 +24,8 @@ extends Path2D
 ## it more than SNAP_M away to let go. A road that starts where another
 ## ends carries on that road's pattern (`_line`'s shader offsets the
 ## texture by the other road's length), so the centre dashes keep their
-## rhythm across the join. Joins are end to end only; there are no
-## junctions yet.
+## rhythm across the join. Joins are end to end, or onto a junction's arm
+## (road_junction.gd: a T or a crossroads; an end snaps onto an arm as onto a road).
 ##
 ## Keep curves gentle: a bend tighter than about 3 m radius (half the strip's
 ## 6 m width) folds the inside edge over itself. A road can run off the
@@ -193,14 +193,20 @@ func end_outward(i: int) -> Vector2:
 	return global_transform.basis_xform(local).normalized()
 
 
-## The other roads with an end within `reach` px of world point `at`: the
-## closest as [road, its end index], or [] if none.
+## The other roads (and junctions' arms: road_junction.gd) with an end within
+## `reach` px of world point `at`: the closest as [road or junction, its end
+## index], or [] if none.
 func _nearest_end(at: Vector2, reach: float) -> Array:
 	var best := []
 	for other in get_tree().get_nodes_in_group("roads"):
-		if other == self or not other.is_inside_tree() or other.curve == null:
+		if other == self or not other.is_inside_tree():
 			continue
-		for j in other._ends():
+		var ends: Array[int] = []
+		if other.has_method("arm_indexes"):
+			ends = other.arm_indexes()   # a junction
+		elif other.curve != null:
+			ends = other._ends()
+		for j in ends:
 			var d: float = other.end_position(j).distance_to(at)
 			if d < reach:
 				reach = d

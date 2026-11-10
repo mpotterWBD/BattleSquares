@@ -1,4 +1,4 @@
-# Summarises a BattleSquares battle log (scripts/battle_log.gd, format 1).
+# Summarises a BattleSquares battle log (scripts/battle_log.gd, format 2: vehicles too).
 #   awk -f .claude/skills/battle-log/summarize.awk logs/battle_log.txt
 #   awk -v timeline=0 -f ...   leaves out the event timeline
 # Per square: shots and where they went, hits, time in each state, holding
@@ -18,6 +18,28 @@ code == "U" {
 
 code == "M" {
 	o = $3; kind[o] = $4; cls[o] = $9; next
+}
+
+code == "V" {
+	o = $3
+	if (o in vx) vdist[o] += sqrt(($4 - vx[o]) ^ 2 + ($5 - vy[o]) ^ 2)
+	vx[o] = $4; vy[o] = $5
+	if ($7 + 0 > vtop[o]) vtop[o] = $7 + 0
+	next
+}
+
+# A vehicle's ~ line: who's in which seat, the AI driver, the crane.
+code == "~" && $3 ~ /^o/ {
+	o = $3; vids[o] = 1
+	for (i = 4; i <= NF; i++) {
+		split($i, kv, "="); k = kv[1]; v = kv[2]
+		if (k == "driver" || k == "passenger" || k == "operator") { if (v != "-") ev(t, o, k " " v); else if (t > 0) ev(t, o, k " left") }
+		else if (k == "ai" && v != "idle") { ev(t, o, "ai " v); if (v == "failed") flag[++nflags] = sprintf("%7.2f  %s (%s): its driver couldn't get there (ai=failed)", t, o, kind[o]) }
+		else if (k == "crane" && (v == "WAIT_STOP" || v == "WORKING" || v == "STOWING" || v == "IDLE") && t > 0) ev(t, o, "crane " v)
+		else if (k == "job" && v ~ /REACH$/) { vjobs[o]++; ev(t, o, "crane job " v) }
+		else if (k == "slung" && (v == "1" || t > 0)) ev(t, o, v == "1" ? "slung" : "set down")
+	}
+	next
 }
 
 code == "~" {
@@ -53,6 +75,8 @@ code == "~" {
 			}
 		} else if (k == "stop" && v == "1") {
 			ev(t, id, "told to stop")
+		} else if (k == "vehicle") {
+			ev(t, id, v == "-" ? "out of the vehicle" : "vehicle " v)
 		}
 	}
 	next
@@ -101,7 +125,7 @@ function check_still(id, now,    gap) {
 function who(id) { return id " (" side[id] " " name[id] ")" }
 
 function ev(tt, id, what) {
-	if (timeline) events[++nev] = sprintf("%7.2f  %-3s %-6s %s", tt, id, side[id], what)
+	if (timeline) events[++nev] = sprintf("%7.2f  %-3s %-6s %s", tt, id, (id ~ /^o/) ? "vehicle" : side[id], what)
 }
 
 END {
@@ -133,6 +157,11 @@ END {
 		line = ""
 		for (j = 1; j <= n; j++) line = line sprintf("%s %.1f  ", sl[j], spent[id, sl[j]])
 		printf "  %-3s %-6s %s\n", id, side[id], line
+	}
+
+	for (o in vids) {
+		if (!vhead++) print "\nVehicles:"
+		printf "  %-4s %-14s drove %.0f m, top speed %.1f m/s, %d orders, %d crane jobs\n", o, kind[o], vdist[o], vtop[o], orders[o], vjobs[o]
 	}
 
 	print "\nLooks wrong (check these against the timeline):"

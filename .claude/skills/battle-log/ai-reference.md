@@ -24,6 +24,9 @@ easiest place for Mike to change them. Check the `.tscn` for overrides.
 | `F` / `X` | `rifle.gd fire()` → `bullet.gd` (`_ready`, hit / `_hit_ground` / spent). Range `-`: within the rifle's accurate range, flies its full `LIFETIME_S` |
 | `H` | `soldier.gd take_hit()`; damage is `rifle.gd damage` |
 | `O` | `squadmate.gd order_*()`; callers in `command.gd` (player), `insertion.gd` (drop-off), `squadmate.gd _cover_lost()` (respot) |
+| `O o# ...` (vehicle) | `supply_truck.gd order_drive_to()`, `vehicle_order()` (crane, hatch), `crane_click()` (lift), `crane_drop()` (drop), `dismount_all()`; `command.gd _give_order()` (stop) |
+| `V`, `~ o# ...` (vehicle) | `supply_truck.gd log_status()`: `_seats` (occupant, rider, `Step`), `_engine`, `vehicle_ai.gd status`/`goal`/`goal_heading` (`ai=planning`: its Park search running, `_hybrid_step()`; `ai_stuck`: `unsticks`), `_cphase` (`CranePhase`, `_tick_crane()`), `_operator`, `_job` (`_tick_job()`), `_bed`, `airborne` |
+| `~ vehicle` (square) | `supply_truck.gd seat_of()`. Inside, the square is `PROCESS_MODE_DISABLED` (`_hide()`), so its other keys don't change until it's out |
 
 ## Behaviour → tunables
 

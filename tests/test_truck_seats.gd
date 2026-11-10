@@ -1,9 +1,9 @@
 extends SceneTree
-## Clicking the supply truck in command mode (Mike, 2026-11-04): one unit selected
+## Clicking the supply truck in command mode (Mike, 2026-11-04; 2026-11-09): one unit selected
 ## goes to the seat on the side of the cab clicked (right the passenger's, left the
-## driver's); two or more selected fill both seats; with a squadmate at the wheel and
-## nothing selected the click selects the truck, which is then sent where a click
-## (or right click) on the ground says, stopped with Stop, and emptied with Disperse.
+## driver's), or the other if that's taken; two or more selected fill both seats. The
+## truck isn't selectable: a click on it with nobody selected sends whoever's in the
+## circle; its driver's sent with Park; Disperse with nobody selected empties it.
 ## A rider hidden in the cab isn't a click target of its own. Prints OK / FAIL.
 const PX := 1024.0 / 12.0
 
@@ -68,11 +68,11 @@ func _init() -> void:
 	# Out again, then one unit, the left side: the driver's seat.
 	command._clear_selection()
 	command._click(truck.global_position, false)
-	check("nothing selected, the truck clicked: the truck's selected (the rider hidden in the cab isn't picked)",
-			command.selected_truck() == truck and not mates[0].selected)
+	check("nothing selected, the truck clicked: the rider hidden in the cab isn't picked, nothing's selected, and nobody out of earshot goes",
+			not mates[0].selected and mates[1].riding == null and mates[2].riding == null and not command.has_method("selected_truck"))
 	command._give_order("disperse")
 	await wait_for(func(): return truck.passenger == null and not truck.busy(), 12.0)
-	check("Disperse with the truck selected: everyone in it gets out", truck.passenger == null and mates[0].riding == null)
+	check("Disperse with nobody selected: everyone in a truck in the circle gets out", truck.passenger == null and mates[0].riding == null)
 	command._clear_selection()
 	mates[1].selected = true
 	command._click(left, false)
@@ -80,33 +80,33 @@ func _init() -> void:
 			truck._seats[0].rider == mates[1] and truck._seats[1].rider == null)
 	await wait_for(func(): return truck.driver != null, 25.0)
 	check("...and it's in the driver's seat", truck.driver == mates[1] and truck.ai_driver == mates[1])
-	# A second unit to the seat that's taken: refused; to the free one: goes.
+	# A second unit to the seat that's taken: it takes the other one (Mike, 2026-11-09).
 	command._clear_selection()
 	mates[0].selected = true
 	command._click(left, false)
-	check("a unit sent to the seat that's taken: refused", mates[0].riding == null)
-	command._click(right, false)
-	check("...and to the other side's free seat: goes", truck._seats[1].rider == mates[0])
+	check("a unit sent to the seat that's taken: it goes to the free one", truck._seats[1].rider == mates[0] and mates[0].riding == truck)
 	await wait_for(func(): return truck.passenger != null, 25.0)
 	check("both seats full", truck.passenger == mates[0] and truck.driver == mates[1] and truck.units_inside() == 2)
 	command._clear_selection()
 
-	# The truck, selected, is sent places like a unit.
+	# The driver's told where to park (Park), not the truck selected.
 	command._click(left, false)
-	check("nothing selected, the truck clicked (a squadmate driving): the truck's selected, a HUD says 2 units",
-			command.selected_truck() == truck and command._truck_hud.visible and command._truck_hud_text.text.begins_with("Units inside: 2"))
-	var there := Vector2(30.0, 12.9)
-	command._click(there * PX, false)
-	check("a click on the ground: it's driving there", truck.ai_status() == "driving")
+	check("nothing selected, the truck clicked: a HUD says 2 units; the truck isn't selected",
+			command._truck_hud.visible and command._truck_hud_text.text.begins_with("Units inside: 2"))
+	command._place_menus()
+	check("Park is up (a squadmate driving, the truck in the circle)", command._park_button.visible)
+	var there := Vector2(30.0, 13.3)
+	command._give_park_order()
+	command._mouse_world = there * PX
+	command._park_heading = 0.0
+	command._confirm_park()
+	check("Park, a click on the road: it's driving there", truck.ai_status() == "driving" and command._park_truck == null)
 	await wait_for(func(): return truck.ai_status() != "driving", 60.0)
 	check("it got there (%s), %.1f m off" % [truck.ai_status(), truck.global_position.distance_to(there * PX) / PX],
-			truck.ai_status() == "arrived" and truck.global_position.distance_to(there * PX) < 1.5 * PX)
-	command._order_move(Vector2(16.0, 11.5) * PX)   # (a right click)
-	check("a right click on the ground sends it too", truck.ai_status() == "driving")
-	await wait_for(func(): return truck.speed > 2.0 or truck.ai_status() != "driving", 20.0)
-	command._give_order("stop")
-	await wait_for(func(): return absf(truck.speed) < 0.1, 10.0)
-	check("Stop halts it", truck.ai_status() == "idle" and absf(truck.speed) < 0.1)
+			truck.ai_status() == "arrived" and truck.global_position.distance_to(there * PX) < 0.5 * PX)
+	command._order_move(Vector2(16.0, 11.5) * PX)   # (a right click, nobody selected)
+	for f in 10: await physics_frame
+	check("a right click on the ground with nobody selected doesn't send the truck", truck.ai_status() != "driving")
 	# Units selected: clicking the ground moves them, not the truck.
 	command._clear_selection()
 	mates[2].selected = true
@@ -114,10 +114,11 @@ func _init() -> void:
 	command._click(Vector2(35.0, 20.0) * PX, false)
 	for f in 30: await physics_frame
 	check("a unit selected: a click on the ground sends the unit, the truck stays", truck.global_position.distance_to(before) < 0.1 * PX
-			and truck.ai_status() == "idle" and mates[2].is_moving())
+			and truck.ai_status() != "driving" and mates[2].is_moving())
 	# Two or more selected: both seats at once (after emptying it).
 	command._clear_selection()
-	command._click(truck.to_global(Vector2(1.5, -0.5) * PX), false)   # (the truck has driven off: where its cab is now)
+	player.global_position = truck.global_position + Vector2(-2.0, 4.0) * PX   # (the truck's driven off: in earshot again)
+	for f in 3: await physics_frame
 	command._give_order("disperse")
 	await wait_for(func(): return truck.driver == null and truck.passenger == null and not truck.busy(), 20.0)
 	check("emptied again", truck.driver == null and truck.passenger == null)

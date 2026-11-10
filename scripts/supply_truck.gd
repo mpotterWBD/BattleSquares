@@ -62,6 +62,7 @@ const HitSparks = preload("res://scripts/hit_sparks.gd")
 const ImpactSound = preload("res://scripts/impact_sound.gd")
 const SHADOW_SWEEP := preload("res://shaders/shadow_sweep.gdshader")
 const VehicleAI = preload("res://scripts/vehicle_ai.gd")
+const BattleLog = preload("res://scripts/battle_log.gd")
 
 ## Each body part group's shadow outline (supply_truck.py SHADOW_GROUPS) and
 ## its lowest and highest points above the ground (m).
@@ -467,6 +468,8 @@ func _add_shadow(texture: Texture2D) -> Sprite2D:
 
 
 func _physics_process(delta: float) -> void:
+	if _ai != null:
+		_ai.think()   # (a parking search: another slice of it, and its way taken up once it's done)
 	var throttle := 0.0
 	var turn := 0.0
 	# With the crane's operator out (and the stabilisers coming down or down) it's going nowhere.
@@ -726,7 +729,10 @@ func _unhandled_input(event: InputEvent) -> void:
 ## worked out yet (Mike, 2026-11-03: the buttons first).
 func vehicle_order(id: String) -> bool:
 	if id == "crane":
-		return _order_crane()
+		var done := _order_crane()
+		BattleLog.order(self, "crane", ["on" if _armed else "off", _ok(done)])
+		return done
+	BattleLog.order(self, id, ["unbuilt"])
 	print("Truck: %s (not done yet)" % id)
 	return true
 
@@ -788,18 +794,36 @@ func units_inside() -> int:
 ## wheel drives it there, by road (vehicle_ai.gd). The crane's put away first
 ## (it won't move until it is). False if nobody but the player's driving it, or
 ## there's no way to the point.
-func order_drive_to(point: Vector2) -> bool:
+## With a `heading` (radians: the Park order, command.gd) it ends exactly at
+## `point` with its nose that way; NAN, it chooses (nose to a spot by the road,
+## or backed in nose out).
+func order_drive_to(point: Vector2, heading := NAN) -> bool:
+	var done := _drive_to(point, heading)
+	BattleLog.order(self, "drive", [point, "-" if is_nan(heading) else "%d" % roundi(rad_to_deg(heading)), ai_driver, _ok(done)])
+	return done
+
+
+func _drive_to(point: Vector2, heading: float) -> bool:
 	if ai_driver == null or airborne:
 		return false
 	if _ai == null:
 		_ai = VehicleAI.new(self)
 	_armed = false
 	_end_crane()
-	return _ai.drive_to(point)
+	return _ai.drive_to(point, true, heading)
+
+
+## Where it's been told to park and which way (world px, radians; heading NAN if it chooses), while it's
+## driving there: {at, heading}, or {} (command mode draws a faint ghost there).
+func ai_goal() -> Dictionary:
+	if _ai == null or not _ai.active():
+		return {}
+	return {at = _ai.goal, heading = _ai.goal_heading}
 
 
 ## Everyone but the player in it gets out (once it's stopped): the Disperse order with the truck selected.
 func dismount_all() -> void:
+	BattleLog.order(self, "dismount")
 	for seat in _seats:
 		if seat.occupant != null and not seat.occupant.is_in_group("player"):
 			unload(seat.occupant)
@@ -837,6 +861,13 @@ func operator_out() -> bool:
 ## two squares beside the bed, is lifted onto it (the furthest back spot first);
 ## "no" if it's refused (not in a square, the bed's full).
 func crane_click(point: Vector2) -> String:
+	var result := _crane_click(point)
+	if result != "":
+		BattleLog.order(self, "lift", [point, "ok" if result == "ok" else "refused"])
+	return result
+
+
+func _crane_click(point: Vector2) -> String:
 	if not _armed or airborne:
 		return ""
 	var crate := _crate_to_lift(point)
@@ -906,6 +937,12 @@ func crane_drop_clear(count: int, side: int) -> bool:
 ## deploys if it isn't, and the unloads wait their turn. False if there aren't that many loaded, the
 ## ground's taken, or it can't deploy.
 func crane_drop(count: int, side: int) -> bool:
+	var done := _crane_drop(count, side)
+	BattleLog.order(self, "drop", [count, "driver" if side < 0 else "passenger", _ok(done)])
+	return done
+
+
+func _crane_drop(count: int, side: int) -> bool:
 	if airborne or not crane_drop_clear(count, side):
 		return false
 	var slots := _unload_slots(count)
@@ -1684,3 +1721,50 @@ func bullet_hit(point: Vector2, direction: Vector2, _damage := 0.0) -> void:
 	sparks.setup(point, direction)
 	level.add_child(sparks)
 	ImpactSound.play(level, point, "metal")
+
+
+# -------------------------------------------------------------- battle log --
+
+static func _ok(done: bool) -> String:
+	return "ok" if done else "refused"
+
+
+## What it's doing, for the battle log's ~ lines (battle_log.gd): key -> value,
+## with squares and crates as nodes and points in world px (the log numbers
+## and converts them; null is none). Who's in each seat, who's getting in or
+## out by its door and how far they've got, the engine, the AI driver and
+## the crane.
+func log_status() -> Dictionary:
+	var s := {engine = EngineState.keys()[_engine], slung = airborne}
+	for seat in _seats:
+		var seat_name := "driver" if seat.side < 0 else "passenger"
+		s[seat_name] = seat.occupant
+		s[seat_name + "_door"] = [Step.keys()[seat.step], seat.rider] if seat.step != Step.NONE else null
+		s[seat_name + "_wants_out"] = seat.want_out
+	s.ai = "planning" if _ai != null and _ai.planning else ai_status()
+	s.ai_stuck = _ai.unsticks if _ai != null else 0
+	s.ai_to = _ai.goal if _ai != null and _ai.active() else null
+	s.ai_heading = "%d" % roundi(rad_to_deg(_ai.goal_heading)) if _ai != null and _ai.active() and not is_nan(_ai.goal_heading) else null
+	s.crane = CranePhase.keys()[_cphase]
+	s.armed = _armed
+	s.operator = _operator if _operator_ok() else null
+	s.job = [_job.kind, _job.crate, JobStep.keys()[_job.step]] if _job != null else null
+	s.jobs = _jobs.size()
+	s.bed = _bed
+	return s
+
+
+## Where `square` is in or by the truck, for the battle log (a square's
+## vehicle= key): "driver" or "passenger" (sitting in that seat),
+## "boarding_<seat>" or "leaving_<seat>" (on its way in or out by a door),
+## "crane" (out running the crane), or "" (nothing to do with it).
+func seat_of(square) -> String:
+	for seat in _seats:
+		var seat_name := "driver" if seat.side < 0 else "passenger"
+		if seat.occupant == square:
+			return seat_name
+		if seat.rider == square and seat.step != Step.CLOSING_OUT:   # (once out, it's its own while the door shuts)
+			return ("leaving_" if seat.step >= Step.OPENING_OUT else "boarding_") + seat_name
+	if square == _operator:
+		return "crane"
+	return ""

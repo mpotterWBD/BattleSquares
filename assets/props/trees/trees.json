@@ -1,0 +1,182 @@
+{
+ "cottonwood_mature": {
+  "canopy_radius_m": 8.99,
+  "height_m": 21.55,
+  "image_m": 18.58,
+  "shadow_centre_m": [
+   5.062,
+   5.296
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 31.546,
+  "trunk_radius_m": 0.6
+ },
+ "cottonwood_sapling": {
+  "canopy_radius_m": 2.05,
+  "height_m": 4.68,
+  "image_m": 4.694,
+  "shadow_centre_m": [
+   1.184,
+   0.894
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 7.784,
+  "trunk_radius_m": 0.132
+ },
+ "cottonwood_young": {
+  "canopy_radius_m": 4.58,
+  "height_m": 11.63,
+  "image_m": 9.76,
+  "shadow_centre_m": [
+   2.86,
+   3.731
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 15.841,
+  "trunk_radius_m": 0.3
+ },
+ "maple_mature": {
+  "canopy_radius_m": 6.51,
+  "height_m": 15.54,
+  "image_m": 13.614,
+  "shadow_centre_m": [
+   3.343,
+   3.744
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 22.756,
+  "trunk_radius_m": 0.36
+ },
+ "maple_sapling": {
+  "canopy_radius_m": 1.3,
+  "height_m": 3.42,
+  "image_m": 3.201,
+  "shadow_centre_m": [
+   0.775,
+   0.867
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 5.83,
+  "trunk_radius_m": 0.079
+ },
+ "maple_young": {
+  "canopy_radius_m": 2.96,
+  "height_m": 8.54,
+  "image_m": 6.527,
+  "shadow_centre_m": [
+   2.017,
+   1.963
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 12.25,
+  "trunk_radius_m": 0.18
+ },
+ "oak_mature": {
+  "canopy_radius_m": 9.36,
+  "height_m": 13.89,
+  "image_m": 19.329,
+  "shadow_centre_m": [
+   2.914,
+   2.936
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 27.701,
+  "trunk_radius_m": 0.55
+ },
+ "oak_sapling": {
+  "canopy_radius_m": 1.89,
+  "height_m": 2.93,
+  "image_m": 4.371,
+  "shadow_centre_m": [
+   0.684,
+   0.698
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 6.614,
+  "trunk_radius_m": 0.121
+ },
+ "oak_young": {
+  "canopy_radius_m": 4.7,
+  "height_m": 7.6,
+  "image_m": 9.992,
+  "shadow_centre_m": [
+   1.503,
+   1.616
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 14.888,
+  "trunk_radius_m": 0.275
+ },
+ "pine_mature": {
+  "canopy_radius_m": 3.62,
+  "height_m": 22.15,
+  "image_m": 7.85,
+  "shadow_centre_m": [
+   4.905,
+   4.78
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 21.11,
+  "trunk_radius_m": 0.28
+ },
+ "pine_sapling": {
+  "canopy_radius_m": 0.83,
+  "height_m": 4.93,
+  "image_m": 2.261,
+  "shadow_centre_m": [
+   1.086,
+   1.071
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 5.595,
+  "trunk_radius_m": 0.062
+ },
+ "pine_young": {
+  "canopy_radius_m": 1.89,
+  "height_m": 12.23,
+  "image_m": 4.378,
+  "shadow_centre_m": [
+   2.712,
+   2.809
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 12.113,
+  "trunk_radius_m": 0.14
+ },
+ "spruce_mature": {
+  "canopy_radius_m": 3.44,
+  "height_m": 12.15,
+  "image_m": 7.474,
+  "shadow_centre_m": [
+   2.052,
+   1.811
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 13.848,
+  "trunk_radius_m": 0.2
+ },
+ "spruce_sapling": {
+  "canopy_radius_m": 0.8,
+  "height_m": 2.73,
+  "image_m": 2.203,
+  "shadow_centre_m": [
+   0.462,
+   0.44
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 4.036,
+  "trunk_radius_m": 0.044
+ },
+ "spruce_young": {
+  "canopy_radius_m": 1.66,
+  "height_m": 6.72,
+  "image_m": 3.917,
+  "shadow_centre_m": [
+   1.236,
+   1.141
+  ],
+  "shadow_density": 0.5,
+  "shadow_m": 7.898,
+  "trunk_radius_m": 0.1
+ }
+}

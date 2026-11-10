@@ -123,6 +123,16 @@ Don't change the AI code unless Mike asks. When he does, follow CLAUDE.md:
 - `O` lines include internal orders: a helicopter drop-off's move, a
   squadmate's move to a new wall spot. A Fire order is `O <unit> fire
   <target>`; targets the AI picks itself only show as `~ target=`.
+- **Vehicles** (format 2; the supply truck) are objects (`o#`) with `V`
+  lines (position, heading, speed), their own `~` lines (seats, doors,
+  engine, AI driver, crane) and `O` lines for orders given to them. A
+  square in or by one has `~ vehicle=o#:driver` (or `passenger`,
+  `boarding_<seat>`, `leaving_<seat>`, `crane`). While it's inside, the
+  square is switched off: its state is frozen and its `P` lines just
+  follow the truck, so don't read that as it walking. The summary lists
+  each vehicle's distance, top speed, orders and crane jobs, and flags
+  `ai=failed`. Everything about the truck: `awk -F'\t' '$3=="o6"'` (find
+  its number from its `M ... supply_truck` line).
 - `blocked=1` means a friend is in the line of fire. `standoff=1` means
   every foe is dug in and there's no window. Both mean holding fire on
   purpose, not a fault.

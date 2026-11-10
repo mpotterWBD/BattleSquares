@@ -1,5 +1,6 @@
 extends Node
-## A patrol of enemies (made by scripts/enemy_spawner.gd, a testing aid)
+## A patrol of enemies (the testing spawner made these until 2026-11-09; it drops
+## enemies by helicopter now, enemy_spawner.gd, so nothing makes one at the moment)
 ## walking across the field from right to left in formation.
 ##
 ## It moves an anchor point steadily along `heading`, at PACE of the

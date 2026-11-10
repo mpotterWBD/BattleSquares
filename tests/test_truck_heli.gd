@@ -7,6 +7,7 @@ extends SceneTree
 ## every collision layer, drawn bigger), lowers it, lets go at the LZ (on the
 ## ground, solid, nose east) and flies away; then the player drives it.
 ## Prints OK / FAIL.
+const World = preload("res://scripts/world.gd")
 const PX := 1024.0 / 12.0
 
 var fails := 0
@@ -55,7 +56,7 @@ func _init() -> void:
 	for f in 3: await physics_frame
 	check("marking the LZ: OK in the open, red on a crate and off the field", terminal.screen == terminal.Screen.VLZ
 			and terminal._vlz_ok(lz) and not terminal._vlz_ok(crate.global_position)
-			and not terminal._vlz_ok(Vector2(0.5, 13.0) * PX))
+			and not terminal._vlz_ok(World.ARENA.position + Vector2(0.5, 13.0) * PX))   # (off the 2 km field's west edge)
 	crate.queue_free()
 	terminal._send_vehicle(lz)
 	await physics_frame

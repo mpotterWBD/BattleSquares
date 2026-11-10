@@ -9,8 +9,12 @@ func _init() -> void:
 	root.add_child(main)
 	current_scene = main
 	var player: Node2D = main.get_node("Player")
-	var station: Node2D = main.get_node("RadioStation")
+	# (main.tscn no longer places a radio station: one of its own)
+	var station: Node2D = load("res://scenes/radio_station.tscn").instantiate()
+	station.position = Vector2(30.0, 19.0) * 1024.0 / 12.0
+	main.add_child(station)
 	var term = station.get_node("Terminal")
+	for f in 4: await physics_frame
 	player.global_position = station.get_node("OperatorZone").global_position
 	for f in 10: await physics_frame
 	var before: float = station.target_heading
