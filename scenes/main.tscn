@@ -64,7 +64,7 @@ point_count = 2
 [node name="Field" type="Sprite2D" parent="." unique_id=658196379]
 z_index = -100
 texture_repeat = 2
-position = Vector2(0, -3)
+position = Vector2(18, -5)
 scale = Vector2(1, 1.0019054)
 texture = ExtResource("1_grass")
 centered = false
@@ -119,7 +119,7 @@ extra_sandbags = 7
 position = Vector2(3450, 912)
 
 [node name="CommsCrate" parent="." unique_id=1559053285 instance=ExtResource("11_ya4ey")]
-position = Vector2(857, 1400)
+position = Vector2(1274, 1201)
 
 [node name="Squadmate" parent="." unique_id=2037983324 instance=ExtResource("15_jbj1t")]
 position = Vector2(1104, 1525)

@@ -14,7 +14,7 @@ class_name TruckSoundCuts
 
 const BLENDER := "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
 const CUTTER := "res://blender/scripts/cut_truck_sounds.py"
-const SOUNDS := ["truck_start.wav", "truck_stop.wav", "truck_idle.wav", "truck_run.wav", "door_open.wav", "door_slam.wav"]
+const SOUNDS := ["truck_start.wav", "truck_stop.wav", "truck_idle.wav", "truck_run.wav", "door_open.wav", "door_slam.wav", "crane_move.wav", "crane_start.wav", "winch.wav", "stabilizer.wav", "crane_motor.wav", "crane_switch.wav"]
 const SOUND_DIR := "res://assets/sfx/supply_truck/"
 const CUTS_FILE := "user://truck_sound_cuts.json"   ## the sections, handed to the cutter
 
@@ -73,6 +73,62 @@ const CUTS_FILE := "user://truck_sound_cuts.json"   ## the sections, handed to t
 @export_range(0.0, 30.0, 0.05, "suffix:s") var door_slam_from_s := 23.9
 @export_range(0.0, 30.0, 0.05, "suffix:s") var door_slam_to_s := 25.4
 
+@export_group("Crane Moving", "crane_")
+## Which recording the crane's hydraulics come from: one of the MP3s in
+## assets/sfx/supply_truck/.
+@export_file("*.mp3") var crane_recording := "res://assets/sfx/supply_truck/Crane2.mp3"
+## Up to two steady stretches of it, joined into the loop that plays while the
+## turret turns or the boom slides (Mike, 2026-11-09). Crane2.mp3: a thin,
+## hissy run to 18.5 s, then the hydraulics working hard, lower and louder,
+## steadiest 26.75-33.25 s (pulsing from 34 s). Crane.mp3: steady 1.75-10 s.
+## 0 to 0: unused.
+@export_range(0.0, 60.0, 0.05, "suffix:s") var crane_1_from_s := 27.0
+@export_range(0.0, 60.0, 0.05, "suffix:s") var crane_1_to_s := 33.0
+@export_range(0.0, 60.0, 0.05, "suffix:s") var crane_2_from_s := 0.0
+@export_range(0.0, 60.0, 0.05, "suffix:s") var crane_2_to_s := 0.0
+## The same recording: the click played once as the hydraulics start (Mike,
+## 2026-11-09). Crane2.mp3's opens it: 0-0.13 s, its hiss from 0.4 s.
+@export_range(0.0, 60.0, 0.01, "suffix:s") var crane_start_from_s := 0.0
+@export_range(0.0, 60.0, 0.01, "suffix:s") var crane_start_to_s := 0.25
+
+@export_group("Winch", "winch_")
+## Winch.mp3: up to two stretches, joined into the loop that plays while the
+## line takes a crate up or lets it down. A short take (0.25-2.5 s) and a long
+## one (3.25-10.5 s, steadiest 3.4-7 s).
+@export_range(0.0, 30.0, 0.05, "suffix:s") var winch_1_from_s := 3.4
+@export_range(0.0, 30.0, 0.05, "suffix:s") var winch_1_to_s := 7.0
+@export_range(0.0, 30.0, 0.05, "suffix:s") var winch_2_from_s := 0.0
+@export_range(0.0, 30.0, 0.05, "suffix:s") var winch_2_to_s := 0.0
+
+@export_group("Stabilizer", "stabilizer_")
+## Which recording the stabilisers' sound comes from (Mike, 2026-11-09).
+@export_file("*.wav", "*.mp3") var stabilizer_recording := "res://assets/sfx/supply_truck/Stablizer2.wav"
+## Up to two stretches of it, joined into the loop that plays while the
+## stabilisers come down or go up. Stablizer2.wav builds up 0.25-1.5 s, then
+## a steady hiss to its end (4.1 s). Stablizer.mp3: steady 0.25-3.2 and 4.25-7.5 s.
+@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_1_from_s := 1.6
+@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_1_to_s := 4.0
+@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_2_from_s := 0.0
+@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_2_to_s := 0.0
+
+@export_group("Crane Motor", "motor_")
+## Which recording the crane's motor comes from (Mike, 2026-11-09): it runs
+## from the operator's switch until the crane's put away.
+@export_file("*.mp3") var motor_recording := "res://assets/sfx/supply_truck/CraneMotor.mp3"
+## Up to two stretches, joined into its loop. CraneMotor.mp3 is 3 minutes of
+## it running steadily, all the same loudness.
+@export_range(0.0, 200.0, 0.05, "suffix:s") var motor_1_from_s := 5.0
+@export_range(0.0, 200.0, 0.05, "suffix:s") var motor_1_to_s := 15.0
+@export_range(0.0, 200.0, 0.05, "suffix:s") var motor_2_from_s := 0.0
+@export_range(0.0, 200.0, 0.05, "suffix:s") var motor_2_to_s := 0.0
+
+@export_group("Switch", "switch_")
+## Which recording the operator's switch comes from, and the part of it
+## played. Switch.wav: its click at 0.26 s, a little rattle from 0.18 s.
+@export_file("*.wav", "*.mp3") var switch_recording := "res://assets/sfx/supply_truck/Switch.wav"
+@export_range(0.0, 10.0, 0.01, "suffix:s") var switch_from_s := 0.15
+@export_range(0.0, 10.0, 0.01, "suffix:s") var switch_to_s := 0.5
+
 
 ## Re-cuts the WAVs from these sections (Blender), then has the editor reimport them.
 func cut_sounds() -> void:
@@ -85,6 +141,16 @@ func cut_sounds() -> void:
 		"idle": [[idle_1_from_s, idle_1_to_s], [idle_2_from_s, idle_2_to_s], [idle_3_from_s, idle_3_to_s]],
 		"door_open": [door_open_from_s, door_open_to_s],
 		"door_slam": [door_slam_from_s, door_slam_to_s],
+		"crane_recording": crane_recording.get_file(),
+		"crane_start": [crane_start_from_s, crane_start_to_s],
+		"crane": [[crane_1_from_s, crane_1_to_s], [crane_2_from_s, crane_2_to_s]],
+		"winch": [[winch_1_from_s, winch_1_to_s], [winch_2_from_s, winch_2_to_s]],
+		"stabilizer_recording": stabilizer_recording.get_file(),
+		"stabilizer": [[stabilizer_1_from_s, stabilizer_1_to_s], [stabilizer_2_from_s, stabilizer_2_to_s]],
+		"motor_recording": motor_recording.get_file(),
+		"motor": [[motor_1_from_s, motor_1_to_s], [motor_2_from_s, motor_2_to_s]],
+		"switch_recording": switch_recording.get_file(),
+		"switch": [switch_from_s, switch_to_s],
 	}
 	if not FileAccess.file_exists(BLENDER):
 		push_error("Cut Sounds: Blender isn't at %s" % BLENDER)
@@ -100,7 +166,7 @@ func cut_sounds() -> void:
 			"--python", ProjectSettings.globalize_path(CUTTER), "--", cuts_file], output, true)
 	for line in "".join(output).split("\n"):
 		if (line.begins_with("idle") or line.begins_with("driving") or line.begins_with("start") or line.begins_with("engine") or line.begins_with("loops")
-				or line.begins_with("doors") or line.contains(".wav") or line.contains("cut_truck_sounds")):
+				or line.begins_with("doors") or line.begins_with("crane") or line.begins_with("winch") or line.begins_with("stabilizer") or line.begins_with("motor") or line.begins_with("switch") or line.contains(".wav") or line.contains("cut_truck_sounds")):
 			print("  " + line.strip_edges())
 	if code != 0:
 		push_error("Cut Sounds: Blender failed (exit %d); the sounds weren't changed. Its output:\n%s" % [code, "".join(output)])

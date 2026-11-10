@@ -39,6 +39,30 @@ CUTS = {
     "run": [],                          # driving stretches (loop, pitch levelled), none: idle alone
     "door_open": [18.2, 19.4],
     "door_slam": [23.9, 25.4],
+    # The crane (Mike, 2026-11-09): Crane2.mp3 (46 s) has a thin, hissy run to
+    # 18.5 s, a change-over 18.75-22 s, then the hydraulics working hard: lower
+    # and louder, steadiest 26.75-33.25 s, pulsing from 34 s. (The first take,
+    # Crane.mp3, ran steadily 1.75-10 s.) Winch.mp3 is a short take (0.25-2.5 s)
+    # and a long one (3.25-10.5 s), steadiest 3.4-7 s. Each stretch list -> one
+    # seamless loop.
+    "crane_recording": "Crane2.mp3",
+    "crane": [[27.0, 33.0]],
+    "crane_start": [0.0, 0.25],         # Crane2's opening click (0-0.13 s; hiss from 0.4 s): crane_start.wav
+    "winch": [[3.4, 7.0]],
+    # The stabilisers (Mike, 2026-11-09): Stablizer2.wav (4.1 s) builds up
+    # 0.25-1.5 s, then a steady hydraulic hiss to the end -> stabilizer.wav.
+    # (The first take, Stablizer.mp3: steady 0.25-3.2 and 4.25-7.5 s.)
+    "stabilizer_recording": "Stablizer2.wav",
+    "stabilizer": [[1.6, 4.0]],
+    # The crane's motor (Mike, 2026-11-09): CraneMotor.mp3 is 3 min of it
+    # running steadily (-30 dB throughout, no start or stop) -> crane_motor.wav;
+    # Switch.wav (0.52 s) is a click at 0.26 s, a little rattle before it from 0.18 s.
+    "motor_recording": "CraneMotor.mp3",
+    "motor": [[5.0, 15.0]],
+    "switch_recording": "Switch.wav",
+    "switch": [0.15, 0.5],
+    "crane_blend": 0.4,                 # their loops' joins and wraps
+    "only": [],                         # e.g. ["crane", "winch"]: cut just those (the rest left as they are)
 }
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 if args:   # a JSON file of them (truck_sound_cuts.gd), or the JSON itself
@@ -57,7 +81,16 @@ GOOD_WRAP = 0.85      # a loop's wrap lining up this well near its ends is taken
 def load(name):
     s = aud.Sound(SRC + name)
     d = s.data()
-    return (d.mean(axis=1) if d.ndim > 1 else d).astype(np.float64), int(s.specs[0])
+    x, rate = (d.mean(axis=1) if d.ndim > 1 else d).astype(np.float64), int(s.specs[0])
+    if rate > 48000:
+        # (Switch.wav and Stablizer2.wav are 96 kHz: written as is, they come
+        # out in a WAV form Godot won't read. Down to 48 kHz, smoothed first so
+        # nothing aliases.)
+        k = rate // 48000
+        x = np.convolve(x, np.ones(k) / k, mode="same")
+        x = np.interp(np.arange(0, len(x) / rate, 1 / 48000) * rate, np.arange(len(x)), x)
+        rate = 48000
+    return x, rate
 def db(x): return 20 * np.log10(np.sqrt((x ** 2).mean()) + 1e-12)
 def fade(x, rate, fin=0.01, fout=0.03):
     x = x.copy(); a = int(fin * rate); b = int(fout * rate)
@@ -106,13 +139,15 @@ def join(x, y, rate, blend_s=0.0):
     f, w_in, w_out = handover(score, rate, min(len(x), len(y)) // 2, blend_s)
     p = min(p, len(x) - f)
     return np.concatenate([x[:p], x[p:p + f] * w_out + y[:f] * w_in, y[f:]]), score
-def seamless(x, rate, blend_s=0.0):
+def seamless(x, rate, blend_s=0.0, keep_length=False):
     """A loop: its end handed over to its own start where they line up, the
     start's first JOIN_S then dropped (it's in the hand-over). Where it
     starts is chosen too, in its first START_SEARCH_S, for the best line-up.
     A good one near the ends (SEARCH_S of them) is taken first, so the loop
-    keeps its length; only if there's none does it look further in."""
-    for start_s, end_s in ((SEARCH_S, SEARCH_S), (START_SEARCH_S, WRAP_SEARCH_S)):
+    keeps its length; only if there's none does it look further in (unless
+    `keep_length`: noise, a hiss, never lines up, and looking further in only
+    shortens it; Stablizer2.wav's came out 0.76 s that way)."""
+    for start_s, end_s in ((SEARCH_S, SEARCH_S),) + (() if keep_length else ((START_SEARCH_S, WRAP_SEARCH_S),)):
         best = (-2.0, 0, 0)
         for st in range(0, int(start_s * rate), int(0.002 * rate)):
             p, score = best_cut(x, x[st:], rate, end_s)
@@ -207,7 +242,68 @@ def loop_of(engine, rate, stretches, name, blend_s=0.0):
     return out
 
 
+def plain_loop(x, rate, stretches, name, blend_s, keep_length=False):
+    """As loop_of(), for a machine's steady run (the crane, the winch): the
+    stretches joined and wrapped where they line up, brought to one loudness;
+    no pitch levelling (that's the engine's firing rate)."""
+    length = len(x) / rate
+    pieces = [x[int(max(a, 0) * rate):int(min(b, length) * rate)] for a, b in stretches]
+    loud = float(np.median([np.sqrt((p ** 2).mean()) for p in pieces]))
+    pieces = [p * loud / (np.sqrt((p ** 2).mean()) + 1e-12) for p in pieces]
+    out = pieces[0]
+    for s, p in zip(stretches[1:], pieces[1:]):
+        out, score = join(out, p, rate, blend_s)
+        print(f"{name}: joined {s[0]}-{s[1]} s, lining up {score:.2f} (1 = identical)")
+    out, score = seamless(out, rate, blend_s, keep_length)
+    print(f"{name}: {', '.join(f'{a}-{b} s' for a, b in stretches)}; the loop's wrap lines up {score:.2f}")
+    return out
+
+
+def cut_crane():
+    """The crane's two loops: its hydraulics (the boom moving: crane_move.wav)
+    and its winch (the line going up or down: winch.wav), each with its loudest
+    peak at -3 dB (the truck sets their volumes)."""
+    long_enough = lambda key: [s for s in CUTS.get(key, []) if s[1] - s[0] > 1.0]
+    blend = float(CUTS.get("crane_blend", 0.4))
+    for key, src, out in (("crane", CUTS.get("crane_recording", "Crane2.mp3"), "crane_move.wav"), ("winch", "Winch.mp3", "winch.wav"),
+                          ("stabilizer", CUTS.get("stabilizer_recording", "Stablizer.mp3"), "stabilizer.wav"),
+                          ("motor", CUTS.get("motor_recording", "CraneMotor.mp3"), "crane_motor.wav")):
+        if CUTS.get("only") and key not in CUTS["only"]:
+            continue
+        stretches = long_enough(key)
+        if not stretches:
+            print(f"{key}: no stretch longer than 1 s: {out} left as it is")
+            continue
+        x, rate = load(src)
+        loop = plain_loop(x, rate, stretches, key, blend, keep_length=(key == "stabilizer"))   # (a hiss)
+        gain = 10 ** (-3 / 20) / np.abs(loop).max()
+        write(loop * gain, rate, out)
+        start = CUTS.get("crane_start", [])
+        if key == "crane" and len(start) == 2 and start[1] - start[0] > 0.02:
+            # The click as the crane's hydraulics start (Mike, 2026-11-09): a
+            # one-shot at the loop's own gain, so it's as loud against the loop
+            # as in the recording (held under -1 dB peak).
+            a, b = int(start[0] * rate), int(start[1] * rate)
+            click = fade(x[a:b], rate, 0.002, min(0.06, (b - a) / rate / 3)) * gain
+            click *= min(1.0, 10 ** (-1 / 20) / (np.abs(click).max() + 1e-12))
+            print(f"crane start: {start[0]}-{start[1]} s")
+            write(click, rate, "crane_start.wav")
+    # The switch the operator throws at the controls (Mike, 2026-11-09): a
+    # one-shot, its loudest at -3 dB (the truck sets its volume).
+    sw = CUTS.get("switch", [])
+    if (not CUTS.get("only") or "switch" in CUTS["only"]) and len(sw) == 2 and sw[1] - sw[0] > 0.02:
+        x, rate = load(CUTS.get("switch_recording", "Switch.wav"))
+        a, b = int(sw[0] * rate), int(sw[1] * rate)
+        click = fade(x[a:b], rate, 0.002, min(0.05, (b - a) / rate / 3))
+        print(f"switch: {sw[0]}-{sw[1]} s")
+        write(click * 10 ** (-3 / 20) / (np.abs(click).max() + 1e-12), rate, "crane_switch.wav")
+
+
 def main():
+    if CUTS.get("only") and not any(k in CUTS["only"] for k in ("engine", "doors")):
+        cut_crane()   # (just the crane's: the engine and doors left as they are)
+        return
+    cut_crane()
     engine, r = load(CUTS["engine"])
     print(f"engine recording: {CUTS['engine']}")
     length = len(engine) / r

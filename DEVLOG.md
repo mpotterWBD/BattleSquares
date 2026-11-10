@@ -3359,3 +3359,79 @@ Major choices and the reasons behind them.
 - Import: the 30 PNGs' .import files (mipmaps on) were written before rendering. Mike's open editor caught `tree_oak_mature.png` while Blender was rewriting it and marked it `valid=false`; its .import was reset to the template so the editor imports it again.
 - Tested on the scratch copy: `tests/test_trees.gd` (new, 6): all 15 have measurements, picture and shadow, the shadow to the bottom right; each type grows sapling < young < mature; Size 150% scales crown, trunk and shadow offset; the oak's crown fades over the player (0.35) and comes back (1.0); the trunk's heavy cover; the player walking into a trunk stops at it.
 - Not done: one look per type and growth (a stand of the same type repeats; variants could be rendered with other seeds); no wind; leaves don't stop shots or sight; a tree's shadow doesn't darken squares or the trees under it.
+
+## 2026-11-09 — Crane sounds: the hydraulics while the boom moves, the winch while the line does
+
+- **Mike:** play a snippet of the crane sound (assets/sfx/supply_truck/Crane.mp3) that makes the most sense when the boom moves, fading out right before it stops; and a winch sound (Winch.mp3) when the line starts lowering or raising.
+- The recordings, mapped (loudness every 0.25 s): Crane.mp3 (20.5 s) spins up at 0.75 s, runs steadily at about -31 dB 1.75-10 s, then thinner (-37 dB) 10.5-14 s, and winds down to nothing by 19.5 s. Winch.mp3 (10.5 s): a short take 0.25-2.5 s, silence, a long one 3.25-10.5 s, steadiest 3.4-7 s.
+- Cut (`blender/scripts/cut_truck_sounds.py`, `plain_loop()`: joined and wrapped where the waveforms line up, a 0.4 s constant-power blend; no pitch levelling, that's the engine's): `crane_move.wav` from 1.75-7.0 s (a 4.4 s loop), `winch.wav` from 3.4-7.0 s (2.4 s). The cuts are in the truck's Sound Cuts (Inspector: Crane Moving, Winch; Cut Sounds re-cuts them with the rest); the cutter takes `"only": ["crane", "winch"]` to cut just those.
+- `supply_truck.gd`: both looped from the crane's turret (Sound: Crane Volume Db -6, Winch Volume Db -4). The hydraulics play while the turret turns or the boom slides (`_aim_at()` now also works out the move's time left: the slower of the turn and the slide); the winch while a job's LIFT or LOWER runs (a little lower, 0.93, letting a crate down). Each fades in over 0.15 s and out over the last 0.4 s before its movement stops (CRANE_FADE_S), so it's gone as it stops; a move cut short (a job cancelled), out in 0.1 s.
+- Tested on the scratch copy: `tests/test_crane_sound.gd` (new, 7): a crate lifted onto the bed, tick by tick: reaching and swinging, the hydraulics full and down to 0.04 / 0.02 as each stops, no winch; lifting and lowering, the winch full and down to 0.04, pitch 0.93 going down; the most either dropped in a tick 0.042 (a smooth fade); quiet while the boom isn't moving; both stopped after. test_truck_crane passes; test_sound_cuts (the Cut Sounds button, now cutting these too) OK.
+
+### 2026-11-09: the crane's hydraulics from Crane2.mp3
+- **Mike:** added Crane2.mp3, a better crane sound.
+- Mapped (loudness and brightness every 0.25 s): 46.4 s. To 18.5 s it's a thin, hissy run (about -37 dB, bright); from 18.75 to 22 s it changes over; from 22 s the hydraulics work hard, lower and louder (about -30 dB). That stretch is steadiest from 26.75 to 33.25 s, then pulses about every 1.5 s from 34 s on.
+- `crane_move.wav` is now cut from 27.0-33.0 s of Crane2.mp3: a 5.2 s loop whose wrap lines up at 0.86.
+- The crane's recording is now a setting:
+  - Sound Cuts has `crane_recording` under Crane Moving (default Crane2.mp3), and its time ranges go up to 60 s.
+  - The cutter takes `"crane_recording"`.
+  - To go back to the old take, pick Crane.mp3 there with 1.75-7.0 s.
+- Tested on the scratch copy: `tests/test_crane_sound.gd` passes (all 7). It reports full while the boom moves and 0.04 / 0.02 as it stops, and the most dropped in a tick is 0.042.
+
+### 2026-11-09: the crane's start click
+- **Mike:** Crane2.mp3 opens with a click; use it as the crane starts.
+- Mapped every 10 ms: the click runs 0.00-0.13 s, about 15 dB over the hiss that follows from 0.4 s.
+- The cutter now writes `crane_start.wav` from 0.0-0.25 s (`"crane_start"`) as a one-shot.
+  - It uses the crane loop's own gain, so the click and loop keep their recorded balance, held to a -1 dB peak (which it reached).
+  - The times are in Sound Cuts: Crane Moving, `crane_start_from_s` / `_to_s`.
+- `supply_truck.gd`: `_crane_start_snd`, at the turret, plays at Crane Volume Db whenever the hydraulics start up from silence. That's the start of each boom move: reach and swing, and deploying or stowing. It doesn't play for the winch, or for a move that follows another before the sound has died away.
+- Tested on the scratch copy:
+  - `tests/test_crane_sound.gd` now has 8 checks, all passing. It counts one click at the reach and one at the swing, none at the lift or lower.
+  - The test stops each click once it's counted: headless audio runs in real time, slower than the fixed-fps test, so the reach's click could still be "playing" when the swing's started.
+  - test_truck_crane passes.
+
+### 2026-11-09: quieter boom and winch; the stabilisers' sound
+- **Mike:** lower the boom 20%, and the pulley (winch) 20%; add his new Stablizer.mp3 for the stabilisers deploying.
+- Volumes: "20% lower" was read as ×0.8 amplitude, which is -2 dB.
+  - Crane Volume Db went from -6 to -8 (that's the boom's hydraulics and its start click).
+  - Winch Volume Db went from -4 to -6.
+  - If it's not quiet enough: to sound 20% quieter to the ear is about -3 dB more.
+- Stablizer.mp3 (8.8 s) runs steadily from 0.25 to 8.25 s, with a dip from 3.25 to 4 s.
+  - The cutter joins 0.25-3.2 and 4.25-7.5 s into `stabilizer.wav`, a 4.8 s loop whose wrap lines up at 0.75 (`"stabilizer"`, `"stabilizer_recording"`).
+  - Sound Cuts has a new Stabilizer group with the recording and two stretches.
+- `supply_truck.gd`: `_stab_snd` (at the turret, Stabilizer Volume Db -6) plays while `_stab` changes, both coming down (DEPLOYING) and going up (STOWING).
+  - It fades in over 0.15 s and out over the last 0.4 s before they're fully down or up, using the crane's `_ease_level`.
+- Tested on the scratch copy:
+  - `tests/test_crane_sound.gd` now has 11 checks, all passing. Coming down, the sound reaches full, then 0.00 as the stabilisers land, at most 0.042 a tick, then off. Going up, the same. The volumes are -8, -6 and -6.
+  - test_truck_crane passes.
+
+### 2026-11-09: the crane's start-up sequence: switch, motor, stabilisers
+- **Mike's sequence:**
+  1. The passenger gets out and reaches the controls.
+  2. A half-second wait, then the switch (Switch.wav).
+  3. The crane motor on at once (CraneMotor.mp3).
+  4. After a second of motor, the stabilisers drop.
+  5. Once they're down, the crane works.
+- Recordings:
+  - CraneMotor.mp3 is 181 s of steady running at -30 dB, with no start or stop. Its 5-15 s goes to `crane_motor.wav`, a 9.4 s loop whose wrap lines up at 0.96.
+  - Switch.wav (0.52 s, 96 kHz) is a click at 0.26 s with a rattle from 0.18 s. Its 0.15-0.5 s goes to `crane_switch.wav`.
+  - The cutter brings 96 kHz down to 48 kHz first: Blender writes 96 kHz in a WAV form Godot won't import ("not PCM").
+  - Both are in Sound Cuts, under the new groups Crane Motor and Switch.
+- `supply_truck.gd`:
+  - The motor runs while the crane is in DEPLOYING, WORKING or STOWING. The switch (at STATION_M) plays each time it turns on or off.
+  - So: SETTLING (station_hold_s 0.5), then the switch and motor, up to speed in 0.15 s.
+  - DEPLOYING now holds the stabilisers for the new `motor_lead_s` (1.0) before they drop. That's skipped if they're already partly down, e.g. a stow it changed its mind on.
+  - When it's put away, the motor runs until the stabilisers are up, then the switch, and it runs down over 0.6 s.
+  - New exports: Motor Volume Db -10, Switch Volume Db 0, Motor Lead S 1.0.
+- Tested on the scratch copy:
+  - `tests/test_crane_sound.gd` now has 16 checks, all passing. At the controls at 1.73 s, the switch at 2.25 (0.52 later), the motor full at 2.38, the stabilisers moving at 3.25 (1.00 after the switch). The motor ran through the job. Put away: it ran until the stabilisers were up, then the switch, then off.
+  - test_truck_crane passes.
+
+### 2026-11-09: stabilisers from Stablizer2.wav
+- **Mike:** replace the stabiliser sound with Stablizer2.
+- Stablizer2.wav (4.1 s, 96 kHz) is quiet at first, builds up from 0.25 to 1.5 s, then holds a steady hydraulic hiss (about -26 dB) to its end. `stabilizer.wav` is now looped from 1.6-4.0 s. Sound Cuts > Stabilizer defaults to it, and it takes .wav as well as .mp3.
+- Cutter changes:
+  - `load()` now brings any recording over 48 kHz down to 48 kHz. That used to be done for the switch alone.
+  - `seamless()` takes `keep_length`, used for the stabiliser. Hiss never lines up, so its usual second search (further in) only shortened the loop, to 0.76 s. It now keeps the stretch's length (1.66 s) and wraps with the 0.4 s constant-power blend.
+- Its level is -23 dB against the old -16.5 at the same peak (the hiss is spikier), so at the same Stabilizer Volume Db (-6) it's quieter than the first take.
+- Tested on the scratch copy: `tests/test_crane_sound.gd` passes (all 16). Coming down and going up, the sound reaches full, then 0.00 as the stabilisers land.

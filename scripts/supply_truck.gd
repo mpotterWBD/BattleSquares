@@ -96,6 +96,18 @@ const SOUND_DOOR_SLAM := preload("res://assets/sfx/supply_truck/door_slam.wav")
 const SOUND_START := preload("res://assets/sfx/supply_truck/truck_start.wav")
 const SOUND_IDLE := preload("res://assets/sfx/supply_truck/truck_idle.wav")
 const SOUND_STOP := preload("res://assets/sfx/supply_truck/truck_stop.wav")
+const SOUND_CRANE := preload("res://assets/sfx/supply_truck/crane_move.wav")   ## the hydraulics, the boom moving (Mike, 2026-11-09)
+const SOUND_WINCH := preload("res://assets/sfx/supply_truck/winch.wav")         ## the line going up or down
+const SOUND_CRANE_START := preload("res://assets/sfx/supply_truck/crane_start.wav")   ## the click as the hydraulics start
+const SOUND_STABILIZER := preload("res://assets/sfx/supply_truck/stabilizer.wav")     ## the stabilisers coming down or going up
+const SOUND_MOTOR := preload("res://assets/sfx/supply_truck/crane_motor.wav")         ## the crane's motor, running
+const SOUND_SWITCH := preload("res://assets/sfx/supply_truck/crane_switch.wav")       ## the operator's switch at the controls
+const MOTOR_UP_S := 0.15            ## the motor coming up to speed as it's switched on...
+const MOTOR_DOWN_S := 0.6           ## ...and running down as it's switched off
+const CRANE_FADE_S := 0.4           ## the crane's and winch's sounds fade out over the last of their movement, this long before it stops
+const CRANE_ATTACK_S := 0.15        ## ...and in this quickly as it starts
+const CRANE_CUT_S := 0.1            ## stopped short (a job cancelled): out this quickly
+const WINCH_LOWER_PITCH := 0.93     ## letting a crate down, the winch a little lower than hauling one up
 const ENGINE_AT_M := Vector2(0.8, 0.0)   ## the engine module, where its sound comes from
 const START_BLEND_S := 0.3          ## the start's last stretch cross-fades into the idle loop
 ## The driving loop (truck_run.wav: only if the sound cuts made one) blends in
@@ -231,6 +243,16 @@ enum JobStep { REACH, LIFT, SWING, LOWER }
 @export_range(0.0, 12.0, 0.5, "suffix:dB") var speed_gain_db := 4.0
 ## The driving loop's volume, against the running one (when there is one: Sound Cuts > Engine Driving).
 @export_range(-24.0, 12.0, 0.5, "suffix:dB") var driving_volume_db := -4.0
+## The crane's hydraulics while the boom moves, and its winch while the line
+## goes up or down (each 20% quieter, -2 dB, Mike 2026-11-09: were -6 and -4).
+@export_range(-30.0, 12.0, 0.5, "suffix:dB") var crane_volume_db := -8.0
+@export_range(-30.0, 12.0, 0.5, "suffix:dB") var winch_volume_db := -6.0
+## The stabilisers' hydraulics while they come down or go up.
+@export_range(-30.0, 12.0, 0.5, "suffix:dB") var stabilizer_volume_db := -6.0
+## The crane's motor, running from the operator's switch until it's put away.
+@export_range(-30.0, 12.0, 0.5, "suffix:dB") var motor_volume_db := -10.0
+## The switch at the controls (on as it deploys, off once it's put away).
+@export_range(-30.0, 12.0, 0.5, "suffix:dB") var switch_volume_db := 0.0
 ## Which sections of the recordings the sounds are cut from (times in
 ## seconds), with a Cut Sounds button that re-cuts them (truck_sound_cuts.gd).
 ## Shared by every truck: it's its own file. Only the editor uses it.
@@ -250,6 +272,8 @@ enum JobStep { REACH, LIFT, SWING, LOWER }
 @export_range(0.2, 8.0, 0.1, "suffix:s") var lift_s := 2.5
 ## The operator standing at the controls this long before the stabilisers come down.
 @export_range(0.0, 3.0, 0.1, "suffix:s") var station_hold_s := 0.5
+## Then the switch, and the motor running this long before the stabilisers drop (Mike, 2026-11-09).
+@export_range(0.0, 3.0, 0.1, "suffix:s") var motor_lead_s := 1.0
 ## The stabilisers coming down (or up).
 @export_range(0.2, 10.0, 0.1, "suffix:s") var stabilizer_s := 4.0
 
@@ -317,6 +341,20 @@ var _run: AudioStreamPlayer2D = null   ## the driving loop (null: none)
 var _stop: AudioStreamPlayer2D
 var _door_sound: AudioStreamPlayer2D
 var _loop_level := 0.0              ## the engine loop's volume, 0..1 (fading in from the start, out when it stops)
+var _crane_snd: AudioStreamPlayer2D   ## the boom moving (crane_move.wav, looped)
+var _winch_snd: AudioStreamPlayer2D   ## the line going up or down (winch.wav, looped)
+var _crane_start_snd: AudioStreamPlayer2D   ## the click as the hydraulics start (crane_start.wav, once)
+var _stab_snd: AudioStreamPlayer2D    ## the stabilisers moving (stabilizer.wav, looped)
+var _stab_level := 0.0
+var _stab_was := 0.0                  ## _stab last tick (moving if it's changed)
+var _motor_snd: AudioStreamPlayer2D   ## the crane's motor (crane_motor.wav, looped)
+var _switch_snd: AudioStreamPlayer2D  ## the switch (crane_switch.wav, once)
+var _motor_on := false
+var _motor_level := 0.0
+var _crane_level := 0.0              ## their volumes, 0..1
+var _winch_level := 0.0
+var _aim_left_s := 0.0               ## the turret and boom: how long their move has left (_aim_at()), this tick...
+var _aim_tick := -1                  ## ...and the tick they last moved
 
 ## The crane. `_armed`: the Crane order's been given and a click on a crate (or on
 ## ground) in the circle is a job. `_jobs` are those still to do, `_job` the one
@@ -392,6 +430,18 @@ func _ready() -> void:
 	if ResourceLoader.exists(SOUND_RUN_PATH):
 		_run = _add_sound(load(SOUND_RUN_PATH), true)
 	_stop = _add_sound(SOUND_STOP, false)
+	_crane_snd = _add_sound(SOUND_CRANE, true)
+	_crane_snd.position = CRANE_AXIS_M * World.PX_PER_M
+	_winch_snd = _add_sound(SOUND_WINCH, true)
+	_winch_snd.position = CRANE_AXIS_M * World.PX_PER_M
+	_crane_start_snd = _add_sound(SOUND_CRANE_START, false)
+	_crane_start_snd.position = CRANE_AXIS_M * World.PX_PER_M
+	_stab_snd = _add_sound(SOUND_STABILIZER, true)
+	_stab_snd.position = CRANE_AXIS_M * World.PX_PER_M
+	_motor_snd = _add_sound(SOUND_MOTOR, true)
+	_motor_snd.position = CRANE_AXIS_M * World.PX_PER_M
+	_switch_snd = _add_sound(SOUND_SWITCH, false)
+	_switch_snd.position = STATION_M * World.PX_PER_M
 	_door_sound = _add_sound(SOUND_DOOR_OPEN, false)
 	_build_crane()
 
@@ -519,6 +569,7 @@ func _physics_process(delta: float) -> void:
 		if seat.step != Step.NONE:
 			_tick_getting_in_or_out(seat, delta)
 	_tick_crane(delta)
+	_tick_crane_sound(delta)
 	_tick_engine(delta, throttle)
 	_turn_tyres()
 
@@ -1109,6 +1160,8 @@ func _tick_crane(delta: float) -> void:
 				_crane_abort()
 				return
 			_hold_operator()
+			if _crane_t < motor_lead_s and _stab <= 0.0:
+				return   # (switched on: the motor runs a moment before the stabilisers drop)
 			_stab = move_toward(_stab, 1.0, delta / stabilizer_s)
 			if _stab >= 1.0:
 				_cphase = CranePhase.WORKING
@@ -1234,9 +1287,74 @@ func _aim_at(target: Vector2, delta: float) -> bool:
 	var want_ext := clampf(off.length() - ARM_M, 0.0, crane_reach_m - ARM_M)
 	var diff := angle_difference(_slew, want)
 	var step := deg_to_rad(crane_slew_dps) * delta
+	var was := Vector2(_slew, _boom_ext)
 	_slew = wrapf(_slew + clampf(diff, -step, step), -PI, PI)
 	_boom_ext = move_toward(_boom_ext, want_ext, boom_mps * delta)
+	# How long the move has left (the slower of the turn and the slide): its sound fades out over the end of it.
+	_aim_left_s = maxf(maxf(absf(diff) - step, 0.0) / deg_to_rad(crane_slew_dps), absf(want_ext - _boom_ext) / boom_mps)
+	if Vector2(_slew, _boom_ext) != was:
+		_aim_tick = Engine.get_physics_frames()
 	return absf(diff) <= step and is_equal_approx(_boom_ext, want_ext)
+
+
+## The crane's sounds, each tick: its hydraulics while the turret turns or
+## the boom slides, its winch while the line takes a crate up or down (a
+## little lower letting it down). Each fades in over CRANE_ATTACK_S as its
+## movement starts and out over the last CRANE_FADE_S before it stops (the
+## move's time left is known), and is gone fast if the move's cut short.
+func _tick_crane_sound(delta: float) -> void:
+	var moving := _aim_tick >= Engine.get_physics_frames() - 1
+	var crane_want := clampf(_aim_left_s / CRANE_FADE_S, 0.0, 1.0) if moving else 0.0
+	if crane_want > 0.0 and _crane_level <= 0.001:
+		# Starting from quiet: the valve's click first (Crane2.mp3's opening),
+		# at the hydraulics' volume, as the loop fades in under it.
+		_crane_start_snd.volume_db = crane_volume_db
+		_crane_start_snd.play()
+	var winch_want := 0.0
+	var job = _job
+	if job != null and job.step in [JobStep.LIFT, JobStep.LOWER]:
+		winch_want = clampf((1.0 - job.t) * lift_s / CRANE_FADE_S, 0.0, 1.0)
+		_winch_snd.pitch_scale = WINCH_LOWER_PITCH if job.step == JobStep.LOWER else 1.0
+	_crane_level = _ease_level(_crane_level, crane_want, delta)
+	_winch_level = _ease_level(_winch_level, winch_want, delta)
+	_set_loop(_crane_snd, _crane_level, crane_volume_db)
+	_set_loop(_winch_snd, _winch_level, winch_volume_db)
+	# The stabilisers: while they move, out over the last CRANE_FADE_S before
+	# they're fully down (or up).
+	var stab_want := 0.0
+	if not is_equal_approx(_stab, _stab_was):
+		var left_s := (1.0 - _stab if _stab > _stab_was else _stab) * stabilizer_s
+		stab_want = clampf(left_s / CRANE_FADE_S, 0.0, 1.0)
+	_stab_was = _stab
+	_stab_level = _ease_level(_stab_level, stab_want, delta)
+	_set_loop(_stab_snd, _stab_level, stabilizer_volume_db)
+	# The motor: the operator's switch turns it on as it deploys (after its
+	# moment at the controls) and off once it's put away, the stabilisers up.
+	var motor := _cphase in [CranePhase.DEPLOYING, CranePhase.WORKING, CranePhase.STOWING]
+	if motor != _motor_on:
+		_motor_on = motor
+		_switch_snd.volume_db = switch_volume_db
+		_switch_snd.play()
+	_motor_level = move_toward(_motor_level, 1.0 if motor else 0.0, delta / (MOTOR_UP_S if motor else MOTOR_DOWN_S))
+	_set_loop(_motor_snd, _motor_level, motor_volume_db)
+
+
+## Toward `want`: up over CRANE_ATTACK_S; down with it (its own fade), or over CRANE_CUT_S if it drops at once.
+static func _ease_level(level: float, want: float, delta: float) -> float:
+	if want > level:
+		return minf(want, level + delta / CRANE_ATTACK_S)
+	return maxf(want, level - delta / CRANE_CUT_S)
+
+
+## A looped sound at `level` (0..1) over `base_db`: started when it's heard, stopped when it isn't.
+static func _set_loop(player: AudioStreamPlayer2D, level: float, base_db: float) -> void:
+	if level <= 0.001:
+		if player.playing:
+			player.stop()
+		return
+	player.volume_db = base_db + linear_to_db(level)
+	if not player.playing:
+		player.play()
 
 
 ## A carried crate down on the ground where it is.
