@@ -19,7 +19,8 @@ roof 1.6 m up. Front to back (+x is forward):
   module    behind the cab: the engine's housing, louvred vents on top, an
             exhaust stack and an air intake with a rain cap
   crane bay the crane's pedestal (its turret is a separate image, below) and
-            a stabiliser leg each side
+            a stabiliser each side: a housing, and the beam and jack that
+            come out of it (animated, a sheet of their own, below)
   bed       a steel flatbed, BED_L x BED_W, its deck BED_Z up, with a
             headboard, side rails, stake pockets and tie-down rings: room for
             two 0.8 m pallets (crates.py) one behind the other
@@ -39,12 +40,19 @@ game's pixel density (shown at 1/RENDER_SCALE with mipmaps):
                                           centred on its middle, for the game to
                                           swing open about its hinge (and mirror
                                           for the other door)
+  assets/vehicles/supply_truck_stabilizer_sheet.png
+                                          the left stabiliser coming out and
+                                          down, STAB_FRAMES frames left to
+                                          right, keyframed (build_stabs()); the
+                                          game mirrors it for the right
 plus half-density shadow outlines (supply_truck_shadow_<group>.png, SHADOW_GROUPS,
-and _crane, _door), which the game sweeps toward the sun.
+and _crane, _door, and _stabilizer_sheet frame by frame), which the game
+sweeps toward the sun.
 Reviews (assets/previews/): supply_truck_preview.png, top-down under the
 standard sun on the field's grass with two ammo crates on the bed and a red
 square beside it for scale; supply_truck_angle_preview.png, an angled look
-like the reference photos.
+like the reference photos; supply_truck_stabilizers_preview.png, the
+stabilisers down, close up.
 
 Blender axes: +x forward, +y to the left (port), +z up. In the image +y is up.
 """
@@ -52,6 +60,7 @@ Blender axes: +x forward, +y to the left (port), +z up. In the image +y is up.
 import math
 import os
 import sys
+import tempfile
 
 import bmesh
 import bpy
@@ -67,12 +76,15 @@ OUT_DOOR = os.path.join(ROOT, "assets", "vehicles", "supply_truck_door.png")
 OUT_TYRE = os.path.join(ROOT, "assets", "vehicles", "supply_truck_tyre.png")
 OUT_PREVIEW = os.path.join(ROOT, "assets", "previews", "supply_truck_preview.png")
 OUT_ANGLE = os.path.join(ROOT, "assets", "previews", "supply_truck_angle_preview.png")
+OUT_STABS = os.path.join(ROOT, "assets", "vehicles", "supply_truck_stabilizer_sheet.png")
+OUT_STAB_PREVIEW = os.path.join(ROOT, "assets", "previews", "supply_truck_stabilizers_preview.png")
 OUT_BLEND = os.path.join(ROOT, "blender", "source", "supply_truck.blend")
 _args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 if _args[:1] == ["draft"]:
     _draft = _args[1]
-    OUT_BODY, OUT_CRANE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE, OUT_BLEND = (
-        os.path.join(_draft, os.path.basename(path)) for path in (OUT_BODY, OUT_CRANE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE, OUT_BLEND))
+    OUT_BODY, OUT_CRANE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE, OUT_STABS, OUT_STAB_PREVIEW, OUT_BLEND = (
+        os.path.join(_draft, os.path.basename(path)) for path in (OUT_BODY, OUT_CRANE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE,
+                                                                  OUT_STABS, OUT_STAB_PREVIEW, OUT_BLEND))
 
 RENDER_SCALE = 2
 SAMPLES = 96
@@ -120,6 +132,24 @@ TYRE_FRAME_M = 0.8      # one tyre's picture, round its middle
 DOOR_SHADOW_FRAME_M = 2.2
 CRANE_X_M = 0.23        # the crane's slewing axis, along the truck; supply_truck.gd will match
 CRANE_BASE_Z = 0.86
+
+# The stabilisers (Mike, 2026-11-11: a Blender animation, not shapes drawn in
+# the game): each an inner beam that slides out of its housing on the
+# pedestal, carrying a jack whose ram pushes a foot pad down to the ground.
+# Keyframed over STAB_FRAMES frames (0 stowed .. last down), the beam out over
+# the first 55% and the foot down over the last 55% (smoothed, overlapping, as
+# the game's old drawing). Rendered, the left one only (the game mirrors it
+# for the right), into supply_truck_stabilizer_sheet.png (one frame per
+# column) with a half-density shadow outline sheet beside it.
+STAB_FRAMES = 25
+STAB_HOUSING_END_M = 0.62   # the housing's outer end, out from the middle
+STAB_IN_M = 0.6             # the jack's middle, stowed (against the housing's end)...
+STAB_OUT_M = 0.86           # ...and out (supply_truck.gd STAB_OUT_M)
+STAB_FOOT_UP_M = 0.17       # the foot pad's underside off the ground, stowed
+STAB_FRAME_M = 0.75         # each frame: 128 px at 2x, round STAB_FRAME_AT
+STAB_FRAME_AT = (CRANE_X_M, 0.66)
+STAB_SHADOW_FRAME_M = 2.625  # each shadow frame: 112 px at half density, with ~1 m all round for the sweep
+STAB_TOP_M = 0.9            # the jack's top (its shadow's highest point)
 
 # Colours (sRGB): olive drab, matte, a little greener and lighter than the
 # helicopter's (helicopter.py), between it and the ammo cans' (crates.py),
@@ -405,14 +435,12 @@ def build_body():
     cylinder("RainCap", 0.1, 1.68, 1.72, (mx1 - 0.1, 0.43), m["dark"], p)
     box("Toolbox", mx0 + 0.04, mx0 + 0.3, 0.27, 0.47, 1.4, 1.5, m["dark"], p, bevel=0.01)
 
-    # --- The crane bay: the turret's pedestal and the stabiliser legs.
+    # --- The crane bay: the turret's pedestal and the stabilisers' housings
+    # (the beams and jacks that come out of them move: build_stabs()).
     box("Pedestal", BED_FRONT_X + 0.05, MODULE_BACK_X - 0.03, -0.42, 0.42, 0.55, CRANE_BASE_Z - 0.02, m["dark"], p, bevel=0.015)
     cylinder("SlewRing", 0.2, CRANE_BASE_Z - 0.04, CRANE_BASE_Z, (CRANE_X_M, 0), m["steel"], p, segs=40)
     for s in (1, -1):
-        box(f"OutriggerBeam{s}", CRANE_X_M - 0.09, CRANE_X_M + 0.09, s * 0.42, s * 0.62, 0.55, 0.7, m["olive"], p, bevel=0.01)
-        cylinder(f"OutriggerLeg{s}", 0.045, 0.2, 0.86, (CRANE_X_M, s * 0.6), m["olive"], p)
-        cylinder(f"OutriggerRam{s}", 0.03, 0.86, 0.95, (CRANE_X_M, s * 0.6), m["steel"], p)
-        cylinder(f"OutriggerFoot{s}", 0.09, 0.17, 0.2, (CRANE_X_M, s * 0.6), m["dark"], p)
+        box(f"OutriggerBeam{s}", CRANE_X_M - 0.09, CRANE_X_M + 0.09, s * 0.42, s * STAB_HOUSING_END_M, 0.55, 0.7, m["olive"], p, bevel=0.01)
     box("Controls", CRANE_X_M - 0.1, CRANE_X_M + 0.08, -0.42, -0.36, 0.62, 0.9, m["dark"], p, bevel=0.008)
     for k in range(3):   # the operator's levers
         cylinder(f"Lever{k}", 0.008, 0.9, 0.97, (CRANE_X_M - 0.06 + k * 0.05, -0.39), m["soot"], p, segs=8)
@@ -520,6 +548,89 @@ def build_crane(m):
     return p
 
 
+# ------------------------------------------------------------ stabilisers --
+def smoothstep(a, b, t):
+    t = min(max((t - a) / (b - a), 0.0), 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def stab_pose(t):
+    """How far out (m, from stowed) and how far down (m) at `t` (0 stowed .. 1 down)."""
+    return (STAB_OUT_M - STAB_IN_M) * smoothstep(0.0, 0.55, t), STAB_FOOT_UP_M * smoothstep(0.45, 1.0, t)
+
+
+def build_stabs(m):
+    """The stabilisers' moving parts, stowed, either side (s 1 the left, -1 the
+    right): an inner beam in the housing (most of it inside, hidden), a jack
+    on its end (an olive barrel, a cap), and in the jack a steel ram with the
+    foot pad on it. Each side's beam and jack hang from an empty that slides
+    out ("StabSlide1"), the ram and pad from one under it that drops
+    ("StabFoot1"), keyframed frame 0 to STAB_FRAMES - 1. Returns {s: parts}."""
+    sides = {}
+    scene = bpy.context.scene
+    cx = CRANE_X_M
+    for s in (1, -1):
+        p = []
+        slide = bpy.data.objects.new(f"StabSlide{s}", None)
+        foot = bpy.data.objects.new(f"StabFoot{s}", None)
+        scene.collection.objects.link(slide)
+        scene.collection.objects.link(foot)
+        foot.parent = slide
+        y = s * STAB_IN_M
+        moving = [
+            box(f"StabBeam{s}", cx - 0.065, cx + 0.065, s * 0.3, s * (STAB_IN_M + 0.045), 0.57, 0.68, m["olive"], p, bevel=0.008),
+            box(f"StabBeamEnd{s}", cx - 0.07, cx + 0.07, s * (STAB_IN_M + 0.02), s * (STAB_IN_M + 0.05), 0.555, 0.695, m["dark"], p, bevel=0.006),
+            cylinder(f"StabBarrel{s}", 0.05, 0.3, 0.86, (cx, y), m["olive"], p),
+            cylinder(f"StabCap{s}", 0.06, 0.86, STAB_TOP_M, (cx, y), m["dark"], p),
+            cylinder(f"StabCapBolt{s}", 0.018, STAB_TOP_M, STAB_TOP_M + 0.01, (cx, y), m["steel"], p, segs=12),
+        ]
+        dropping = [
+            cylinder(f"StabRam{s}", 0.03, STAB_FOOT_UP_M + 0.03, STAB_FOOT_UP_M + 0.36, (cx, y), m["steel"], p),
+            cylinder(f"StabSwivel{s}", 0.045, STAB_FOOT_UP_M + 0.025, STAB_FOOT_UP_M + 0.055, (cx, y), m["dark"], p),
+            cylinder(f"StabPad{s}", 0.1, STAB_FOOT_UP_M, STAB_FOOT_UP_M + 0.03, (cx, y), m["dark"], p, segs=32),
+            cylinder(f"StabPadRim{s}", 0.104, STAB_FOOT_UP_M + 0.005, STAB_FOOT_UP_M + 0.022, (cx, y), m["steel"], p, segs=32),
+        ]
+        for obj in moving:
+            obj.parent = slide
+        for obj in dropping:
+            obj.parent = foot
+        for k in range(STAB_FRAMES):
+            out, down = stab_pose(k / (STAB_FRAMES - 1))
+            slide.location = (0, s * out, 0)
+            foot.location = (0, 0, -down)
+            slide.keyframe_insert("location", frame=k)
+            foot.keyframe_insert("location", frame=k)
+        sides[s] = p
+    scene.frame_start, scene.frame_end = 0, STAB_FRAMES - 1
+    scene.frame_set(0)
+    return sides
+
+
+def frame_pixels(scene, path):
+    """Render the camera's view to `path`, and return it as an (h, w, 4) array."""
+    import numpy as np
+    bs.render_to(scene, path)
+    img = bpy.data.images.load(path)
+    w, h = img.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    img.pixels.foreach_get(px)
+    bpy.data.images.remove(img)
+    return px.reshape(h, w, 4)
+
+
+def save_sheet(frames, path):
+    """The frames side by side, left to right (as character_square.py's)."""
+    import numpy as np
+    sheet = np.concatenate(frames, axis=1)
+    h, w = sheet.shape[:2]
+    img = bpy.data.images.new(os.path.basename(path), w, h, alpha=True)
+    img.pixels.foreach_set(sheet.ravel())
+    img.filepath_raw = path
+    img.file_format = "PNG"
+    img.save()
+    print(f"Saved {path} ({len(frames)} frames, {w}x{h})")
+
+
 # -------------------------------------------------------------- previews --
 def build_ground():
     """The field's own grass tile under everything (12 m square)."""
@@ -585,6 +696,10 @@ def main():
     body, mats = build_body()
     crane = build_crane(mats)
     door = build_door(mats)
+    stab_sides = build_stabs(mats)
+    stabs = stab_sides[1] + stab_sides[-1]
+    for obj in stabs:   # (out of the body's, the door's, the tyre's and the turret's pictures: their own, below)
+        obj.hide_render = True
 
     # The door on its own, round its middle, and its shadow outline; then
     # it's out of everything else. Everything else is out of the render, not
@@ -657,6 +772,37 @@ def main():
     for obj in body:
         obj.hide_render = False
 
+    # The stabilisers' animation: the left one, frame by frame, round
+    # STAB_FRAME_AT. The body's there as a holdout: it hides what's inside the
+    # housing and under the pedestal (cut out of the picture, transparent), so
+    # the game draws the sheet over the body. Then its shadow outline, alone.
+    for obj in crane:
+        obj.hide_render = True
+    for obj in body:
+        obj.is_holdout = True
+    for obj in stab_sides[1]:
+        obj.hide_render = False
+    tmp = os.path.join(tempfile.gettempdir(), "bs_stab_frame_tmp.png")   # (not in the project: Godot would import it)
+    bs.frame_camera(scene, STAB_FRAME_AT, STAB_FRAME_M, px)
+    frames = []
+    for k in range(STAB_FRAMES):
+        scene.frame_set(k)
+        frames.append(frame_pixels(scene, tmp))
+    save_sheet(frames, OUT_STABS)
+    for obj in body:
+        obj.is_holdout = False
+        obj.hide_render = True
+    bs.frame_camera(scene, STAB_FRAME_AT, STAB_SHADOW_FRAME_M, bs.PX_PER_M / 2)
+    frames = []
+    for k in range(STAB_FRAMES):
+        scene.frame_set(k)
+        frames.append(frame_pixels(scene, tmp))
+    save_sheet(frames, os.path.join(shadow_dir, "supply_truck_shadow_stabilizer_sheet.png"))
+    os.remove(tmp)
+    scene.frame_set(0)
+    for obj in body + crane + stabs:
+        obj.hide_render = False
+
     # Previews: the standard sun, the field's grass, two crates on the bed and
     # a red square beside it.
     sun.rotation_euler = (math.radians(bs.SUN_TILT_DEG), 0, math.radians(bs.SUN_HEADING_DEG))
@@ -677,6 +823,15 @@ def main():
     scene.camera = cam
     scene.render.resolution_x, scene.render.resolution_y = 1400, 900
     bs.render_to(scene, OUT_ANGLE)
+
+    # The stabilisers down, close up from the left side's front.
+    scene.frame_set(STAB_FRAMES - 1)
+    target = Vector((CRANE_X_M, 0.7, 0.4))
+    cam.location = Vector((2.0, 3.0, 1.5))
+    cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
+    scene.render.resolution_x, scene.render.resolution_y = 1000, 800
+    bs.render_to(scene, OUT_STAB_PREVIEW)
+    scene.frame_set(0)
 
 
 if __name__ == "__main__":

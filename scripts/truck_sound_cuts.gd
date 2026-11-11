@@ -101,15 +101,14 @@ const CUTS_FILE := "user://truck_sound_cuts.json"   ## the sections, handed to t
 @export_range(0.0, 30.0, 0.05, "suffix:s") var winch_2_to_s := 0.0
 
 @export_group("Stabilizer", "stabilizer_")
-## Which recording the stabilisers' sound comes from (Mike, 2026-11-09).
-@export_file("*.wav", "*.mp3") var stabilizer_recording := "res://assets/sfx/supply_truck/Stablizer2.wav"
-## Up to two stretches of it, joined into the loop that plays while the
-## stabilisers come down or go up. Stablizer2.wav builds up 0.25-1.5 s, then
-## a steady hiss to its end (4.1 s). Stablizer.mp3: steady 0.25-3.2 and 4.25-7.5 s.
-@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_1_from_s := 1.6
-@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_1_to_s := 4.0
-@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_2_from_s := 0.0
-@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_2_to_s := 0.0
+## Which recording the stabilisers' sound comes from (Mike, 2026-11-11: Stablizer3).
+@export_file("*.wav", "*.mp3") var stabilizer_recording := "res://assets/sfx/supply_truck/Stablizer3.wav"
+## The part of it played, once, as the stabilisers come down or go up: the
+## whole movement, start to end (the truck speeds it up or slows it to fit
+## Stabilizer Down S / Up S). Stablizer3.wav: quiet to 0.4 s, building, a
+## clunk at 3.4 s, gone by 4.2 s (4.6 s long). Make it as long as the movement.
+@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_from_s := 0.2
+@export_range(0.0, 30.0, 0.05, "suffix:s") var stabilizer_to_s := 4.2
 
 @export_group("Crane Motor", "motor_")
 ## Which recording the crane's motor comes from (Mike, 2026-11-09): it runs
@@ -146,7 +145,7 @@ func cut_sounds() -> void:
 		"crane": [[crane_1_from_s, crane_1_to_s], [crane_2_from_s, crane_2_to_s]],
 		"winch": [[winch_1_from_s, winch_1_to_s], [winch_2_from_s, winch_2_to_s]],
 		"stabilizer_recording": stabilizer_recording.get_file(),
-		"stabilizer": [[stabilizer_1_from_s, stabilizer_1_to_s], [stabilizer_2_from_s, stabilizer_2_to_s]],
+		"stabilizer": [stabilizer_from_s, stabilizer_to_s],
 		"motor_recording": motor_recording.get_file(),
 		"motor": [[motor_1_from_s, motor_1_to_s], [motor_2_from_s, motor_2_to_s]],
 		"switch_recording": switch_recording.get_file(),

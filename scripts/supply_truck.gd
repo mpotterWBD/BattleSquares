@@ -203,9 +203,18 @@ const REACH_RING := Color(0.95, 0.27, 0.22)
 const BEAM_A := Color("#56653a")    ## the boom: the arm's own colour, then the sliding steel
 const BEAM_B := Color("#8b9197")
 const BEAM_EDGE := Color("#232a1b")
-const STAB_BEAM := Color("#5a6b3c")
-const STAB_PAD := Color("#2f3236")
-const STAB_PAD_EDGE := Color("#70767c")
+## The stabilisers (supply_truck.py build_stabs(); Mike, 2026-11-11: a Blender
+## animation, not shapes drawn here): the left one's frames, stowed to down,
+## left to right, round STAB_SHEET_AT_M (the right one is it mirrored). What's
+## inside the housing is cut out of them, so they go over the body. Their
+## shadow outlines likewise, swept from the foot's height (STAB_FOOT_UP_M
+## stowed, 0 down) to the jack's top.
+const STAB_SHEET := preload("res://assets/vehicles/supply_truck_stabilizer_sheet.png")
+const STAB_SHADOW_SHEET := preload("res://assets/vehicles/supply_truck_shadow_stabilizer_sheet.png")
+const STAB_FRAMES := 25
+const STAB_SHEET_AT_M := Vector2(CRANE_X_M, -0.66)
+const STAB_FOOT_UP_M := 0.17
+const STAB_TOP_M := 0.9
 
 ## Getting in and out, step by step (each Seat's `step`).
 enum Step { NONE, TO_DOOR, OPENING, STEP_IN, CLOSING, OPENING_OUT, STEP_OUT, CLOSING_OUT }
@@ -247,7 +256,7 @@ enum JobStep { REACH, LIFT, SWING, LOWER }
 ## goes up or down (each 20% quieter, -2 dB, Mike 2026-11-09: were -6 and -4).
 @export_range(-30.0, 12.0, 0.5, "suffix:dB") var crane_volume_db := -8.0
 @export_range(-30.0, 12.0, 0.5, "suffix:dB") var winch_volume_db := -6.0
-## The stabilisers' hydraulics while they come down or go up.
+## The stabilisers' hydraulics as they come down or go up (one take, played once).
 @export_range(-30.0, 12.0, 0.5, "suffix:dB") var stabilizer_volume_db := -6.0
 ## The crane's motor, running from the operator's switch until it's put away.
 @export_range(-30.0, 12.0, 0.5, "suffix:dB") var motor_volume_db := -10.0
@@ -271,11 +280,15 @@ enum JobStep { REACH, LIFT, SWING, LOWER }
 ## Lifting a crate, and setting it down.
 @export_range(0.2, 8.0, 0.1, "suffix:s") var lift_s := 2.5
 ## The operator standing at the controls this long before the stabilisers come down.
-@export_range(0.0, 3.0, 0.1, "suffix:s") var station_hold_s := 0.5
+
+@export_range(0.0, 3.0, 0.1, "suffix:s") var station_hold_s := 1.5
 ## Then the switch, and the motor running this long before the stabilisers drop (Mike, 2026-11-09).
 @export_range(0.0, 3.0, 0.1, "suffix:s") var motor_lead_s := 1.0
-## The stabilisers coming down (or up).
-@export_range(0.2, 10.0, 0.1, "suffix:s") var stabilizer_s := 4.0
+
+## The stabilisers coming down (deploying), and going back up (stowing);
+## separate so each can be tuned on its own (Mike, 2026-11-11).
+@export_range(0.2, 10.0, 0.1, "suffix:s") var stabilizer_down_s := 4.0
+@export_range(0.2, 10.0, 0.1, "suffix:s") var stabilizer_up_s := 4.0
 
 ## A seat in the cab and whoever's in it or getting in or out of it: the
 ## driver's (side -1, the left) or the passenger's (1, the right).
@@ -344,9 +357,10 @@ var _loop_level := 0.0              ## the engine loop's volume, 0..1 (fading in
 var _crane_snd: AudioStreamPlayer2D   ## the boom moving (crane_move.wav, looped)
 var _winch_snd: AudioStreamPlayer2D   ## the line going up or down (winch.wav, looped)
 var _crane_start_snd: AudioStreamPlayer2D   ## the click as the hydraulics start (crane_start.wav, once)
-var _stab_snd: AudioStreamPlayer2D    ## the stabilisers moving (stabilizer.wav, looped)
+var _stab_snd: AudioStreamPlayer2D    ## the stabilisers moving (stabilizer.wav, once per movement)
 var _stab_level := 0.0
 var _stab_was := 0.0                  ## _stab last tick (moving if it's changed)
+var _stab_dir := 0.0                  ## which way they moved last tick: 1 down, -1 up, 0 still
 var _motor_snd: AudioStreamPlayer2D   ## the crane's motor (crane_motor.wav, looped)
 var _switch_snd: AudioStreamPlayer2D  ## the switch (crane_switch.wav, once)
 var _motor_on := false
@@ -375,7 +389,8 @@ var _want_stow := false              ## to be put away as soon as nothing's on t
 var _rig: Node2D                     ## the turret (the sprite) and the boom, turning about the axis
 var _boom: Node2D
 var _boom_shadow: Node2D
-var _stabs: Node2D
+var _stabs: Array[Sprite2D] = []          ## left, right (the sheet mirrored)
+var _stab_shadows: Array[Sprite2D] = []
 var _bed_shadow: CanvasGroup         ## the crates' shadows on the deck
 var _bed_shadow_shape: Node2D
 var _reach: Node2D                   ## the circle
@@ -436,7 +451,7 @@ func _ready() -> void:
 	_winch_snd.position = CRANE_AXIS_M * World.PX_PER_M
 	_crane_start_snd = _add_sound(SOUND_CRANE_START, false)
 	_crane_start_snd.position = CRANE_AXIS_M * World.PX_PER_M
-	_stab_snd = _add_sound(SOUND_STABILIZER, true)
+	_stab_snd = _add_sound(SOUND_STABILIZER, false)
 	_stab_snd.position = CRANE_AXIS_M * World.PX_PER_M
 	_motor_snd = _add_sound(SOUND_MOTOR, true)
 	_motor_snd.position = CRANE_AXIS_M * World.PX_PER_M
@@ -460,10 +475,21 @@ func _build_crane() -> void:
 	_rig.add_child(_boom)
 	_crane.reparent(_rig, true)   # (its place and z are now the rig's)
 	_crane.z_index = 0
-	_stabs = Node2D.new()
-	_stabs.z_index = 3
-	_stabs.draw.connect(_draw_stabs)
-	add_child(_stabs)
+	for side in [-1, 1]:
+		var stab := Sprite2D.new()
+		stab.texture = STAB_SHEET
+		stab.hframes = STAB_FRAMES
+		stab.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		stab.scale = Vector2.ONE * 0.5   # rendered at 2x
+		stab.position = _side_m(STAB_SHEET_AT_M, side) * World.PX_PER_M
+		stab.flip_v = side > 0
+		stab.z_index = 3                 # with the body, after it: over it
+		add_child(stab)
+		_stabs.append(stab)
+		var shadow := _add_shadow(STAB_SHADOW_SHEET)
+		shadow.hframes = STAB_FRAMES
+		shadow.flip_v = side > 0
+		_stab_shadows.append(shadow)
 	# The crates' shadows on the deck: over the body, under the crates themselves (they're
 	# added to the truck after this, at the same level), one group so overlaps aren't doubly dark.
 	_bed_shadow = CanvasGroup.new()
@@ -711,12 +737,12 @@ func _process(_delta: float) -> void:
 	_place_shadow(_crane_shadow, CRANE_SHADOW, sun, _rig.position, _rig.rotation)
 	_boom.queue_redraw()
 	_boom_shadow.queue_redraw()
-	_stabs.queue_redraw()
+	_place_stabs(sun)
 	_bed_shadow_shape.queue_redraw()
 	# The reach circle: in command mode, once the Crane order's been given.
 	_reach.visible = World.commanding() and (_armed or _cphase != CranePhase.IDLE)
 	if altitude_m > 0.0:   # slung under a helicopter: the shadows out on the ground below (sling_drop.gd)
-		for shadow in _part_shadows + [_crane_shadow]:
+		for shadow in _part_shadows + [_crane_shadow] + _stab_shadows:
 			shadow.position += sun * altitude_m
 	for i in 2:
 		var door := _doors[i]
@@ -1162,7 +1188,7 @@ func _tick_crane(delta: float) -> void:
 			_hold_operator()
 			if _crane_t < motor_lead_s and _stab <= 0.0:
 				return   # (switched on: the motor runs a moment before the stabilisers drop)
-			_stab = move_toward(_stab, 1.0, delta / stabilizer_s)
+			_stab = move_toward(_stab, 1.0, delta / stabilizer_down_s)
 			if _stab >= 1.0:
 				_cphase = CranePhase.WORKING
 				_crane_t = 0.0
@@ -1178,7 +1204,7 @@ func _tick_crane(delta: float) -> void:
 			if _operator_ok():
 				_hold_operator()
 			if stowed:
-				_stab = move_toward(_stab, 0.0, delta / stabilizer_s)
+				_stab = move_toward(_stab, 0.0, delta / stabilizer_up_s)
 				if _stab <= 0.0:
 					_finish_stow()
 		CranePhase.RETURNING:
@@ -1319,15 +1345,28 @@ func _tick_crane_sound(delta: float) -> void:
 	_winch_level = _ease_level(_winch_level, winch_want, delta)
 	_set_loop(_crane_snd, _crane_level, crane_volume_db)
 	_set_loop(_winch_snd, _winch_level, winch_volume_db)
-	# The stabilisers: while they move, out over the last CRANE_FADE_S before
-	# they're fully down (or up).
-	var stab_want := 0.0
-	if not is_equal_approx(_stab, _stab_was):
-		var left_s := (1.0 - _stab if _stab > _stab_was else _stab) * stabilizer_s
-		stab_want = clampf(left_s / CRANE_FADE_S, 0.0, 1.0)
+	# The stabilisers: one take of the whole movement (Stablizer3, Mike
+	# 2026-11-11), played once as they set off, sped up or slowed so it lasts
+	# Stabilizer Down S (or Up S). Turning round partway, it starts again from
+	# the matching point; stopped short, it's cut over CRANE_CUT_S. Landing,
+	# it plays out its own ending.
+	var dir := 0.0 if is_equal_approx(_stab, _stab_was) else signf(_stab - _stab_was)
+	if dir != 0.0:
+		if dir != _stab_dir:
+			var take := _stab_snd.stream.get_length()
+			var done := _stab_was if dir > 0.0 else 1.0 - _stab_was   # how far through the movement they set off
+			_stab_snd.pitch_scale = clampf(take / (stabilizer_down_s if dir > 0.0 else stabilizer_up_s), 0.5, 2.0)
+			_stab_snd.play(done * take)
+		_stab_level = 1.0
+	elif _stab > 0.0 and _stab < 1.0:
+		_stab_level = maxf(0.0, _stab_level - delta / CRANE_CUT_S)
+	_stab_dir = dir
 	_stab_was = _stab
-	_stab_level = _ease_level(_stab_level, stab_want, delta)
-	_set_loop(_stab_snd, _stab_level, stabilizer_volume_db)
+	if _stab_snd.playing:
+		if _stab_level <= 0.001:
+			_stab_snd.stop()
+		else:
+			_stab_snd.volume_db = stabilizer_volume_db + linear_to_db(_stab_level)
 	# The motor: the operator's switch turns it on as it deploys (after its
 	# moment at the controls) and off once it's put away, the stabilisers up.
 	var motor := _cphase in [CranePhase.DEPLOYING, CranePhase.WORKING, CranePhase.STOWING]
@@ -1477,25 +1516,21 @@ func _draw_bed_shadow() -> void:
 			_bed_shadow_shape.draw_colored_polygon(piece, Color.BLACK)
 
 
-## The stabilisers: beams run out either side of the pedestal, then the jacks
-## push their pads down (the pads widen as they take the weight).
-func _draw_stabs() -> void:
-	if _stab <= 0.0:
-		return
-	var px := World.PX_PER_M
-	var out := smoothstep(0.0, 0.55, _stab)
-	var down := smoothstep(0.45, 1.0, _stab)
-	for side in [-1.0, 1.0]:
-		var y1 := lerpf(0.6, STAB_OUT_M, out)
-		var beam := Rect2(Vector2(CRANE_X_M - 0.08, minf(side * 0.6, side * y1)) * px, Vector2(0.16, absf(y1 - 0.6)) * px)
-		_stabs.draw_rect(beam, STAB_BEAM)
-		_stabs.draw_rect(beam, BEAM_EDGE, false, 1.0)
-		var c := Vector2(CRANE_X_M, side * y1) * px
-		var r := (0.1 + 0.05 * down) * px
-		_stabs.draw_circle(c + Vector2(1.5, 1.5) * down, r, Color(0, 0, 0, 0.25 * down))   # (where it's pressing)
-		_stabs.draw_circle(c, r, STAB_PAD)
-		_stabs.draw_arc(c, r, 0.0, TAU, 24, STAB_PAD_EDGE, 1.5, true)
-		_stabs.draw_circle(c, 0.035 * px, STAB_PAD_EDGE)
+## The stabilisers: the frame of their animation for how far they've gone
+## (_stab: the beams out, then the feet down), and their shadows. A foot's
+## shadow comes in under it as it comes down (the frames can't show that from
+## overhead: the timing's supply_truck.py stab_pose()'s).
+func _place_stabs(sun: Vector2) -> void:
+	var frame := roundi(_stab * (STAB_FRAMES - 1))
+	var part := {low_m = STAB_FOOT_UP_M * (1.0 - smoothstep(0.45, 1.0, _stab)), high_m = STAB_TOP_M}
+	for i in 2:
+		_stabs[i].frame = frame
+		var shadow := _stab_shadows[i]
+		shadow.frame = frame
+		_place_shadow(shadow, part, sun, _stabs[i].position, 0.0)
+		if shadow.flip_v:   # (mirrored: its texture's y runs the other way)
+			var sweep: Vector2 = (shadow.material as ShaderMaterial).get_shader_parameter("sweep")
+			(shadow.material as ShaderMaterial).set_shader_parameter("sweep", Vector2(sweep.x, -sweep.y))
 
 
 # ------------------------------------------------------- getting in and out --

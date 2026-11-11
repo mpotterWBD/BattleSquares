@@ -117,7 +117,8 @@ func _init() -> void:
 	check("not armed, nothing deployed before the order", not truck.crane_armed() and truck._cphase == truck.CranePhase.IDLE)
 	check("the boom reaches the far corners of both squares beside the bed (%.1f m)" % truck.crane_reach_m, truck.crane_reach_m >= 3.4)
 	check("slow: 22 deg/s turret, 0.4 m/s boom, 2.5 s lifts, 4 s stabilisers",
-			truck.crane_slew_dps <= 25.0 and truck.boom_mps <= 0.5 and truck.lift_s >= 2.0 and truck.stabilizer_s >= 3.5)
+			truck.crane_slew_dps <= 25.0 and truck.boom_mps <= 0.5 and truck.lift_s >= 2.0
+			and truck.stabilizer_down_s >= 3.5 and truck.stabilizer_up_s >= 3.5)
 	check("driving: the squad-order Crane button isn't up (Hatch/Crane are)", not command._crane_button.visible)
 	# A truck click (command mode): the HUD says how many units are in it; the seat's taken, so the rider's selected.
 	command._click(truck.to_global(Vector2(-1.5, 0.3) * PX), false)   # the far end of the bed: not the door

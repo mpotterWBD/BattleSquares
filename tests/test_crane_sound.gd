@@ -48,9 +48,11 @@ func _init() -> void:
 	for f in 3: await physics_frame
 	truck.vehicle_order("crane")
 	t = 0.0
-	var stab_max := 0.0
-	var stab_drop := 0.0
-	var stab_last := 0.0
+	# The stabilisers' sound (Mike, 2026-11-11: Stablizer3, one take of the
+	# whole movement): started once as they set off, playing at full the whole
+	# way, at the speed that makes it last their time. (Headless audio plays in
+	# real time, not this run's, so when it ends isn't checked: its length is.)
+	var stab := {moving = 0, heard = 0, quiet = 0, pitch = 0.0}
 	# The sequence (Mike, 2026-11-09): out, at the controls, half a second, the
 	# switch, the motor on at once, a second of it, then the stabilisers drop.
 	var at_controls := -1.0
@@ -72,19 +74,22 @@ func _init() -> void:
 			motor_full = t
 		if stab_moved < 0.0 and truck._stab > 0.0:
 			stab_moved = t
-		stab_max = maxf(stab_max, truck._stab_level)
-		stab_drop = maxf(stab_drop, stab_last - truck._stab_level)
-		stab_last = truck._stab_level
+		_watch_stab(truck, stab)
 	print("    at the controls %.2f s, switch %.2f, motor full %.2f, stabilisers moving %.2f" % [at_controls, switched, motor_full, stab_moved])
-	check("at the controls, half a second, then the switch (%.2f s after)" % (switched - at_controls),
-			at_controls > 0.0 and absf(switched - at_controls - 0.5) < 0.1 and switches == 1)
+	check("at the controls, station_hold_s (%.1f), then the switch (%.2f s after)" % [truck.station_hold_s, switched - at_controls],
+			at_controls > 0.0 and absf(switched - at_controls - truck.station_hold_s) < 0.1 and switches == 1)
 	check("the motor on at once (full %.2f s after the switch), playing" % (motor_full - switched),
 			motor_full >= switched and motor_full - switched < 0.3 and truck._motor_snd.playing)
 	check("a second of motor before the stabilisers drop (%.2f s)" % (stab_moved - switched), absf(stab_moved - switched - 1.0) < 0.1)
 	await physics_frame
 	await physics_frame
-	check("the stabilisers coming down: their sound, full (%.2f), %.2f as they're down, then off; no sudden cut (%.3f a tick at most)" % [stab_max, stab_last, stab_drop],
-			stab_max > 0.9 and stab_last < 0.05 and stab_drop < 0.1 and not truck._stab_snd.playing)
+	var take: float = truck._stab_snd.stream.get_length()
+	print("    stabilizer.wav %.2f s; coming down: %d ticks moving, heard full %d, pitch %.2f" % [take, stab.moving, stab.heard, stab.pitch])
+	check("stabilizer.wav is one take as long as the movement (%.2f s, the stabilisers %.1f s), not looped" % [take, truck.stabilizer_down_s],
+			absf(take - truck.stabilizer_down_s) < 0.1 and truck._stab_snd.stream.loop_mode == AudioStreamWAV.LOOP_DISABLED)
+	check("the stabilisers coming down: their sound at full every tick they moved, at the speed that fits (%.2f)" % stab.pitch,
+			stab.moving > 100 and stab.quiet <= 3 and stab.get("gaps", 0) == 0
+			and is_equal_approx(stab.pitch, take / truck.stabilizer_down_s))
 	check("volumes: boom -8 dB, winch -6 dB (20% lower), stabilisers -6 dB", truck.crane_volume_db == -8.0
 			and truck.winch_volume_db == -6.0 and truck.stabilizer_volume_db == -6.0)
 	check("the crane's deployed, both sounds quiet", truck._cphase == truck.CranePhase.WORKING and not truck._crane_snd.playing
@@ -154,22 +159,42 @@ func _init() -> void:
 	# Put away: the stabilisers go up, with their sound; then the switch, and the motor runs down.
 	# (The tick they're up it's switched off, so its last reading here is already running down: 0.97.)
 	truck.vehicle_order("crane")
-	stab_max = 0.0
+	# (Going up at a different speed: the take is sped up to fit.)
+	truck.stabilizer_up_s = 3.0
+	stab = {moving = 0, heard = 0, quiet = 0, pitch = 0.0}
 	t = 0.0
 	var motor_while_stowing := 1.0
 	while truck._stab > 0.0 and t < 60.0:
 		await physics_frame
 		t += 1.0 / 60.0
-		stab_max = maxf(stab_max, truck._stab_level)
-		stab_last = truck._stab_level
+		_watch_stab(truck, stab)
 		motor_while_stowing = minf(motor_while_stowing, truck._motor_level)
 	var off_switch := false
 	for f in 60:
 		await physics_frame
 		off_switch = off_switch or truck._switch_snd.playing
-	check("the stabilisers going up: their sound, full (%.2f), %.2f as they're up, then off" % [stab_max, stab_last],
-			stab_max > 0.9 and stab_last < 0.05 and not truck._stab_snd.playing)
+	print("    going up (Stabilizer Up S 3.0): %d ticks moving, heard full %d, pitch %.2f" % [stab.moving, stab.heard, stab.pitch])
+	check("the stabilisers going up: their sound at full every tick they moved, sped up to fit 3 s (%.2f)" % stab.pitch,
+			stab.moving > 100 and stab.quiet <= 3 and stab.get("gaps", 0) == 0
+			and is_equal_approx(stab.pitch, take / 3.0))
 	check("put away: the motor ran till the stabilisers were up (%.2f), then the switch, and it's off" % motor_while_stowing,
 			motor_while_stowing >= 0.9 and off_switch and truck._motor_level == 0.0 and not truck._motor_snd.playing)
 	print("%s: %d failed" % ["PASS" if fails == 0 else "FAIL", fails])
 	quit(fails)
+
+
+## One tick of the stabilisers: whether they moved, and if so whether their
+## sound was playing at full (and at what speed), or not.
+func _watch_stab(truck: Node, s: Dictionary) -> void:
+	if truck._stab_dir == 0.0:
+		return
+	s.moving += 1
+	# (A tick or two quiet at the very end is the take's own ending, on
+	# headless audio's own clock; quiet then heard again is a gap.)
+	if truck._stab_snd.playing and truck._stab_level >= 0.999:
+		s.heard += 1
+		s.pitch = truck._stab_snd.pitch_scale
+		if s.quiet > 0:
+			s.gaps = s.get("gaps", 0) + 1
+	else:
+		s.quiet += 1

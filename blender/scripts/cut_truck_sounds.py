@@ -49,11 +49,13 @@ CUTS = {
     "crane": [[27.0, 33.0]],
     "crane_start": [0.0, 0.25],         # Crane2's opening click (0-0.13 s; hiss from 0.4 s): crane_start.wav
     "winch": [[3.4, 7.0]],
-    # The stabilisers (Mike, 2026-11-09): Stablizer2.wav (4.1 s) builds up
-    # 0.25-1.5 s, then a steady hydraulic hiss to the end -> stabilizer.wav.
-    # (The first take, Stablizer.mp3: steady 0.25-3.2 and 4.25-7.5 s.)
-    "stabilizer_recording": "Stablizer2.wav",
-    "stabilizer": [[1.6, 4.0]],
+    # The stabilisers (Mike, 2026-11-11): Stablizer3.wav (4.6 s, 96 kHz) is the
+    # whole movement, start to finish: quiet to 0.4 s, building, a clunk at
+    # 3.4 s, gone by 4.2 s. Played once, not looped: its 4 s from 0.2 s ->
+    # stabilizer.wav, matched to the stabilisers' 4 s. (Earlier takes were
+    # steady hiss, looped: Stablizer2.wav 1.6-4.0 s, Stablizer.mp3 0.25-3.2 s.)
+    "stabilizer_recording": "Stablizer3.wav",
+    "stabilizer": [0.2, 4.2],
     # The crane's motor (Mike, 2026-11-09): CraneMotor.mp3 is 3 min of it
     # running steadily (-30 dB throughout, no start or stop) -> crane_motor.wav;
     # Switch.wav (0.52 s) is a click at 0.26 s, a little rattle before it from 0.18 s.
@@ -266,7 +268,6 @@ def cut_crane():
     long_enough = lambda key: [s for s in CUTS.get(key, []) if s[1] - s[0] > 1.0]
     blend = float(CUTS.get("crane_blend", 0.4))
     for key, src, out in (("crane", CUTS.get("crane_recording", "Crane2.mp3"), "crane_move.wav"), ("winch", "Winch.mp3", "winch.wav"),
-                          ("stabilizer", CUTS.get("stabilizer_recording", "Stablizer.mp3"), "stabilizer.wav"),
                           ("motor", CUTS.get("motor_recording", "CraneMotor.mp3"), "crane_motor.wav")):
         if CUTS.get("only") and key not in CUTS["only"]:
             continue
@@ -275,7 +276,7 @@ def cut_crane():
             print(f"{key}: no stretch longer than 1 s: {out} left as it is")
             continue
         x, rate = load(src)
-        loop = plain_loop(x, rate, stretches, key, blend, keep_length=(key == "stabilizer"))   # (a hiss)
+        loop = plain_loop(x, rate, stretches, key, blend)
         gain = 10 ** (-3 / 20) / np.abs(loop).max()
         write(loop * gain, rate, out)
         start = CUTS.get("crane_start", [])
@@ -288,6 +289,18 @@ def cut_crane():
             click *= min(1.0, 10 ** (-1 / 20) / (np.abs(click).max() + 1e-12))
             print(f"crane start: {start[0]}-{start[1]} s")
             write(click, rate, "crane_start.wav")
+    # The stabilisers (Mike, 2026-11-11): one take of the whole movement,
+    # played once as they come down or go up (the truck plays it to fit their
+    # time). Faded in and out a little; its loudest at -3 dB (the truck sets its volume).
+    st = CUTS.get("stabilizer", [])
+    if st and isinstance(st[0], (list, tuple)):   # (the old form: loop stretches; the first is taken)
+        st = st[0]
+    if (not CUTS.get("only") or "stabilizer" in CUTS["only"]) and len(st) == 2 and st[1] - st[0] > 0.2:
+        x, rate = load(CUTS.get("stabilizer_recording", "Stablizer3.wav"))
+        a, b = int(st[0] * rate), min(int(st[1] * rate), len(x))
+        move = fade(x[a:b], rate, 0.05, 0.15)
+        print(f"stabilizer: {st[0]}-{st[1]} s, played once")
+        write(move * 10 ** (-3 / 20) / (np.abs(move).max() + 1e-12), rate, "stabilizer.wav")
     # The switch the operator throws at the controls (Mike, 2026-11-09): a
     # one-shot, its loudest at -3 dB (the truck sets its volume).
     sw = CUTS.get("switch", [])
