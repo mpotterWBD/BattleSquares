@@ -72,7 +72,22 @@ const SHADOW_PARTS := [
 	{texture = preload("res://assets/vehicles/supply_truck_shadow_cab.png"), low_m = 0.3, high_m = 1.88},
 ]
 ## The crane turret's, round its slewing axis (it turns with the turret).
-const CRANE_SHADOW := {texture = preload("res://assets/vehicles/supply_truck_shadow_crane.png"), low_m = 0.86, high_m = 2.08}
+## The column and main boom only, up to the knuckle's top: the arm's is drawn
+## from where it is (_draw_boom_shadow(); Mike, 2026-11-11: in this outline,
+## swept across the whole turret's heights, the arm was a smudge).
+const CRANE_SHADOW := {texture = preload("res://assets/vehicles/supply_truck_shadow_crane.png"), low_m = 0.86, high_m = 2.16}
+const KNUCKLE_H_M := 2.08           ## the knuckle's height (supply_truck.py: CRANE_BASE_Z + 1.22)
+const TIP_DROP_M := 0.04            ## the level arm's tip is this much lower than the knuckle
+const ARM_HALF_M := 0.06            ## the outer boom's half width and half depth
+## The engine module (supply_truck.py MODULE_*; Mike, 2026-11-11: it shakes while the engine runs).
+const MODULE_TEXTURE := preload("res://assets/vehicles/supply_truck_module.png")
+const MODULE_AT_M := Vector2(0.77, 0.0)
+## The turret folding (supply_truck.py FOLD_*): FOLD_FRAMES frames, the outer boom level (0, stowed) to FOLD_MAX_DEG up.
+const CRANE_SHEET := preload("res://assets/vehicles/supply_truck_crane_sheet.png")
+const FOLD_FRAMES := 16
+const FOLD_MAX_DEG := 72.0
+const KNUCKLE_M := 0.1              ## the knuckle, ahead of the axis: the outer boom folds up about it
+const OUTER_BOOM_M := 1.275         ## the outer boom (supply_truck.py OUTER_BOOM_M): its tip rises this times sin(fold)
 ## A door's, round its middle (it swings with the door).
 const DOOR_SHADOW := {texture = preload("res://assets/vehicles/supply_truck_shadow_door.png"), low_m = 0.76, high_m = 1.64}
 const DOOR_TEXTURE := preload("res://assets/vehicles/supply_truck_door.png")
@@ -96,7 +111,7 @@ const SOUND_DOOR_SLAM := preload("res://assets/sfx/supply_truck/door_slam.wav")
 const SOUND_START := preload("res://assets/sfx/supply_truck/truck_start.wav")
 const SOUND_IDLE := preload("res://assets/sfx/supply_truck/truck_idle.wav")
 const SOUND_STOP := preload("res://assets/sfx/supply_truck/truck_stop.wav")
-const SOUND_CRANE := preload("res://assets/sfx/supply_truck/crane_move.wav")   ## the hydraulics, the boom moving (Mike, 2026-11-09)
+const SOUND_CRANE := preload("res://assets/sfx/supply_truck/crane_move.wav")   ## the hydraulics, the boom moving: Crane3.wav whole, from its start each move, repeating a part inside it (its own loop points; Mike, 2026-11-11)
 const SOUND_WINCH := preload("res://assets/sfx/supply_truck/winch.wav")         ## the line going up or down
 const SOUND_CRANE_START := preload("res://assets/sfx/supply_truck/crane_start.wav")   ## the click as the hydraulics start
 const SOUND_STABILIZER := preload("res://assets/sfx/supply_truck/stabilizer.wav")     ## the stabilisers coming down or going up
@@ -173,7 +188,7 @@ const PROMPT_ALPHA := 0.55          ## the green F, see-through as at the radio 
 ## (SLOT_X_M) first. Holding Crane in command mode gives 1 or 2 boxes and a ghost on the
 ## side of the truck the mouse is on: a click sets the nearest crates down there (crane_drop()). The truck can't move meanwhile.
 const CRANE_AXIS_M := Vector2(CRANE_X_M, 0.0)
-const ARM_M := 1.0                  ## the stowed arm's tip, ahead of the axis: the boom slides out from here
+const ARM_M := 1.43                 ## the stowed arm's tip, ahead of the axis: the boom slides out from here (supply_truck.py OUTER_BOOM_M; 1.0 before Mike's 50% longer arm, 2026-11-11)
 ## The two squares beside the bed (either side, Mike's blue boxes, 2026-11-04): a crate has to be
 ## in one (its middle) for the crane to take it. Along the truck from PICKUP_X_M.x to .y, out from
 ## its middle PICKUP_Y_M.x to .y. Crates go down again on the ground at DROP_Y_M out, at the bed
@@ -200,8 +215,14 @@ const BED_FRONT_X_M := -0.05
 const BED_W_M := 1.2
 const CRATE_PICK_PX := 8.0          ## a click this far off a crate's pallet still picks it
 const REACH_RING := Color(0.95, 0.27, 0.22)
-const BEAM_A := Color("#56653a")    ## the boom: the arm's own colour, then the sliding steel
-const BEAM_B := Color("#8b9197")
+## The boom's sections, outermost first: the arm's own colour, then the sliding steel.
+const BEAM_COLORS: Array[Color] = [Color("#56653a"), Color("#6f7a5c"), Color("#8b9197")]
+const BEAM_HALF_W_M: Array[float] = [0.06, 0.05, 0.04]
+## Each section's length (Mike, 2026-11-11: none longer than the arm it slides
+## out of). Stowed they're all inside the arm; out, each overlaps the one it
+## comes out of by this less its share of the extension (at crane_reach_m 3.6,
+## 1.0 - 2.17 / 3 = 0.28 m).
+const BEAM_SECTION_M := 1.0
 const BEAM_EDGE := Color("#232a1b")
 ## The stabilisers (supply_truck.py build_stabs(); Mike, 2026-11-11: a Blender
 ## animation, not shapes drawn here): the left one's frames, stowed to down,
@@ -229,6 +250,9 @@ enum JobStep { REACH, LIFT, SWING, LOWER }
 ## Flat out, forward (metres per second; the player runs at 3.2).
 @export_range(1.0, 15.0, 0.1, "suffix:m/s") var top_speed_mps := 6.0
 @export_range(0.5, 8.0, 0.1, "suffix:m/s") var reverse_speed_mps := 2.5
+## How far the engine module shakes at idle (Mike, 2026-11-11): half as much
+## again while the engine's cranking, up to twice at top speed. 0: still.
+@export_range(0.0, 0.05, 0.001, "suffix:m") var module_shake_m := 0.006
 ## Speeding up, with W (or S, reversing).
 @export_range(0.5, 10.0, 0.1, "suffix:m/s²") var accel_mps2 := 2.5
 ## Braking, with the other one.
@@ -383,10 +407,18 @@ var _job = null
 var _bed: Array = [null, null]
 var _stab := 0.0                     ## the stabilisers: 0 up .. 1 down
 var _slew := 0.0                     ## the turret's turn from the truck's heading (radians)
-var _boom_ext := 0.0                 ## how far the boom's out past the stowed arm (m)
+## How far out the hook is from the axis (m, along the ground). Closer than
+## ARM_M the outer boom's folded up (_fold_deg()); farther, it's level and the
+## boom's out of it by the rest (_boom_ext). One value, so the arm always
+## unfolds before the boom slides out, and the boom's in before it folds.
+var _reach_m := ARM_M
+var _boom_ext: float:                ## how far the boom's out past the stowed arm (m)
+	get:
+		return maxf(_reach_m - ARM_M, 0.0)
 var _crane_t := 0.0                  ## time in the current phase
 var _want_stow := false              ## to be put away as soon as nothing's on the hook
 var _rig: Node2D                     ## the turret (the sprite) and the boom, turning about the axis
+var _module: Sprite2D                ## the engine module, shaking while the engine runs
 var _boom: Node2D
 var _boom_shadow: Node2D
 var _stabs: Array[Sprite2D] = []          ## left, right (the sheet mirrored)
@@ -475,6 +507,16 @@ func _build_crane() -> void:
 	_rig.add_child(_boom)
 	_crane.reparent(_rig, true)   # (its place and z are now the rig's)
 	_crane.z_index = 0
+	_crane.texture = CRANE_SHEET   # (the scene has the stowed picture, for the editor)
+	_crane.hframes = FOLD_FRAMES
+	# The engine module, its own picture over the body's (where it's left out), to shake.
+	_module = Sprite2D.new()
+	_module.texture = MODULE_TEXTURE
+	_module.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_module.scale = Vector2.ONE * 0.5   # rendered at 2x
+	_module.position = MODULE_AT_M * World.PX_PER_M
+	_module.z_index = 3                 # with the body, after it: over it
+	add_child(_module)
 	for side in [-1, 1]:
 		var stab := Sprite2D.new()
 		stab.texture = STAB_SHEET
@@ -514,7 +556,9 @@ func _build_crane() -> void:
 ## helicopter.gd's), not playing yet.
 func _add_sound(stream: AudioStreamWAV, loop: bool) -> AudioStreamPlayer2D:
 	var player := AudioStreamPlayer2D.new()
-	if loop:
+	# (A WAV with its own loop points keeps them: crane_move.wav, a whole take
+	# that repeats only a part inside it, Mike 2026-11-11. Others loop whole.)
+	if loop and stream.loop_mode == AudioStreamWAV.LOOP_DISABLED:
 		var looped := stream.duplicate() as AudioStreamWAV
 		looped.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		looped.loop_begin = 0
@@ -734,13 +778,15 @@ func _process(_delta: float) -> void:
 		_place_shadow(_part_shadows[i], SHADOW_PARTS[i], sun, Vector2.ZERO, 0.0)
 	_sun = sun
 	_rig.rotation = _slew
-	_place_shadow(_crane_shadow, CRANE_SHADOW, sun, _rig.position, _rig.rotation)
+	_tick_fold(sun)
 	_boom.queue_redraw()
 	_boom_shadow.queue_redraw()
 	_place_stabs(sun)
 	_bed_shadow_shape.queue_redraw()
 	# The reach circle: in command mode, once the Crane order's been given.
 	_reach.visible = World.commanding() and (_armed or _cphase != CranePhase.IDLE)
+	_boom_shadow.position = sun * altitude_m
+	_tick_module_shake()
 	if altitude_m > 0.0:   # slung under a helicopter: the shadows out on the ground below (sling_drop.gd)
 		for shadow in _part_shadows + [_crane_shadow] + _stab_shadows:
 			shadow.position += sun * altitude_m
@@ -754,6 +800,23 @@ func _process(_delta: float) -> void:
 	var player = _player()
 	_prompt_at.get_child(0).visible = (driver == null and _seats[0].step == Step.NONE and player != null and not player.dead
 			and player.interact_target() == self)
+
+
+## The engine module shaking while the engine runs (Mike, 2026-11-11: so the
+## truck looks alive): module_shake_m at idle, half as much again cranking it
+## over, and up to that again with speed; two wobbles a side at uneven rates,
+## so it doesn't look like a pattern.
+func _tick_module_shake() -> void:
+	var level := 0.0
+	match _engine:
+		EngineState.STARTING:
+			level = 1.5
+		EngineState.RUNNING:
+			level = 1.0 + clampf(absf(speed) / top_speed_mps, 0.0, 1.0)
+	var t := Time.get_ticks_msec() / 1000.0
+	var wobble := Vector2(0.6 * sin(TAU * 13.0 * t) + 0.4 * sin(TAU * 7.3 * t + 0.7),
+			0.6 * sin(TAU * 11.0 * t + 1.3) + 0.4 * sin(TAU * 5.9 * t))
+	_module.position = (MODULE_AT_M + wobble * module_shake_m * level) * World.PX_PER_M
 
 
 ## A part's shadow with its middle at `at` (local), turned `turn` with it:
@@ -1143,7 +1206,33 @@ func _hold_operator() -> void:
 
 ## The hook's place (local metres): the end of the boom.
 func _hook_m() -> Vector2:
-	return CRANE_AXIS_M + Vector2.from_angle(_slew) * (ARM_M + _boom_ext)
+	return CRANE_AXIS_M + Vector2.from_angle(_slew) * _reach_m
+
+
+## How far the outer boom's folded up (degrees): for the hook at _reach_m, the
+## knuckle's KNUCKLE_M out and the level arm reaches ARM_M (0 when it's that far or more).
+func _fold_deg() -> float:
+	if _reach_m >= ARM_M:
+		return 0.0
+	var c := clampf((_reach_m - KNUCKLE_M) / (ARM_M - KNUCKLE_M), cos(deg_to_rad(FOLD_MAX_DEG)), 1.0)
+	return rad_to_deg(acos(c))
+
+
+## The closest the hook comes: the outer boom folded all the way up.
+static func _reach_min_m() -> float:
+	return KNUCKLE_M + (ARM_M - KNUCKLE_M) * cos(deg_to_rad(FOLD_MAX_DEG))
+
+
+## The turret's frame for the fold, and its column's shadow (the arm's is _draw_boom_shadow()'s).
+func _tick_fold(sun: Vector2) -> void:
+	_crane.frame = roundi(_fold_deg() / FOLD_MAX_DEG * (FOLD_FRAMES - 1))
+	_place_shadow(_crane_shadow, CRANE_SHADOW, sun, _rig.position, _rig.rotation)
+
+
+## The arm's tip height (m): the knuckle's, less a little level, up as it folds.
+func _tip_h_m() -> float:
+	var fold := deg_to_rad(_fold_deg())
+	return KNUCKLE_H_M + OUTER_BOOM_M * sin(fold) - TIP_DROP_M * cos(fold)
 
 
 func _tick_crane(delta: float) -> void:
@@ -1305,22 +1394,23 @@ func _tick_job(delta: float) -> void:
 				_job = null
 
 
-## Turns the turret toward `target` (local metres) and slides the boom out
-## (never in past the arm) to reach it. True once it's there.
+## Turns the turret toward `target` (local metres) and brings the hook out or
+## in to it: the outer boom folding or unfolding inside ARM_M, the boom
+## sliding out past it (both at boom_mps along the ground). True once it's there.
 func _aim_at(target: Vector2, delta: float) -> bool:
 	var off := target - CRANE_AXIS_M
 	var want := off.angle() if off.length() > 0.05 else _slew
-	var want_ext := clampf(off.length() - ARM_M, 0.0, crane_reach_m - ARM_M)
+	var want_reach := clampf(off.length(), _reach_min_m(), maxf(crane_reach_m, ARM_M))
 	var diff := angle_difference(_slew, want)
 	var step := deg_to_rad(crane_slew_dps) * delta
-	var was := Vector2(_slew, _boom_ext)
+	var was := Vector2(_slew, _reach_m)
 	_slew = wrapf(_slew + clampf(diff, -step, step), -PI, PI)
-	_boom_ext = move_toward(_boom_ext, want_ext, boom_mps * delta)
-	# How long the move has left (the slower of the turn and the slide): its sound fades out over the end of it.
-	_aim_left_s = maxf(maxf(absf(diff) - step, 0.0) / deg_to_rad(crane_slew_dps), absf(want_ext - _boom_ext) / boom_mps)
-	if Vector2(_slew, _boom_ext) != was:
+	_reach_m = move_toward(_reach_m, want_reach, boom_mps * delta)
+	# How long the move has left (the slower of the turn and the reach): its sound fades out over the end of it.
+	_aim_left_s = maxf(maxf(absf(diff) - step, 0.0) / deg_to_rad(crane_slew_dps), absf(want_reach - _reach_m) / boom_mps)
+	if Vector2(_slew, _reach_m) != was:
 		_aim_tick = Engine.get_physics_frames()
-	return absf(diff) <= step and is_equal_approx(_boom_ext, want_ext)
+	return absf(diff) <= step and is_equal_approx(_reach_m, want_reach)
 
 
 ## The crane's sounds, each tick: its hydraulics while the turret turns or
@@ -1461,36 +1551,50 @@ func _draw_reach() -> void:
 		_reach.draw_rect(box, Color(REACH_RING, 0.9), false, 2.5)
 
 
-## The boom: two sections sliding out of the arm's end (drawn under the arm's
-## own picture, so what's inside it is hidden), a hook block at the tip.
+## The boom: three sections of BEAM_SECTION_M telescoping out of the arm's end,
+## each out by an equal share of the extension (drawn under the arm's own
+## picture, so what's inside it is hidden), a hook block at the tip. The
+## innermost (thinnest) goes down first, so each is hidden inside the one it
+## comes out of.
 func _draw_boom() -> void:
 	if _boom_ext <= 0.005:
 		return
 	var px := World.PX_PER_M
-	var a := Rect2(Vector2(ARM_M - 0.5, -0.06) * px, Vector2(0.5 + _boom_ext * 0.55, 0.12) * px)
-	var b := Rect2(Vector2(ARM_M - 0.3, -0.04) * px, Vector2(0.3 + _boom_ext, 0.08) * px)
-	_boom.draw_rect(a, BEAM_A)
-	_boom.draw_rect(a, BEAM_EDGE, false, 1.0)
-	_boom.draw_rect(b, BEAM_B)
-	_boom.draw_rect(b, BEAM_EDGE, false, 1.0)
+	var n := BEAM_COLORS.size()
+	for k in range(n - 1, -1, -1):
+		var outer := ARM_M + _boom_ext * (k + 1) / n
+		var w := BEAM_HALF_W_M[k]
+		var r := Rect2(Vector2(outer - BEAM_SECTION_M, -w) * px, Vector2(BEAM_SECTION_M, w * 2.0) * px)
+		_boom.draw_rect(r, BEAM_COLORS[k])
+		_boom.draw_rect(r, BEAM_EDGE, false, 1.0)
 	_boom.draw_rect(Rect2(Vector2(ARM_M + _boom_ext - 0.05, -0.07) * px, Vector2(0.1, 0.14) * px), BEAM_EDGE)
 
 
-## The boom's shadow: the section sticking out past the arm, swept up from
-## where it's low to where it's high (the arm's own is in the turret's picture).
+## The arm's shadow, from where it is (Mike, 2026-11-11): the outer boom from
+## the knuckle (KNUCKLE_H_M up) to the hook's end (_tip_h_m() up: higher the
+## more it's folded), on through the boom telescoping out of it, each end
+## thrown along the sun by its own height; and the hook block's under the end.
+## (Not in the turret's outline: swept across the whole turret's heights, the
+## arm came out a broad smudge.)
 func _draw_boom_shadow() -> void:
-	if _boom_ext <= 0.005:
-		return
 	var px := World.PX_PER_M
 	var dir := Vector2.from_angle(_slew)
-	var side := dir.orthogonal() * 0.05 * px
-	var a := (CRANE_AXIS_M + dir * (ARM_M - 0.3)) * px
-	var b := (CRANE_AXIS_M + dir * (ARM_M + _boom_ext)) * px
+	var side := dir.orthogonal() * ARM_HALF_M
+	var tip_h := _tip_h_m()
+	var knuckle := CRANE_AXIS_M + dir * KNUCKLE_M
+	var end := _hook_m()
 	var points := PackedVector2Array()
-	for h in [1.7, 2.1]:
-		for corner in [a + side, a - side, b + side, b - side]:
-			points.append(corner + _sun * h)
+	for spot in [[knuckle, KNUCKLE_H_M], [end, tip_h]]:
+		for h in [spot[1] - ARM_HALF_M, spot[1] + ARM_HALF_M]:
+			for s in [side, -side]:
+				points.append((spot[0] + s) * px + _sun * h)
 	_boom_shadow.draw_colored_polygon(Geometry2D.convex_hull(points), Color.BLACK)
+	# The hook block (0.1 m square, hanging 0.08-0.2 m under the tip).
+	var block := PackedVector2Array()
+	for h in [tip_h - 0.2, tip_h - 0.08]:
+		for corner in [Vector2(-0.05, -0.05), Vector2(0.05, -0.05), Vector2(0.05, 0.05), Vector2(-0.05, 0.05)]:
+			block.append((end + corner.rotated(_slew)) * px + _sun * h)
+	_boom_shadow.draw_colored_polygon(Geometry2D.convex_hull(block), Color.BLACK)
 
 
 ## The crates' shadows on the deck (Mike, 2026-11-04: a crate on the bed
@@ -1501,8 +1605,17 @@ func _draw_bed_shadow() -> void:
 	var px := World.PX_PER_M
 	var deck := PackedVector2Array([Vector2(BED_BACK_X_M, -BED_W_M / 2.0) * px, Vector2(BED_FRONT_X_M, -BED_W_M / 2.0) * px,
 			Vector2(BED_FRONT_X_M, BED_W_M / 2.0) * px, Vector2(BED_BACK_X_M, BED_W_M / 2.0) * px])
-	for crate in _bed:
+	# The crates on the bed, and the one the crane has in hand (Mike, 2026-11-11:
+	# one waiting to be unloaded, or being set down, had none on the deck, only
+	# its shadow on the ground below the bed): each from its own height over the deck.
+	var crates := _bed.duplicate()
+	if _job != null and is_instance_valid(_job.crate) and _job.crate.get_parent() == self and not crates.has(_job.crate):
+		crates.append(_job.crate)
+	for crate in crates:
 		if crate == null or not is_instance_valid(crate):
+			continue
+		var above: float = crate.height_m - BED_Z_M   # (lower than the deck: not on it)
+		if above < -0.01:
 			continue
 		var points := PackedVector2Array()
 		for part in [[crate.pallet_m, crate.pallet_height_m], [crate.load_m, crate.load_height_m]]:
@@ -1510,8 +1623,9 @@ func _draw_bed_shadow() -> void:
 				continue
 			var half: Vector2 = part[0] * px / 2.0
 			for corner in [Vector2(-half.x, -half.y), Vector2(half.x, -half.y), Vector2(half.x, half.y), Vector2(-half.x, half.y)]:
-				points.append(crate.position + corner)
-				points.append(crate.position + corner + _sun * part[1])
+				var at: Vector2 = crate.position + corner.rotated(crate.rotation)
+				points.append(at + _sun * maxf(above, 0.0))
+				points.append(at + _sun * (maxf(above, 0.0) + part[1]))
 		for piece in Geometry2D.intersect_polygons(Geometry2D.convex_hull(points), deck):
 			_bed_shadow_shape.draw_colored_polygon(piece, Color.BLACK)
 

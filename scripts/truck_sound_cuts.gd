@@ -74,11 +74,20 @@ const CUTS_FILE := "user://truck_sound_cuts.json"   ## the sections, handed to t
 @export_range(0.0, 30.0, 0.05, "suffix:s") var door_slam_to_s := 25.4
 
 @export_group("Crane Moving", "crane_")
-## Which recording the crane's hydraulics come from: one of the MP3s in
-## assets/sfx/supply_truck/.
-@export_file("*.mp3") var crane_recording := "res://assets/sfx/supply_truck/Crane2.mp3"
+## Which recording the crane's hydraulics come from: one of the recordings in
+## assets/sfx/supply_truck/ (Mike, 2026-11-11: Crane3.wav; Crane2.mp3 before).
+@export_file("*.wav", "*.mp3") var crane_recording := "res://assets/sfx/supply_truck/Crane3.wav"
+## Play the recording whole (Mike, 2026-11-11): from its start each time the
+## crane starts moving, and if a move outlasts it, round again from a point
+## found between Loop From S and Loop To S that carries on best from its end.
+## Crane3.wav: quiet to 0.4 s, a start-up burst to 2.2 s, a steady quiet run to
+## 16 s, building to a louder steady run from 21 s. Off: the stretches below
+## are joined into a short loop instead.
+@export var crane_whole_take := true
+@export_range(0.0, 120.0, 0.05, "suffix:s") var crane_loop_from_s := 22.0
+@export_range(0.0, 120.0, 0.05, "suffix:s") var crane_loop_to_s := 45.0
 ## Up to two steady stretches of it, joined into the loop that plays while the
-## turret turns or the boom slides (Mike, 2026-11-09). Crane2.mp3: a thin,
+## turret turns or the boom slides, with Whole Take off (Mike, 2026-11-09). Crane2.mp3: a thin,
 ## hissy run to 18.5 s, then the hydraulics working hard, lower and louder,
 ## steadiest 26.75-33.25 s (pulsing from 34 s). Crane.mp3: steady 1.75-10 s.
 ## 0 to 0: unused.
@@ -87,7 +96,8 @@ const CUTS_FILE := "user://truck_sound_cuts.json"   ## the sections, handed to t
 @export_range(0.0, 60.0, 0.05, "suffix:s") var crane_2_from_s := 0.0
 @export_range(0.0, 60.0, 0.05, "suffix:s") var crane_2_to_s := 0.0
 ## The same recording: the click played once as the hydraulics start (Mike,
-## 2026-11-09). Crane2.mp3's opens it: 0-0.13 s, its hiss from 0.4 s.
+## 2026-11-09). Crane2.mp3's opens it: 0-0.13 s, its hiss from 0.4 s. Not
+## re-cut with Whole Take on (crane_start.wav stays as it is).
 @export_range(0.0, 60.0, 0.01, "suffix:s") var crane_start_from_s := 0.0
 @export_range(0.0, 60.0, 0.01, "suffix:s") var crane_start_to_s := 0.25
 
@@ -142,6 +152,8 @@ func cut_sounds() -> void:
 		"door_slam": [door_slam_from_s, door_slam_to_s],
 		"crane_recording": crane_recording.get_file(),
 		"crane_start": [crane_start_from_s, crane_start_to_s],
+		"crane_take": crane_whole_take,
+		"crane_loop": [crane_loop_from_s, crane_loop_to_s],
 		"crane": [[crane_1_from_s, crane_1_to_s], [crane_2_from_s, crane_2_to_s]],
 		"winch": [[winch_1_from_s, winch_1_to_s], [winch_2_from_s, winch_2_to_s]],
 		"stabilizer_recording": stabilizer_recording.get_file(),

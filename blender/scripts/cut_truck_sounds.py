@@ -45,7 +45,7 @@ CUTS = {
     # Crane.mp3, ran steadily 1.75-10 s.) Winch.mp3 is a short take (0.25-2.5 s)
     # and a long one (3.25-10.5 s), steadiest 3.4-7 s. Each stretch list -> one
     # seamless loop.
-    "crane_recording": "Crane2.mp3",
+    "crane_recording": "Crane3.wav",   # (Mike, 2026-11-11; was Crane2.mp3: its stretch below is for that)
     "crane": [[27.0, 33.0]],
     "crane_start": [0.0, 0.25],         # Crane2's opening click (0-0.13 s; hiss from 0.4 s): crane_start.wav
     "winch": [[3.4, 7.0]],
@@ -64,6 +64,13 @@ CUTS = {
     "switch_recording": "Switch.wav",
     "switch": [0.15, 0.5],
     "crane_blend": 0.4,                 # their loops' joins and wraps
+    # The crane's hydraulics as a whole take (Mike, 2026-11-11): Crane3.wav
+    # (60 s: quiet to 0.4 s, a start-up burst to 2.2 s, a steady quiet run to
+    # 16 s, building to a louder steady run from 21 s), from its start, then
+    # repeating a part found in "crane_loop" (s) -> crane_move.wav, loop points
+    # in it. With "crane_take" false, "crane"'s stretches make a loop as before.
+    "crane_take": True,
+    "crane_loop": [22.0, 45.0],
     "only": [],                         # e.g. ["crane", "winch"]: cut just those (the rest left as they are)
 }
 args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -261,6 +268,52 @@ def plain_loop(x, rate, stretches, name, blend_s, keep_length=False):
     return out
 
 
+def whole_take(x, rate, loop_from, loop_to, name):
+    """A recording played from its start (its quiet lead-in trimmed off) to its
+    end, then repeating a part inside it (Mike, 2026-11-11: Crane3.wav, a minute
+    of the crane, started each time the crane starts). Where it repeats from is
+    found between `loop_from` and `loop_to` seconds (in the recording): the
+    point whose waveform best carries on from the take's end, the end itself
+    tried at points through its last WRAP_SEARCH_S. The last moment before the
+    end is cross-faded into what comes just before the repeat's start, so the
+    jump back is seamless. Returns the take and its loop's start and end (samples)."""
+    # (Its lead-in hisses a little: what starts it is well over that, 20 dB.)
+    lead = quiet_lead(x, rate, db(x[:int(0.1 * rate)]), 20.0)
+    x = x[int(lead * rate):]
+    a = int(max(loop_from - lead, 0.5) * rate)
+    b = int(min(loop_to - lead, len(x) / rate - WRAP_SEARCH_S - 1.0) * rate)
+    if b - a < rate:
+        raise SystemExit(f"cut_truck_sounds: {name}: the repeat's search ({loop_from}-{loop_to} s) isn't inside the take")
+    m = int(MATCH_S * rate)
+    best = (-2.0, 0, 0)
+    for back in np.arange(0.05, WRAP_SEARCH_S, 0.05):
+        e = len(x) - int(back * rate) - m
+        k, score = best_cut(x[a:b], x[e:e + m], rate, (b - a - m - 1) / rate)
+        if score > best[0]:
+            best = (score, a + k, e)
+    score, begin, end = best
+    f, w_in, w_out = handover(score, rate, begin)
+    take = x[:end].copy()
+    take[end - f:end] = take[end - f:end] * w_out + x[begin - f:begin] * w_in
+    k = int(0.01 * rate)
+    take[:k] *= np.linspace(0, 1, k)
+    print(f"{name}: whole take from {lead:.2f} s ({len(take) / rate:.1f} s), repeating "
+          f"{begin / rate + lead:.2f}-{end / rate + lead:.2f} s of the recording, lining up {score:.2f}")
+    return take, begin, end
+
+
+def add_loop(path, begin, end, rate):
+    """A WAV's loop points, in a 'smpl' chunk added to it: Godot reads them on
+    import (edit/loop_mode "Detect From WAV") and plays to `end`, then from
+    `begin` (samples) round again."""
+    import struct
+    data = open(path, "rb").read()
+    body = struct.pack("<9I", 0, 0, int(1e9 / rate), 60, 0, 0, 0, 1, 0) + struct.pack("<6I", 0, 0, begin, end, 0, 0)
+    data += b"smpl" + struct.pack("<I", len(body)) + body
+    data = data[:4] + struct.pack("<I", len(data) - 8) + data[8:]
+    open(path, "wb").write(data)
+
+
 def cut_crane():
     """The crane's two loops: its hydraulics (the boom moving: crane_move.wav)
     and its winch (the line going up or down: winch.wav), each with its loudest
@@ -270,6 +323,12 @@ def cut_crane():
     for key, src, out in (("crane", CUTS.get("crane_recording", "Crane2.mp3"), "crane_move.wav"), ("winch", "Winch.mp3", "winch.wav"),
                           ("motor", CUTS.get("motor_recording", "CraneMotor.mp3"), "crane_motor.wav")):
         if CUTS.get("only") and key not in CUTS["only"]:
+            continue
+        if key == "crane" and CUTS.get("crane_take"):
+            x, rate = load(src)
+            take, begin, end = whole_take(x, rate, *CUTS.get("crane_loop", [22.0, 45.0]), key)
+            write(take * 10 ** (-3 / 20) / np.abs(take).max(), rate, out)
+            add_loop(SRC + out, begin, end, rate)
             continue
         stretches = long_enough(key)
         if not stretches:

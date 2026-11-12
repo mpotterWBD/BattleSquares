@@ -195,14 +195,26 @@ func _init() -> void:
 	var got_out: bool = truck.get_out()
 	check("the driver gets out during the work", got_out)
 	var seen_boom := 0.0
+	var seen_fold := 0.0
+	var worst_hook := 0.0   ## the hook's furthest from the load while lifting it, or from the spot while lowering it (m)
 	t = 0.0
 	while (truck._bed[0] == null or truck._bed[1] == null or truck._job != null) and t < 200.0:
 		await physics_frame
 		t += 1.0 / 60.0
 		seen_boom = maxf(seen_boom, truck._boom_ext)
+		seen_fold = maxf(seen_fold, truck._fold_deg())
+		var job = truck._job
+		if job != null and job.step == truck.JobStep.LIFT:
+			worst_hook = maxf(worst_hook, truck._hook_m().distance_to(job.from))
+		elif job != null and job.step == truck.JobStep.LOWER:
+			worst_hook = maxf(worst_hook, truck._hook_m().distance_to(job.to))
 		note_door_gap(truck, mate)
 	print("    both loaded at t=%.1f" % t)
 	check("the boom slid out past the arm to reach a crate (%.2f m)" % seen_boom, seen_boom > 0.8)
+	check("the arm folded up to set a crate on the nearer bed spot, inside its stowed length (%.0f degrees)" % seen_fold,
+			seen_fold > 20.0)
+	check("the hook was over each crate it lifted and each spot it set one down on (worst %.3f m)" % worst_hook,
+			worst_hook < 0.02)
 	check("both crates are on the bed: the first in the furthest back spot, the second in the nearer",
 			truck._bed[0] == crates[0] and truck._bed[1] == crates[1]
 			and truck.to_local(crates[0].global_position).distance_to(Vector2(truck.SLOT_X_M[0], 0.0) * PX) < 2.0

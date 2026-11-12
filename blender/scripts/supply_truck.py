@@ -72,6 +72,9 @@ import bs_common as bs  # noqa: E402
 ROOT = bs.ROOT
 OUT_BODY = os.path.join(ROOT, "assets", "vehicles", "supply_truck_body.png")
 OUT_CRANE = os.path.join(ROOT, "assets", "vehicles", "supply_truck_crane.png")
+OUT_CRANE_SHEET = os.path.join(ROOT, "assets", "vehicles", "supply_truck_crane_sheet.png")
+OUT_MODULE = os.path.join(ROOT, "assets", "vehicles", "supply_truck_module.png")
+OUT_FOLD_PREVIEW = os.path.join(ROOT, "assets", "previews", "supply_truck_crane_fold_preview.png")
 OUT_DOOR = os.path.join(ROOT, "assets", "vehicles", "supply_truck_door.png")
 OUT_TYRE = os.path.join(ROOT, "assets", "vehicles", "supply_truck_tyre.png")
 OUT_PREVIEW = os.path.join(ROOT, "assets", "previews", "supply_truck_preview.png")
@@ -82,14 +85,24 @@ OUT_BLEND = os.path.join(ROOT, "blender", "source", "supply_truck.blend")
 _args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 if _args[:1] == ["draft"]:
     _draft = _args[1]
-    OUT_BODY, OUT_CRANE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE, OUT_STABS, OUT_STAB_PREVIEW, OUT_BLEND = (
-        os.path.join(_draft, os.path.basename(path)) for path in (OUT_BODY, OUT_CRANE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE,
-                                                                  OUT_STABS, OUT_STAB_PREVIEW, OUT_BLEND))
+    (OUT_BODY, OUT_CRANE, OUT_CRANE_SHEET, OUT_MODULE, OUT_DOOR, OUT_TYRE, OUT_PREVIEW, OUT_ANGLE, OUT_STABS, OUT_STAB_PREVIEW,
+     OUT_FOLD_PREVIEW, OUT_BLEND) = (
+        os.path.join(_draft, os.path.basename(path)) for path in (OUT_BODY, OUT_CRANE, OUT_CRANE_SHEET, OUT_MODULE, OUT_DOOR, OUT_TYRE,
+                                                                  OUT_PREVIEW, OUT_ANGLE, OUT_STABS, OUT_STAB_PREVIEW,
+                                                                  OUT_FOLD_PREVIEW, OUT_BLEND))
 
 RENDER_SCALE = 2
 SAMPLES = 96
 BODY_FRAME_M = 4.7      # the truck (4.3 m) and a little room
-CRANE_FRAME_M = 2.2     # the stowed turret, from its axis forward over the module
+CRANE_FRAME_M = 3.1     # the stowed turret, round its axis: the arm reaches 1.5 m forward over the cab
+OUTER_BOOM_M = 1.275    # the outer boom, knuckle to tip (was 0.85; Mike, 2026-11-11: 50% longer)
+# The outer boom folding up at the knuckle for close loads: FOLD_FRAMES frames,
+# level to FOLD_MAX_DEG up, keyframed from FOLD_FRAME0 (clear of the
+# stabilisers' 0-24), rendered into supply_truck_crane_sheet.png (its shadow
+# the game draws). supply_truck.gd FOLD_* match.
+FOLD_FRAMES = 16
+FOLD_MAX_DEG = 72.0
+FOLD_FRAME0 = 40
 
 # Shadow outlines (like helicopter.py): one per group of parts at its own
 # heights, at half the game's density, which the game sweeps across those
@@ -103,7 +116,12 @@ SHADOW_GROUPS = {
             "Exhaust", "Intake", "RainCap", "Toolbox"],
 }
 SHADOW_FRAME_M = 7.4        # the body, with room for its outlines to be swept ~1.3 m any way
-CRANE_SHADOW_FRAME_M = 4.4  # the turret likewise
+CRANE_SHADOW_FRAME_M = 3.0  # the turret's column and main boom (the arm's is drawn in the game), with room for the sweep
+# The engine module (Mike, 2026-11-11: it shakes while the engine runs): its
+# own picture, out of the body's, round MODULE_AT.
+MODULE_PARTS = ("Module", "Louvre", "VentFrame", "Exhaust", "Intake", "RainCap", "Toolbox")
+MODULE_AT = (0.77, 0.0)
+MODULE_FRAME_M = 1.25
 SHADOW_DIR = os.path.join(ROOT, "assets", "vehicles")
 
 # Along the truck (x, metres from its middle; the nose at +FRONT_X).
@@ -523,8 +541,12 @@ def build_crane(m):
     box("Turret", cx - 0.17, cx + 0.15, -0.15, 0.15, z0, z0 + 0.14, m["olive"], p, bevel=0.02)
     box("Column", cx - 0.11, cx + 0.09, -0.1, 0.1, z0 + 0.1, z0 + 0.82, m["olive"], p, bevel=0.02)
     pivot = Vector((cx - 0.02, 0, z0 + 0.78))
-    knuckle = Vector((cx + 0.1, 0, z0 + 1.12))
-    tip = Vector((cx + 0.95, 0, z0 + 1.0))
+    # The outer boom is OUTER_BOOM_M long (Mike, 2026-11-11: 50% longer, so the
+    # boom sliding out of it isn't longer than the arm). That reaches over the
+    # cab, so the knuckle's high enough for it to clear the roof hatch, the
+    # hook block tucked up under its tip.
+    knuckle = Vector((cx + 0.1, 0, z0 + 1.22))
+    tip = Vector((cx + 0.1 + OUTER_BOOM_M, 0, z0 + 1.18))
     beam("MainBoom", pivot, knuckle, 0.14, 0.15, m["olive"], p, bevel=0.015)
     beam("OuterBoom", knuckle + Vector((0.02, 0, -0.03)), tip, 0.11, 0.12, m["olive"], p, bevel=0.012)
     beam("Extension", tip - Vector((0.18, 0, 0.0)), tip + Vector((0.06, 0, -0.01)), 0.08, 0.085, m["dark"], p, bevel=0.01)
@@ -532,8 +554,8 @@ def build_crane(m):
     # outer one along the outer boom's top; chrome rods out of olive barrels.
     beam("MainRamBarrel", Vector((cx - 0.12, 0, z0 + 0.25)), Vector((cx - 0.08, 0, z0 + 0.62)), 0.07, 0.07, m["olive"], p)
     beam("MainRamRod", Vector((cx - 0.08, 0, z0 + 0.62)), Vector((cx - 0.02, 0, z0 + 0.9)), 0.035, 0.035, m["steel"], p, bevel=0.0)
-    beam("OuterRamBarrel", knuckle + Vector((0.05, 0, 0.1)), knuckle + Vector((0.4, 0, 0.07)), 0.065, 0.065, m["olive"], p)
-    beam("OuterRamRod", knuckle + Vector((0.4, 0, 0.07)), knuckle + Vector((0.6, 0, 0.05)), 0.03, 0.03, m["steel"], p, bevel=0.0)
+    beam("OuterRamBarrel", knuckle + Vector((0.05, 0, 0.1)), knuckle + Vector((0.6, 0, 0.08)), 0.065, 0.065, m["olive"], p)
+    beam("OuterRamRod", knuckle + Vector((0.6, 0, 0.08)), knuckle + Vector((0.9, 0, 0.06)), 0.03, 0.03, m["steel"], p, bevel=0.0)
     # Hoses along the booms (black), either side.
     for s in (1, -1):
         beam(f"Hose{s}", pivot + Vector((0.02, s * 0.085, 0.02)), knuckle + Vector((0.03, s * 0.08, 0.02)),
@@ -542,10 +564,43 @@ def build_crane(m):
              0.016, 0.016, m["rubber"], p, bevel=0.0)
     # The hook block, yellow, hanging under the tip, and a hook stowed against it.
     hook = material("Hook", YELLOW, roughness=0.5, shine=0.3)
-    box("HookBlock", tip.x - 0.04, tip.x + 0.06, -0.05, 0.05, tip.z - 0.3, tip.z - 0.12, hook, p, bevel=0.012)
-    cylinder("HookLine", 0.008, tip.z - 0.12, tip.z - 0.02, (tip.x + 0.01, 0), m["soot"], p, segs=8)
+    box("HookBlock", tip.x - 0.04, tip.x + 0.06, -0.05, 0.05, tip.z - 0.2, tip.z - 0.08, hook, p, bevel=0.012)
+    cylinder("HookLine", 0.008, tip.z - 0.08, tip.z - 0.02, (tip.x + 0.01, 0), m["soot"], p, segs=8)
     cylinder("Sheave", 0.045, 0, 0.02, (tip.x + 0.05, -0.01, tip.z - 0.02), m["steel"], p, axis="y")
+
+    # Folding (Mike, 2026-11-11: a knuckle boom folds in for a close load):
+    # the outer boom, its ram, hoses and sheave hang from the "Knuckle" empty,
+    # which tilts the tip up; the hook block hangs from "Hanger", which follows
+    # the tip and stays upright. Keyframed FOLD_FRAME0 (level, stowed) to
+    # FOLD_FRAME0 + FOLD_FRAMES - 1 (FOLD_MAX_DEG up), FOLD_ANGLE(k) apart.
+    scene = bpy.context.scene
+    hinge = bpy.data.objects.new("Knuckle", None)
+    hanger = bpy.data.objects.new("Hanger", None)
+    for empty in (hinge, hanger):
+        scene.collection.objects.link(empty)
+        empty.rotation_mode = "XYZ"
+    hinge.location = knuckle
+    folding = ("OuterBoom", "Extension", "OuterRam", "HoseOuter", "Sheave")
+    for obj in p:
+        name = obj.name.split(".")[0]
+        if name.startswith(folding):
+            obj.parent = hinge
+            obj.matrix_parent_inverse = Matrix.Translation(knuckle).inverted()
+        elif name.startswith(("HookBlock", "HookLine")):
+            obj.parent = hanger
+            obj.matrix_parent_inverse = Matrix.Translation(tip).inverted()
+    for k in range(FOLD_FRAMES):
+        a = math.radians(fold_angle(k))
+        hinge.rotation_euler = (0, -a, 0)   # (about +y, a negative turn lifts +x)
+        hanger.location = knuckle + Matrix.Rotation(-a, 3, "Y") @ (tip - knuckle)
+        hinge.keyframe_insert("rotation_euler", frame=FOLD_FRAME0 + k)
+        hanger.keyframe_insert("location", frame=FOLD_FRAME0 + k)
     return p
+
+
+def fold_angle(k):
+    """The outer boom's lift (degrees) in fold frame `k` (0 level .. FOLD_FRAMES - 1 the most)."""
+    return FOLD_MAX_DEG * k / (FOLD_FRAMES - 1)
 
 
 # ------------------------------------------------------------ stabilisers --
@@ -734,11 +789,28 @@ def main():
         obj.hide_render = obj in wheels
     bs.frame_camera(scene, (0, 0), BODY_FRAME_M, px)
 
-    # The body, without the crane's turret (it turns: its own image) or the tyres.
-    for obj in crane:
+    # The body, without the crane's turret (it turns: its own image), the
+    # tyres or the engine module (it shakes: its own image).
+    module = [o for o in body if o.name.split(".")[0].startswith(MODULE_PARTS)]
+    for obj in crane + module:
         obj.hide_render = True
     bs.render_to(scene, OUT_BODY)
-    for obj in crane + wheels:
+    for obj in crane + wheels + module:
+        obj.hide_render = False
+
+    # The engine module on its own (Mike, 2026-11-11: it shakes while the
+    # engine runs), round MODULE_AT; the body there for the light, not seen.
+    # The crane's out of it, as out of the body's (its stowed arm lies over
+    # the module: it left a dark band across it).
+    for obj in body:
+        obj.visible_camera = obj in module
+    for obj in crane:
+        obj.hide_render = True
+    bs.frame_camera(scene, MODULE_AT, MODULE_FRAME_M, px)
+    bs.render_to(scene, OUT_MODULE)
+    for obj in body:
+        obj.visible_camera = True
+    for obj in crane:
         obj.hide_render = False
 
     # The turret on its own, centred on its slewing axis; the body still
@@ -746,7 +818,15 @@ def main():
     for obj in body:
         obj.visible_camera = False
     bs.frame_camera(scene, (CRANE_X_M, 0), CRANE_FRAME_M, px)
-    bs.render_to(scene, OUT_CRANE)
+    bs.render_to(scene, OUT_CRANE)   # (stowed: the scene's sprite in the editor)
+    # The turret folding, frame by frame: the game picks one for the reach.
+    tmp = os.path.join(tempfile.gettempdir(), "bs_crane_frame_tmp.png")   # (not in the project: Godot would import it)
+    frames = []
+    for k in range(FOLD_FRAMES):
+        scene.frame_set(FOLD_FRAME0 + k)
+        frames.append(frame_pixels(scene, tmp))
+    save_sheet(frames, OUT_CRANE_SHEET)
+    scene.frame_set(0)
     for obj in body:
         obj.visible_camera = True
 
@@ -765,10 +845,16 @@ def main():
         bs.render_to(scene, os.path.join(shadow_dir, f"supply_truck_shadow_{group}.png"))
     for obj in body:
         obj.hide_render = True
+    # The turret's: the column and main boom only. The outer boom and the hook
+    # (whatever hangs from "Knuckle" or "Hanger") the game draws from where
+    # they are (supply_truck.gd _draw_boom_shadow()), at their own height: in
+    # this outline, swept across the whole turret's heights, the arm came out
+    # a broad smudge (Mike, 2026-11-11: "the boom doesn't cast a shadow").
     for obj in crane:
-        obj.hide_render = False
+        obj.hide_render = obj.parent is not None and obj.parent.name in ("Knuckle", "Hanger")
     bs.frame_camera(scene, (CRANE_X_M, 0), CRANE_SHADOW_FRAME_M, bs.PX_PER_M / 2)
     bs.render_to(scene, os.path.join(shadow_dir, "supply_truck_shadow_crane.png"))
+    os.remove(tmp)
     for obj in body:
         obj.hide_render = False
 
@@ -812,6 +898,7 @@ def main():
     scene.render.film_transparent = False
     bs.frame_camera(scene, (0, -0.2), 6.0, px)
     bs.render_to(scene, OUT_PREVIEW)
+    scene.frame_end = FOLD_FRAME0 + FOLD_FRAMES - 1   # (the timeline shows the stabilisers, 0-24, then the fold)
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
 
     cam = bpy.data.objects.new("Review", bpy.data.cameras.new("Review"))
@@ -831,6 +918,14 @@ def main():
     cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
     scene.render.resolution_x, scene.render.resolution_y = 1000, 800
     bs.render_to(scene, OUT_STAB_PREVIEW)
+
+    # The arm folded two-thirds of the way up, from the review camera.
+    scene.frame_set(FOLD_FRAME0 + 10)
+    target = Vector((0.6, 0, 1.6))
+    cam.location = Vector((4.6, -5.0, 3.0))
+    cam.rotation_euler = (target - cam.location).to_track_quat("-Z", "Y").to_euler()
+    scene.render.resolution_x, scene.render.resolution_y = 1200, 900
+    bs.render_to(scene, OUT_FOLD_PREVIEW)
     scene.frame_set(0)
 
 

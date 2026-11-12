@@ -103,7 +103,7 @@ func _init() -> void:
 	var last_crane := 0.0
 	var last_winch := 0.0
 	var crane_when_still := 0.0   # the crane's level while neither turret nor boom moved
-	var prev := Vector2(truck._slew, truck._boom_ext)
+	var prev := Vector2(truck._slew, truck._reach_m)
 	t = 0.0
 	while (truck._job != null or truck._bed[0] == null) and t < 120.0:
 		await physics_frame
@@ -126,7 +126,7 @@ func _init() -> void:
 		var c: float = truck._crane_level
 		var w: float = truck._winch_level
 		worst_drop = maxf(worst_drop, maxf(last_crane - c, last_winch - w))
-		var now := Vector2(truck._slew, truck._boom_ext)
+		var now := Vector2(truck._slew, truck._reach_m)
 		if now.is_equal_approx(prev):
 			crane_when_still = maxf(crane_when_still, c * (1.0 if not truck._crane_snd.playing else 1.0))
 		prev = now
